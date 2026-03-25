@@ -1,0 +1,17 @@
+{
+  "1000": { "area": "Brussels Centre", "minOrder": 15, "deliveryFee": 2.5 },
+  "1020": { "area": "Laeken", "minOrder": 15, "deliveryFee": 2.5 },
+  "1030": { "area": "Schaerbeek", "minOrder": 18, "deliveryFee": 3.0 },
+  "1040": { "area": "Etterbeek", "minOrder": 18, "deliveryFee": 3.0 },
+  "1050": { "area": "Ixelles / Elsene", "minOrder": 18, "deliveryFee": 3.0 },
+  "1060": { "area": "Saint-Gilles", "minOrder": 20, "deliveryFee": 3.5 },
+  "1080": { "area": "Molenbeek-Saint-Jean", "minOrder": 20, "deliveryFee": 3.5 },
+  "1150": { "area": "Woluwe-Saint-Pierre", "minOrder": 22, "deliveryFee": 3.5 },
+  "1170": { "area": "Watermael-Boitsfort", "minOrder": 22, "deliveryFee": 4.0 },
+  "2000": { "area": "Antwerp Centre", "minOrder": 15, "deliveryFee": 2.5 },
+  "2100": { "area": "Deurne", "minOrder": 20, "deliveryFee": 3.0 },
+  "2600": { "area": "Berchem", "minOrder": 18, "deliveryFee": 3.0 },
+  "2018": { "area": "Antwerp South", "minOrder": 18, "deliveryFee": 3.0 },
+  "9000": { "area": "Ghent Centre", "minOrder": 25, "deliveryFee": 4.0 },
+  "9050": { "area": "Ledeberg", "minOrder": 25, "deliveryFee": 4.0 }
+}

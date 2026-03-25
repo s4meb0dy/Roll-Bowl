@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream text-neutral-800 antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-sage-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sage-600 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-sage-200 bg-white px-5 py-2.5 text-sm font-semibold text-sage-700 shadow-sm transition-all hover:bg-sage-50 hover:border-sage-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-neutral-600 transition-all hover:bg-neutral-100 active:scale-[0.98];
+  }
+
+  .card {
+    @apply rounded-2xl bg-white shadow-card;
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-800 outline-none placeholder:text-neutral-400 transition focus:border-sage-400 focus:ring-2 focus:ring-sage-100;
+  }
+
+  .tag-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-break {
+    page-break-before: always;
+  }
+
+  /* Kiosk / Chrome --kiosk-printing: single 80mm receipt, no dialog */
+  @page {
+    size: 80mm auto;
+    margin: 2mm;
+  }
+
+  body.kitchen-printing-active {
+    background: white !important;
+  }
+
+  body.kitchen-printing-active * {
+    visibility: hidden;
+  }
+
+  body.kitchen-printing-active .kitchen-receipt-80mm,
+  body.kitchen-printing-active .kitchen-receipt-80mm * {
+    visibility: visible;
+  }
+
+  body.kitchen-printing-active .kitchen-receipt-80mm {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    max-width: 80mm;
+    padding: 2mm;
+    font-family: ui-monospace, monospace;
+  }
+}
