@@ -123,7 +123,7 @@ export interface CustomerInfo {
   zipCode: string;
 }
 
-export type OrderStatus = "paid" | "preparing" | "ready" | "delivered";
+export type OrderStatus = "pending" | "paid" | "preparing" | "ready" | "delivered";
 
 export type PaymentMethod = "online" | "cash";
 

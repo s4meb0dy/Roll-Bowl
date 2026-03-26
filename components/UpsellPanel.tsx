@@ -8,7 +8,6 @@ import { DRANKEN, DESSERTEN, EXTRAS } from "@/lib/menu";
 import type { ReadyMadeItem } from "@/lib/types";
 
 const POOL = [...DRANKEN.filter((d) => !d.unavailable), ...DESSERTEN, ...EXTRAS];
-const DISPLAY_MS = 6000;
 const PICK_COUNT = 3;
 
 function pickSuggestions(cartIds: Set<string>): ReadyMadeItem[] {
@@ -25,7 +24,6 @@ export default function UpsellPanel() {
 
   const [visible, setVisible] = useState(false);
   const [suggestions, setSuggestions] = useState<ReadyMadeItem[]>([]);
-  const [progress, setProgress] = useState(100);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
   const dismiss = useCallback(() => {
@@ -40,29 +38,18 @@ export default function UpsellPanel() {
     const picks = pickSuggestions(cartIds);
     if (picks.length === 0) return;
     setSuggestions(picks);
-    setProgress(100);
     setVisible(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastAddedAt]);
 
-  // Auto-dismiss countdown
   useEffect(() => {
     if (!visible) return;
-    const interval = 50; // ms tick
-    const step = (interval / DISPLAY_MS) * 100;
-    const timer = setInterval(() => {
-      setProgress((p) => {
-        const next = p - step;
-        if (next <= 0) {
-          clearInterval(timer);
-          dismiss();
-          return 0;
-        }
-        return next;
-      });
-    }, interval);
-    return () => clearInterval(timer);
-  }, [visible, dismiss]);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [visible]);
 
   const handleAdd = (item: ReadyMadeItem) => {
     addToCart({ type: "item", name: item.name, price: item.price, quantity: 1, note: "", menuItemId: item.id });
@@ -72,55 +59,62 @@ export default function UpsellPanel() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-72 animate-slide-up">
-      <div className="overflow-hidden rounded-2xl bg-neutral-900 shadow-2xl ring-1 ring-white/10">
-        {/* Progress bar */}
-        <div className="h-0.5 bg-neutral-700">
-          <div
-            className="h-full bg-sage-400 transition-[width] duration-75"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upsell-title"
+    >
+      {/* Backdrop — visual only; close only via X */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" aria-hidden />
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <p className="text-sm font-bold text-white">{t("upsell.title")}</p>
-          <button
-            onClick={dismiss}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-700 hover:text-white"
-          >
-            <X size={13} />
-          </button>
-        </div>
+      <div className="relative w-full max-w-md animate-fade-in">
+        <div className="overflow-hidden rounded-2xl bg-neutral-900 shadow-2xl ring-1 ring-white/10">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <p id="upsell-title" className="text-sm font-bold text-white">
+              {t("upsell.title")}
+            </p>
+            <button
+              type="button"
+              onClick={dismiss}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-700 hover:text-white"
+              aria-label={t("upsell.close")}
+            >
+              <X size={16} />
+            </button>
+          </div>
 
-        {/* Items */}
-        <div className="divide-y divide-neutral-800 px-4 pb-4">
-          {suggestions.map((item) => {
-            const added = addedIds.has(item.id);
-            return (
-              <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-xl flex-shrink-0">{item.emoji}</span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white leading-tight">
-                      {item.name}
-                    </p>
-                    <p className="text-xs text-neutral-400">€{item.price.toFixed(2)}</p>
+          {/* Items */}
+          <div className="divide-y divide-neutral-800 px-4 pb-4">
+            {suggestions.map((item) => {
+              const added = addedIds.has(item.id);
+              return (
+                <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex-shrink-0 text-xl">{item.emoji}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold leading-tight text-white">
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-neutral-400">€{item.price.toFixed(2)}</p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => !added && handleAdd(item)}
+                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition ${
+                      added
+                        ? "bg-sage-500 text-white"
+                        : "bg-neutral-700 text-neutral-200 hover:bg-wood-500 hover:text-white"
+                    }`}
+                  >
+                    {added ? <CheckCircle2 size={15} /> : <Plus size={15} />}
+                  </button>
                 </div>
-                <button
-                  onClick={() => !added && handleAdd(item)}
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition ${
-                    added
-                      ? "bg-sage-500 text-white"
-                      : "bg-neutral-700 text-neutral-200 hover:bg-wood-500 hover:text-white"
-                  }`}
-                >
-                  {added ? <CheckCircle2 size={15} /> : <Plus size={15} />}
-                </button>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

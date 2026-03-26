@@ -114,7 +114,7 @@ export const useStore = create<AppState>()(
           ...(paymentMethod === "cash" && cashDenomination !== undefined
             ? { cashDenomination }
             : {}),
-          status: "paid",
+          status: "pending",
           createdAt: new Date().toISOString(),
         };
         set((s) => ({ orders: [order, ...s.orders], cart: [] }));
@@ -139,31 +139,27 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "roll-bowl-store",
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
-        if (version >= 2) return persistedState as Partial<AppState>;
         const p = persistedState as Partial<AppState> | null;
-        if (!p?.orders) return persistedState as Partial<AppState>;
-        return {
-          ...p,
-          orders: p.orders.map((o) =>
-            (o as { status: string }).status === "pending"
-              ? ({ ...o, status: "paid" } as Order)
-              : o
-          ),
-        };
+        if (version < 2 && p?.orders) {
+          return {
+            ...p,
+            orders: p.orders.map((o) =>
+              (o as { status: string }).status === "pending"
+                ? ({ ...o, status: "paid" } as Order)
+                : o
+            ),
+          } as Partial<AppState>;
+        }
+        return persistedState as Partial<AppState>;
       },
       merge: (persistedState, currentState) => {
         const p = (persistedState || {}) as Partial<AppState>;
-        const orders = (p.orders ?? currentState.orders).map((o) =>
-          (o as { status: string }).status === "pending"
-            ? ({ ...o, status: "paid" } as Order)
-            : o
-        );
         return {
           ...currentState,
           ...p,
-          orders,
+          orders: p.orders ?? currentState.orders,
           kitchenPrintedOrderIds: Array.isArray(p.kitchenPrintedOrderIds)
             ? p.kitchenPrintedOrderIds
             : currentState.kitchenPrintedOrderIds,

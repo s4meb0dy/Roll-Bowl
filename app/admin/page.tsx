@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   Printer,
@@ -25,6 +25,7 @@ const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; next: OrderStatus | null }
 > = {
+  pending: { label: "⏳ Wachtend", color: "bg-amber-50 text-amber-900 border-amber-200", next: null },
   paid: { label: "💶 Betaald", color: "bg-emerald-50 text-emerald-800 border-emerald-200", next: "preparing" },
   preparing: { label: "👨‍🍳 In bereiding", color: "bg-blue-50 text-blue-700 border-blue-200", next: "ready" },
   ready: { label: "✅ Klaar", color: "bg-sage-50 text-sage-700 border-sage-200", next: "delivered" },
@@ -35,7 +36,15 @@ function formatCheckedTime(d: Date) {
   return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({
+  order,
+  onAcceptAndPrint,
+  onPrintReceipt,
+}: {
+  order: Order;
+  onAcceptAndPrint: (id: string) => void;
+  onPrintReceipt: (id: string) => void;
+}) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
   const cfg = STATUS_CONFIG[order.status];
 
@@ -79,10 +88,23 @@ function OrderCard({ order }: { order: Order }) {
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="font-bold text-neutral-800">€{order.total.toFixed(2)}</div>
-          <div className="text-xs text-neutral-400">
-            {order.items.length} {order.items.length === 1 ? "artikel" : "artikelen"}
+        <div className="flex flex-col items-end gap-2 text-right">
+          {order.status !== "pending" && (
+            <button
+              type="button"
+              onClick={() => onPrintReceipt(order.id)}
+              className="no-print flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+              title="Bon afdrukken"
+            >
+              <Printer size={14} />
+              Print
+            </button>
+          )}
+          <div>
+            <div className="font-bold text-neutral-800">€{order.total.toFixed(2)}</div>
+            <div className="text-xs text-neutral-400">
+              {order.items.length} {order.items.length === 1 ? "artikel" : "artikelen"}
+            </div>
           </div>
         </div>
       </div>
@@ -185,9 +207,23 @@ function OrderCard({ order }: { order: Order }) {
         </div>
       </div>
 
-      {cfg.next && (
+      {order.status === "pending" && (
+        <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
+          <button
+            type="button"
+            onClick={() => onAcceptAndPrint(order.id)}
+            className="btn-primary flex w-full items-center justify-center gap-2 text-sm"
+          >
+            <Printer size={16} />
+            Accepteren & afdrukken
+          </button>
+        </div>
+      )}
+
+      {order.status !== "pending" && cfg.next && (
         <div className="no-print border-t border-neutral-100 px-5 py-3">
           <button
+            type="button"
             onClick={() => updateOrderStatus(order.id, cfg.next!)}
             className="btn-primary text-sm"
           >
@@ -261,6 +297,7 @@ function PinGate({ onUnlock }: { onUnlock: () => void }) {
 export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
+  const updateOrderStatus = useStore((s) => s.updateOrderStatus);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -271,6 +308,49 @@ export default function AdminPage() {
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
+
+  const triggerKitchenPrint = useCallback(
+    (orderId: string) => {
+      if (printFlightRef.current) return;
+      printFlightRef.current = { id: orderId };
+      setPrintTargetId(orderId);
+
+      const printTimer = window.setTimeout(() => {
+        document.body.classList.add("kitchen-printing-active");
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.print();
+          });
+        });
+      }, 100);
+
+      let fallbackTimer: number | null = null;
+      const finish = () => {
+        if (fallbackTimer !== null) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        clearTimeout(printTimer);
+        document.body.classList.remove("kitchen-printing-active");
+        markKitchenPrinted(orderId);
+        setPrintTargetId(null);
+        printFlightRef.current = null;
+      };
+
+      window.addEventListener("afterprint", finish, { once: true });
+      fallbackTimer = window.setTimeout(finish, 4000);
+    },
+    [markKitchenPrinted]
+  );
+
+  const handleAcceptAndPrint = useCallback(
+    (orderId: string) => {
+      updateOrderStatus(orderId, "preparing");
+      playNewOrderChime();
+      triggerKitchenPrint(orderId);
+    },
+    [updateOrderStatus, triggerKitchenPrint]
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -311,80 +391,6 @@ export default function AdminPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  /** Silent auto-print for new `paid` orders (subscribe avoids effect cleanup cancelling an in-flight print). */
-  useEffect(() => {
-    if (!kitchenMode || !storeHydrated || !mounted) return;
-
-    let printTimer: number | null = null;
-    let fallbackTimer: number | null = null;
-    let afterPrintHandler: (() => void) | null = null;
-
-    let lastOrderFingerprint = "";
-    let lastPrintedKey = "";
-
-    const processQueue = () => {
-      if (printFlightRef.current) return;
-
-      const state = useStore.getState();
-      const orderFp = state.orders.map((o) => `${o.id}:${o.status}`).join("|");
-      const printedKey = [...state.kitchenPrintedOrderIds].sort().join(",");
-      if (orderFp === lastOrderFingerprint && printedKey === lastPrintedKey) return;
-      lastOrderFingerprint = orderFp;
-      lastPrintedKey = printedKey;
-
-      const printed = state.kitchenPrintedOrderIds;
-      const nextOrder = [...state.orders]
-        .filter((o) => o.status === "paid" && !printed.includes(o.id))
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
-
-      if (!nextOrder) return;
-
-      printFlightRef.current = { id: nextOrder.id };
-      const oid = nextOrder.id;
-
-      playNewOrderChime();
-      setPrintTargetId(oid);
-
-      printTimer = window.setTimeout(() => {
-        document.body.classList.add("kitchen-printing-active");
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            window.print();
-          });
-        });
-      }, 100);
-
-      const finish = () => {
-        if (fallbackTimer) {
-          clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-        document.body.classList.remove("kitchen-printing-active");
-        markKitchenPrinted(oid);
-        setPrintTargetId(null);
-        printFlightRef.current = null;
-      };
-
-      afterPrintHandler = finish;
-      window.addEventListener("afterprint", finish, { once: true });
-      fallbackTimer = window.setTimeout(finish, 4000);
-    };
-
-    const unsub = useStore.subscribe(() => {
-      processQueue();
-    });
-    processQueue();
-
-    return () => {
-      unsub();
-      if (printTimer) clearTimeout(printTimer);
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (afterPrintHandler) window.removeEventListener("afterprint", afterPrintHandler);
-      document.body.classList.remove("kitchen-printing-active");
-      printFlightRef.current = null;
-    };
-  }, [kitchenMode, storeHydrated, mounted, markKitchenPrinted]);
-
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);
     if (typeof window !== "undefined") {
@@ -406,6 +412,7 @@ export default function AdminPage() {
 
   const counts = {
     all: orders.length,
+    pending: orders.filter((o) => o.status === "pending").length,
     paid: orders.filter((o) => o.status === "paid").length,
     preparing: orders.filter((o) => o.status === "preparing").length,
     ready: orders.filter((o) => o.status === "ready").length,
@@ -456,8 +463,9 @@ export default function AdminPage() {
             <div>
               <p className="text-sm font-bold text-neutral-800">Kitchen mode</p>
               <p className="text-xs text-neutral-500">
-                New paid orders: chime + silent auto-print (80mm). Use Chrome with{" "}
-                <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> for no dialog.
+                New orders start as <strong>wachtend</strong>: tap <strong>Accepteren &amp; afdrukken</strong> for
+                chime + 80mm bon. Use Chrome with{" "}
+                <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> for silent printing.
               </p>
             </div>
           </div>
@@ -500,7 +508,7 @@ export default function AdminPage() {
         </div>
 
         <div className="no-print mb-6 flex flex-wrap gap-2">
-          {(["all", "paid", "preparing", "ready", "delivered"] as const).map(
+          {(["all", "pending", "paid", "preparing", "ready", "delivered"] as const).map(
             (s) => (
               <button
                 key={s}
@@ -530,7 +538,12 @@ export default function AdminPage() {
         ) : (
           <div className="space-y-5">
             {filtered.map((order) => (
-              <OrderCard key={order.id} order={order} />
+              <OrderCard
+                key={order.id}
+                order={order}
+                onAcceptAndPrint={handleAcceptAndPrint}
+                onPrintReceipt={triggerKitchenPrint}
+              />
             ))}
           </div>
         )}

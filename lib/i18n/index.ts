@@ -152,6 +152,7 @@ const nl: Dict = {
 
   // upsell
   "upsell.title": "Deze al geprobeerd?",
+  "upsell.close": "Sluiten",
 
   // sections
   "sec.poke.title": "Poké bowls",
@@ -324,6 +325,7 @@ const en: Dict = {
   "cat.review":   "Review",
 
   "upsell.title": "Have you tried these?",
+  "upsell.close": "Close",
 
   "sec.poke.title": "Poke bowls",
   "sec.poke.sub": "Chef-curated poke bowls, ready to order.",
@@ -494,6 +496,7 @@ const fr: Dict = {
   "cat.review":   "Avis",
 
   "upsell.title": "Avez-vous essayé?",
+  "upsell.close": "Fermer",
 
   "sec.poke.title": "Poke bowls",
   "sec.poke.sub": "Poke bowls du chef, prêts à commander.",
