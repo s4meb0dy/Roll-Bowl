@@ -1,0 +1,335 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ChevronLeft, Plus } from "lucide-react";
+import {
+  CLASSIC_ROLL_BASE_PRICE,
+  CLASSIC_ROLL_PROTEINS,
+  CLASSIC_ROLL_EXTRA_PROTEINS,
+  CLASSIC_ROLL_MIXINS,
+  CLASSIC_ROLL_EXTRA_MIXINS,
+  CLASSIC_ROLL_SAUCES,
+} from "@/lib/menu";
+import { useStore } from "@/lib/store/useStore";
+import { useT } from "@/lib/i18n";
+import { useInventory } from "@/lib/inventory/client";
+import type { BuilderOption, ClassicRollBuilderSelections } from "@/lib/types";
+import OptionRow from "@/components/builder/OptionRow";
+import StepIndicator, { StepCategory } from "@/components/builder/StepIndicator";
+import WizardShell from "@/components/builder/WizardShell";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type SelectionKey =
+  | "protein"
+  | "extraProtein"
+  | "mixin1"
+  | "mixin2"
+  | "extraMixin"
+  | "sauce";
+
+interface StepConfig {
+  key: SelectionKey;
+  labelKey: string;
+  labelVars?: Record<string, number>;
+  options: BuilderOption[];
+  isOptional?: boolean;
+}
+
+type BuilderState = Record<SelectionKey, BuilderOption | null>;
+
+// ─── Step definitions ─────────────────────────────────────────────────────────
+
+const STEPS: StepConfig[] = [
+  { key: "protein",      labelKey: "step.protein",       options: CLASSIC_ROLL_PROTEINS },
+  { key: "extraProtein", labelKey: "step.extra_protein", options: CLASSIC_ROLL_EXTRA_PROTEINS, isOptional: true },
+  { key: "mixin1",       labelKey: "step.mixin",         labelVars: { n: 1 }, options: CLASSIC_ROLL_MIXINS },
+  { key: "mixin2",       labelKey: "step.mixin",         labelVars: { n: 2 }, options: CLASSIC_ROLL_MIXINS },
+  { key: "extraMixin",   labelKey: "step.extra_mixin",   options: CLASSIC_ROLL_EXTRA_MIXINS, isOptional: true },
+  { key: "sauce",        labelKey: "step.saus",          options: CLASSIC_ROLL_SAUCES },
+];
+
+const TOTAL_STEPS = STEPS.length; // 6
+
+const INITIAL_STATE: BuilderState = {
+  protein: null,
+  extraProtein: null,
+  mixin1: null,
+  mixin2: null,
+  extraMixin: null,
+  sauce: null,
+};
+
+const SELECTION_KEYS: SelectionKey[] = [
+  "protein",
+  "extraProtein",
+  "mixin1",
+  "mixin2",
+  "extraMixin",
+  "sauce",
+];
+
+const CATEGORIES: StepCategory[] = [
+  { labelKey: "cat.protein", start: 0, end: 1 },
+  { labelKey: "cat.mixins",  start: 2, end: 4 },
+  { labelKey: "cat.saus",    start: 5, end: 5 },
+];
+
+// ─── Price computation ────────────────────────────────────────────────────────
+
+function computePrice(state: BuilderState): number {
+  let total = CLASSIC_ROLL_BASE_PRICE;
+  for (const k of SELECTION_KEYS) {
+    const opt = state[k];
+    if (opt) total += opt.priceExtra;
+  }
+  return Math.round(total * 100) / 100;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function ClassicRollBuilder() {
+  const t = useT();
+  const addToCart = useStore((s) => s.addToCart);
+  const { isItemAvailable } = useInventory();
+  const [step, setStep] = useState(0);
+  const [state, setState] = useState<BuilderState>(INITIAL_STATE);
+  const [note, setNote] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
+
+  // Drop any selection that becomes unavailable mid-flow (admin toggled it off
+  // while the customer was browsing) so we never advance with a ghost option.
+  useEffect(() => {
+    setState((prev) => {
+      let changed = false;
+      const next: BuilderState = { ...prev };
+      for (const key of SELECTION_KEYS) {
+        const opt = prev[key];
+        if (opt && !isItemAvailable(opt.id)) {
+          next[key] = null;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [isItemAvailable]);
+
+  const totalPrice = computePrice(state);
+
+  const canAdvance = (): boolean => {
+    if (step >= 0 && step < TOTAL_STEPS) {
+      const s = STEPS[step];
+      return s.isOptional ? true : state[s.key] !== null;
+    }
+    return true;
+  };
+
+  // For optional steps clicking the same item deselects it; required steps only select
+  const handleSelect = (key: SelectionKey, option: BuilderOption, isOptional: boolean) => {
+    setState((prev) => {
+      if (isOptional && prev[key]?.id === option.id) {
+        return { ...prev, [key]: null };
+      }
+      return { ...prev, [key]: option };
+    });
+  };
+
+  const resetAll = () => {
+    setStep(0);
+    setState(INITIAL_STATE);
+    setNote("");
+    setQuantity(1);
+  };
+
+  const handleAddToCart = () => {
+    addToCart({
+      type: "classic-roll-builder",
+      name: "Classic roll naar keuze",
+      price: totalPrice,
+      quantity,
+      note,
+      classicRollSelections: state as ClassicRollBuilderSelections,
+    });
+    setAdded(true);
+    setTimeout(() => {
+      resetAll();
+      setAdded(false);
+    }, 2000);
+  };
+
+  // ── Added screen ──────────────────────────────────────────────────────────
+  if (added) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+        <div className="mb-4 text-6xl">🍣</div>
+        <h3 className="font-display text-xl font-bold text-ink-900">{t("common.added")}</h3>
+        <p className="mt-1 text-sm text-ink-500">{t("classic_roll.added_sub")}</p>
+      </div>
+    );
+  }
+
+  // ── Intro / header ────────────────────────────────────────────────────────
+  const introHeader = (
+    <div className="mb-7">
+      <h2 className="font-display text-2xl font-bold text-ink-900">{t("classic_roll.title")}</h2>
+      <p className="mt-1 text-sm text-ink-500">
+        {t("classic_roll.intro")}{" "}
+        <span className="font-semibold text-gold-700">
+          vanaf €{CLASSIC_ROLL_BASE_PRICE.toFixed(2)}
+        </span>
+        .
+      </p>
+    </div>
+  );
+
+  // ── Review step ───────────────────────────────────────────────────────────
+  if (step === TOTAL_STEPS) {
+    const reviewRows: [string, string][] = [
+      ["Proteïne",        state.protein?.name      ?? ""],
+      ...(state.extraProtein
+        ? [["Extra proteïne", state.extraProtein.name] as [string, string]]
+        : []),
+      ["Mix-in 1",        state.mixin1?.name       ?? ""],
+      ["Mix-in 2",        state.mixin2?.name       ?? ""],
+      ...(state.extraMixin
+        ? [["Extra mix-in",   state.extraMixin.name]   as [string, string]]
+        : []),
+      ["Saus",            state.sauce?.name        ?? ""],
+    ];
+
+    return (
+      <div className="animate-slide-up">
+        {introHeader}
+        <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} />
+
+        <h2 className="font-display mb-1 text-xl font-bold text-ink-900">{t("classic_roll.review_title")}</h2>
+        <p className="mb-5 text-sm text-ink-500">{t("builder.review_sub")}</p>
+
+        <div className="card mb-4 divide-y divide-ink-100 px-5 py-1">
+          {reviewRows.map(([label, value]) => (
+            <div key={label} className="flex items-start justify-between gap-4 py-2.5">
+              <span className="w-24 flex-shrink-0 text-sm font-medium text-ink-500">
+                {label}
+              </span>
+              <span className="text-right text-sm font-semibold text-ink-800">
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="card mb-4 p-4">
+          <label className="mb-2 block text-sm font-medium text-ink-700">
+            {t("common.optional")}{" "}
+            <span className="font-normal text-ink-400">{t("common.optional_note")}</span>
+          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t("builder.note_ph_general")}
+            rows={2}
+            className="input-field resize-none"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
+            >
+              −
+            </button>
+            <span className="w-6 text-center font-semibold tabular-nums">{quantity}</span>
+            <button
+              onClick={() => setQuantity((q) => q + 1)}
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep(TOTAL_STEPS - 1)} className="btn-secondary">
+              <ChevronLeft size={16} />
+              {t("common.back")}
+            </button>
+            <button onClick={handleAddToCart} className="btn-gold">
+              <Plus size={16} />
+              {t("common.order")} · €{(totalPrice * quantity).toFixed(2)}
+            </button>
+          </div>
+        </div>
+
+        <button
+          onClick={resetAll}
+          className="mt-4 w-full text-center text-xs text-ink-400 transition hover:text-ink-600"
+        >
+          {t("common.restart")}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Regular step ──────────────────────────────────────────────────────────
+  const currentStep = STEPS[step];
+  const currentSelection = state[currentStep.key];
+  const isOptional = !!currentStep.isOptional;
+
+  return (
+    <div className="animate-slide-up">
+      {step === 0 && introHeader}
+      <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} />
+
+      <WizardShell
+        stepKey={step}
+        onBack={step === 0 ? undefined : () => setStep((s) => Math.max(0, s - 1))}
+        canBack={step > 0}
+        onNext={() => setStep((s) => s + 1)}
+        canAdvance={canAdvance()}
+        nextLabel={step === TOTAL_STEPS - 1 ? t("common.review") : t("common.next")}
+        priceChip={totalPrice > CLASSIC_ROLL_BASE_PRICE ? `€${totalPrice.toFixed(2)}` : undefined}
+      >
+        <div className="mb-5">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-xl font-bold text-ink-900">
+              {t(currentStep.labelKey, currentStep.labelVars)}
+            </h2>
+            {isOptional ? (
+              <span className="tag-badge bg-ink-100 text-ink-500">{t("common.optional")}</span>
+            ) : (
+              <span className="tag-badge bg-gold-50 text-gold-700">{t("common.required_1")}</span>
+            )}
+          </div>
+          <p className="text-sm text-ink-500">
+            {t("common.step_of", { n: step + 1, total: TOTAL_STEPS })}
+            {totalPrice > CLASSIC_ROLL_BASE_PRICE && (
+              <span className="ml-2 font-semibold text-gold-700 sm:hidden">
+                · €{totalPrice.toFixed(2)} {t("common.so_far")}
+              </span>
+            )}
+          </p>
+          {isOptional && (
+            <p className="mt-1 text-xs text-ink-400">{t("common.click_deselect")}</p>
+          )}
+        </div>
+
+        <div className="mb-6 space-y-2">
+          {currentStep.options.map((option) => {
+            const optUnavailable = !isItemAvailable(option.id);
+            return (
+              <OptionRow
+                key={option.id}
+                option={option}
+                selected={currentSelection?.id === option.id}
+                unavailable={optUnavailable}
+                onSelect={() => handleSelect(currentStep.key, option, isOptional)}
+              />
+            );
+          })}
+        </div>
+      </WizardShell>
+    </div>
+  );
+}
