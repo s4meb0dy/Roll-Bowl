@@ -45,6 +45,8 @@ export interface ReadyMadeItem {
   ingredients: string;
   tags: string[];
   emoji: string;
+  /** Optional hero image served from /public. Falls back to emoji + gradient when absent. */
+  image?: string;
   info?: string;
   unavailable?: boolean;
 }
@@ -100,9 +102,38 @@ export interface SmoothieBuilderSelections {
   proteinScoop: BuilderOption | null;
 }
 
+export interface ClassicRollBuilderSelections {
+  protein: BuilderOption | null;
+  extraProtein: BuilderOption | null;
+  mixin1: BuilderOption | null;
+  mixin2: BuilderOption | null;
+  extraMixin: BuilderOption | null;
+  sauce: BuilderOption | null;
+}
+
+export interface InsideOutRollBuilderSelections {
+  protein: BuilderOption | null;
+  extraProtein: BuilderOption | null;
+  mixin1: BuilderOption | null;
+  mixin2: BuilderOption | null;
+  extraMixin: BuilderOption | null;
+  sauce: BuilderOption | null;
+  topping: BuilderOption | null;
+}
+
 export interface CartItem {
   cartId: string;
-  type: "custom" | "poke-builder" | "ready-made" | "burrito" | "burrito-builder" | "smoothie" | "smoothie-builder" | "item";
+  type:
+    | "custom"
+    | "poke-builder"
+    | "ready-made"
+    | "burrito"
+    | "burrito-builder"
+    | "smoothie"
+    | "smoothie-builder"
+    | "classic-roll-builder"
+    | "inside-out-roll-builder"
+    | "item";
   name: string;
   price: number;
   quantity: number;
@@ -114,6 +145,8 @@ export interface CartItem {
   pokeSelections?: PokeBuilderSelections;
   burritoSelections?: BurritoBuilderSelections;
   smoothieSelections?: SmoothieBuilderSelections;
+  classicRollSelections?: ClassicRollBuilderSelections;
+  insideOutRollSelections?: InsideOutRollBuilderSelections;
 }
 
 export interface CustomerInfo {
@@ -127,6 +160,18 @@ export type OrderStatus = "pending" | "paid" | "preparing" | "ready" | "delivere
 
 export type PaymentMethod = "online" | "cash";
 
+/** Delivery = courier drops off at address. Takeaway = customer picks up. */
+export type OrderType = "delivery" | "takeaway";
+
+/**
+ * When should the order be ready?
+ *  - `asap`: kitchen prepares immediately (default).
+ *  - `scheduled`: customer picked a later time-slot. `scheduledFor` is an ISO datetime.
+ */
+export type FulfillmentTime =
+  | { mode: "asap" }
+  | { mode: "scheduled"; scheduledFor: string };
+
 export interface Order {
   id: string;
   items: CartItem[];
@@ -137,6 +182,8 @@ export interface Order {
   generalNote: string;
   paymentMethod: PaymentMethod;
   cashDenomination?: number;
+  orderType: OrderType;
+  fulfillmentTime: FulfillmentTime;
   status: OrderStatus;
   createdAt: string;
 }

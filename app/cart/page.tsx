@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trash2,
@@ -12,12 +12,22 @@ import {
   CreditCard,
   Banknote,
   CheckCircle2,
+  Truck,
+  Store,
+  Clock,
+  CalendarClock,
 } from "lucide-react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
-import type { CustomerInfo, PaymentMethod } from "@/lib/types";
+import type { CustomerInfo, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
+import {
+  getAvailableTimeSlots,
+  TAKEAWAY_DELIVERY_FEE,
+  TAKEAWAY_MIN_ORDER,
+  type TimeSlot,
+} from "@/lib/deliveryConfig";
 
 function QuantityControl({
   value,
@@ -30,14 +40,14 @@ function QuantityControl({
     <div className="flex items-center gap-2">
       <button
         onClick={() => onChange(value - 1)}
-        className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-sm font-bold text-neutral-600 transition hover:bg-neutral-100"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-sm font-bold text-ink-600 transition hover:bg-ink-100"
       >
         −
       </button>
-      <span className="w-5 text-center text-sm font-semibold">{value}</span>
+      <span className="w-5 text-center text-sm font-semibold tabular-nums">{value}</span>
       <button
         onClick={() => onChange(value + 1)}
-        className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-sm font-bold text-neutral-600 transition hover:bg-neutral-100"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-sm font-bold text-ink-600 transition hover:bg-ink-100"
       >
         +
       </button>
@@ -71,6 +81,11 @@ export default function CartPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("online");
   const [cashDenomination, setCashDenomination] = useState<number | null>(null);
   const [customCash, setCustomCash] = useState("");
+  const [orderType, setOrderType] = useState<OrderType>("delivery");
+  const [timeMode, setTimeMode] = useState<"asap" | "scheduled">("asap");
+  const [scheduledSlot, setScheduledSlot] = useState<string>("");
+  // Tick every minute so the time-slot picker stays fresh without a page reload.
+  const [nowTick, setNowTick] = useState(0);
 
   useEffect(() => {
     setMounted(true);
@@ -86,6 +101,32 @@ export default function CartPage() {
     }
   }, [mounted, zipCode, deliveryAddress]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Regenerate available slots whenever the clock ticks past a minute so the
+  // earliest selectable time always honours the 30-min prep lead.
+  // NOTE: hook MUST run on every render (including pre-mount) to keep the
+  // hook order stable across the `!mounted` early return below.
+  const timeSlots = useMemo<TimeSlot[]>(
+    () => (mounted ? getAvailableTimeSlots(new Date()) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mounted, nowTick],
+  );
+
+  // Drop stale selection if the slot has rolled out of the available window.
+  useEffect(() => {
+    if (
+      timeMode === "scheduled" &&
+      scheduledSlot &&
+      !timeSlots.some((s) => s.value === scheduledSlot)
+    ) {
+      setScheduledSlot("");
+    }
+  }, [timeSlots, timeMode, scheduledSlot]);
+
   if (!mounted) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -95,16 +136,30 @@ export default function CartPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = zipCodeConfig?.deliveryFee ?? 0;
-  const minOrder = zipCodeConfig?.minOrder ?? 0;
+  const isTakeaway = orderType === "takeaway";
+  const deliveryFee = isTakeaway ? TAKEAWAY_DELIVERY_FEE : zipCodeConfig?.deliveryFee ?? 0;
+  const minOrder = isTakeaway ? TAKEAWAY_MIN_ORDER : zipCodeConfig?.minOrder ?? 0;
   const total = subtotal + deliveryFee;
   const belowMinimum = subtotal < minOrder;
+
+  const formatSlotLabel = (slot: TimeSlot): string => {
+    const hh = String(slot.hour).padStart(2, "0");
+    const mm = String(slot.minute).padStart(2, "0");
+    const prefix =
+      slot.dayOffset === 0
+        ? ""
+        : slot.dayOffset === 1
+        ? `${t("time.tomorrow")} · `
+        : `${slot.date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" })} · `;
+    return `${prefix}${hh}:${mm}`;
+  };
 
   const validate = (): boolean => {
     const e: Partial<CustomerInfo> = {};
     if (!customerInfo.name.trim()) e.name = t("val.name");
     if (!customerInfo.phone.trim()) e.phone = t("val.phone");
-    if (!customerInfo.address.trim()) e.address = t("val.address");
+    // Address / zipcode are only required for delivery orders.
+    if (!isTakeaway && !customerInfo.address.trim()) e.address = t("val.address");
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -112,9 +167,30 @@ export default function CartPage() {
   const handlePlaceOrder = async () => {
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
+    if (timeMode === "scheduled" && !scheduledSlot) return;
+
     setPlacing(true);
     await new Promise((r) => setTimeout(r, 900));
-    const id = placeOrder(customerInfo, generalNote, paymentMethod, cashDenomination ?? undefined);
+
+    const fulfillmentTime: FulfillmentTime =
+      timeMode === "asap"
+        ? { mode: "asap" }
+        : { mode: "scheduled", scheduledFor: scheduledSlot };
+
+    // Takeaway doesn't need address fields — blank them on the order so the
+    // receipt doesn't print a stale delivery address from a previous session.
+    const finalCustomerInfo: CustomerInfo = isTakeaway
+      ? { ...customerInfo, address: "", zipCode: "" }
+      : customerInfo;
+
+    const id = placeOrder({
+      customerInfo: finalCustomerInfo,
+      generalNote,
+      paymentMethod,
+      cashDenomination: cashDenomination ?? undefined,
+      orderType,
+      fulfillmentTime,
+    });
     router.push(`/order-confirmed?id=${id}`);
   };
 
@@ -155,6 +231,31 @@ export default function CartPage() {
     return parts.join(" · ");
   };
 
+  const formatClassicRollSelections = (item: (typeof cart)[0]): string => {
+    const s = item.classicRollSelections;
+    if (!s) return "";
+    const parts: string[] = [];
+    if (s.protein) parts.push(s.protein.name);
+    if (s.extraProtein) parts.push(`+ ${s.extraProtein.name}`);
+    [s.mixin1, s.mixin2].forEach((m) => { if (m) parts.push(m.name); });
+    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
+    if (s.sauce && s.sauce.name !== "Geen saus") parts.push(s.sauce.name);
+    return parts.join(" · ");
+  };
+
+  const formatInsideOutRollSelections = (item: (typeof cart)[0]): string => {
+    const s = item.insideOutRollSelections;
+    if (!s) return "";
+    const parts: string[] = [];
+    if (s.protein) parts.push(s.protein.name);
+    if (s.extraProtein) parts.push(`+ ${s.extraProtein.name}`);
+    [s.mixin1, s.mixin2].forEach((m) => { if (m) parts.push(m.name); });
+    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
+    if (s.sauce && s.sauce.name !== "Geen saus") parts.push(s.sauce.name);
+    if (s.topping && s.topping.name !== "Geen topping") parts.push(s.topping.name);
+    return parts.join(" · ");
+  };
+
   const formatPokeSelections = (item: (typeof cart)[0]): string => {
     const s = item.pokeSelections;
     if (!s) return "";
@@ -176,14 +277,14 @@ export default function CartPage() {
 
   if (cart.length === 0) {
     return (
-      <div className="min-h-screen bg-cream">
+      <div className="min-h-screen bg-cream-100 pb-28 md:pb-0">
         <Header />
         <div className="flex flex-col items-center justify-center py-32 text-center">
           <div className="mb-4 text-6xl">🛒</div>
-          <h2 className="font-display text-2xl font-bold text-neutral-800">
+          <h2 className="font-display text-2xl font-bold text-ink-900">
             {t("cart.empty_title")}
           </h2>
-          <p className="mt-2 text-neutral-500">{t("cart.empty_sub")}</p>
+          <p className="mt-2 text-ink-500">{t("cart.empty_sub")}</p>
           <Link href="/menu" className="btn-primary mt-6">
             {t("cart.browse_menu")}
             <ChevronRight size={16} />
@@ -194,29 +295,32 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-cream-100 pb-28 md:pb-8">
       <Header />
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <h1 className="font-display mb-6 text-2xl font-bold text-neutral-800">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <h1 className="font-display mb-6 text-3xl font-bold text-ink-900">
           {t("cart.title")}
         </h1>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          {/* Cart items */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="space-y-3">
             {cart.map((item) => (
               <div key={item.cartId} className="card p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
                         {item.type === "poke-builder"
                           ? t("type.poke_bowl")
                           : item.type === "burrito"
                           ? t("type.poke_burrito")
                           : item.type === "burrito-builder"
                           ? t("type.poke_burrito")
+                          : item.type === "classic-roll-builder"
+                          ? t("type.classic_roll")
+                          : item.type === "inside-out-roll-builder"
+                          ? t("type.inside_out_roll")
                           : item.type === "smoothie"
                           ? t("type.smoothie")
                           : item.type === "smoothie-builder"
@@ -228,45 +332,55 @@ export default function CartPage() {
                           : t("type.poke_bowl")}
                       </span>
                     </div>
-                    <h3 className="mt-0.5 font-semibold text-neutral-800 truncate">
+                    <h3 className="mt-0.5 font-semibold text-ink-900 truncate">
                       {item.name}
                     </h3>
                     {item.type === "custom" && item.components && (
-                      <p className="mt-0.5 text-xs text-neutral-500 leading-relaxed">
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed">
                         {formatComponents(item)}
                       </p>
                     )}
                     {item.type === "poke-builder" && item.pokeSelections && (
-                      <p className="mt-0.5 text-xs text-neutral-500 leading-relaxed line-clamp-2">
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed line-clamp-2">
                         {formatPokeSelections(item)}
                       </p>
                     )}
                     {item.type === "burrito-builder" && item.burritoSelections && (
-                      <p className="mt-0.5 text-xs text-neutral-500 leading-relaxed line-clamp-2">
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed line-clamp-2">
                         {formatBurritoSelections(item)}
                       </p>
                     )}
+                    {item.type === "classic-roll-builder" && item.classicRollSelections && (
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed line-clamp-2">
+                        {formatClassicRollSelections(item)}
+                      </p>
+                    )}
+                    {item.type === "inside-out-roll-builder" && item.insideOutRollSelections && (
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed line-clamp-2">
+                        {formatInsideOutRollSelections(item)}
+                      </p>
+                    )}
                     {item.type === "smoothie-builder" && item.smoothieSelections && (
-                      <p className="mt-0.5 text-xs text-neutral-500 leading-relaxed line-clamp-2">
+                      <p className="mt-0.5 text-xs text-ink-500 leading-relaxed line-clamp-2">
                         {formatSmoothieSelections(item)}
                       </p>
                     )}
                     {item.type === "ready-made" &&
                       (item.selectedSize || item.selectedBase) && (
-                        <p className="mt-0.5 text-xs text-neutral-500">
+                        <p className="mt-0.5 text-xs text-ink-500">
                           {[item.selectedSize?.label, item.selectedBase?.name]
                             .filter(Boolean)
                             .join(" · ")}
                         </p>
                       )}
                     {item.note && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-wood-500">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-gold-700">
                         <MessageSquare size={11} />
                         {item.note}
                       </p>
                     )}
                   </div>
-                  <div className="text-right font-bold text-neutral-800 shrink-0">
+                  <div className="font-display text-right font-bold text-gold-700 tabular-nums shrink-0">
                     €{(item.price * item.quantity).toFixed(2)}
                   </div>
                 </div>
@@ -277,7 +391,7 @@ export default function CartPage() {
                       value={item.quantity}
                       onChange={(v) => updateQuantity(item.cartId, v)}
                     />
-                    <span className="text-xs text-neutral-400">
+                    <span className="text-xs tabular-nums text-ink-400">
                       €{item.price.toFixed(2)} {t("cart.each")}
                     </span>
                   </div>
@@ -289,13 +403,13 @@ export default function CartPage() {
                           expandedNote === item.cartId ? null : item.cartId
                         )
                       }
-                      className="btn-ghost text-xs text-neutral-400"
+                      className="btn-ghost text-xs text-ink-500"
                     >
                       {t("cart.note_btn")}
                     </button>
                     <button
                       onClick={() => removeFromCart(item.cartId)}
-                      className="btn-ghost text-neutral-300 hover:text-red-400"
+                      className="btn-ghost text-ink-400 hover:text-red-500"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -316,9 +430,8 @@ export default function CartPage() {
               </div>
             ))}
 
-            {/* General note */}
             <div className="card p-4">
-              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-700">
+              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink-800">
                 <MessageSquare size={14} className="text-sage-500" />
                 {t("cart.general_note")}
               </label>
@@ -332,129 +445,274 @@ export default function CartPage() {
             </div>
           </div>
 
-          {/* Sidebar: summary + checkout */}
-          <div className="space-y-4">
-            {/* Order summary */}
-            <div className="card p-5">
-              <h2 className="mb-4 font-semibold text-neutral-800">
-                {t("cart.summary")}
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between text-neutral-600">
-                  <span>{t("cart.subtotal")}</span>
-                  <span>€{subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-neutral-600">
-                  <span>{t("cart.delivery_fee")}</span>
-                  <span>€{deliveryFee.toFixed(2)}</span>
-                </div>
-                {belowMinimum && (
-                  <div className="flex items-center gap-1.5 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-700">
-                    <AlertCircle size={13} />
-                    {t("cart.min_warning", {
-                      amount: minOrder.toFixed(2),
-                      diff: (minOrder - subtotal).toFixed(2),
-                    })}
+          <div className="lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+            <div className="card divide-y divide-ink-200/60">
+              {/* Order summary */}
+              <section className="p-5">
+                <h2 className="mb-4 font-semibold text-ink-900">
+                  {t("cart.summary")}
+                </h2>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-ink-600">
+                    <span>{t("order_type.label")}</span>
+                    <span className="font-medium text-ink-900">
+                      {isTakeaway ? t("order_type.takeaway") : t("order_type.delivery")}
+                    </span>
                   </div>
-                )}
-                <div className="flex justify-between border-t border-neutral-100 pt-2 font-bold text-neutral-800">
-                  <span>{t("cart.total")}</span>
-                  <span>€{total.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Customer info */}
-            <div className="card p-5">
-              <h2 className="mb-4 font-semibold text-neutral-800">
-                {t("cart.delivery_details")}
-              </h2>
-              <div className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-600">
-                    {t("cart.full_name")}
-                  </label>
-                  <input
-                    type="text"
-                    value={customerInfo.name}
-                    onChange={(e) =>
-                      setCustomerInfo((p) => ({ ...p, name: e.target.value }))
-                    }
-                    placeholder="Jane Doe"
-                    className={`input-field ${errors.name ? "border-red-300" : ""}`}
-                  />
-                  {errors.name && (
-                    <p className="mt-1 text-xs text-red-500">{errors.name}</p>
+                  <div className="flex justify-between text-ink-600">
+                    <span>{t("time.label")}</span>
+                    <span className="font-medium text-ink-900">
+                      {timeMode === "asap"
+                        ? t("time.asap")
+                        : scheduledSlot
+                        ? (() => {
+                            const s = timeSlots.find((x) => x.value === scheduledSlot);
+                            return s ? formatSlotLabel(s) : t("time.pick_slot");
+                          })()
+                        : t("time.pick_slot")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-ink-600">
+                    <span>{t("cart.subtotal")}</span>
+                    <span className="tabular-nums">€{subtotal.toFixed(2)}</span>
+                  </div>
+                  {!isTakeaway && (
+                    <div className="flex justify-between text-ink-600">
+                      <span>{t("cart.delivery_fee")}</span>
+                      <span className="tabular-nums">€{deliveryFee.toFixed(2)}</span>
+                    </div>
                   )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-600">
-                    {t("cart.phone")}
-                  </label>
-                  <input
-                    type="tel"
-                    value={customerInfo.phone}
-                    onChange={(e) =>
-                      setCustomerInfo((p) => ({ ...p, phone: e.target.value }))
-                    }
-                    placeholder="+32 123 456 789"
-                    className={`input-field ${errors.phone ? "border-red-300" : ""}`}
-                  />
-                  {errors.phone && (
-                    <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                  {belowMinimum && (
+                    <div className="flex items-center gap-1.5 rounded-xl2 bg-amber-50 p-2.5 text-xs text-amber-700">
+                      <AlertCircle size={13} />
+                      {t("cart.min_warning", {
+                        amount: minOrder.toFixed(2),
+                        diff: (minOrder - subtotal).toFixed(2),
+                      })}
+                    </div>
                   )}
+                  <div className="flex justify-between border-t border-ink-200/60 pt-2 font-display text-lg font-bold text-ink-900">
+                    <span>{t("cart.total")}</span>
+                    <span className="tabular-nums text-gold-700">€{total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Order type + fulfillment time */}
+              <section className="p-5">
+                <h2 className="mb-4 font-semibold text-ink-900">
+                  {t("order_type.title")}
+                </h2>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderType("delivery")}
+                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                      orderType === "delivery"
+                        ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                        : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                    }`}
+                  >
+                    <Truck size={16} className="flex-shrink-0" />
+                    <span>{t("order_type.delivery")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType("takeaway")}
+                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                      orderType === "takeaway"
+                        ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                        : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                    }`}
+                  >
+                    <Store size={16} className="flex-shrink-0" />
+                    <span>{t("order_type.takeaway")}</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-600">
-                    {t("cart.delivery_address")}
-                  </label>
-                  <input
-                    type="text"
-                    value={customerInfo.address}
-                    onChange={(e) =>
-                      setCustomerInfo((p) => ({
-                        ...p,
-                        address: e.target.value,
-                      }))
-                    }
-                    placeholder="Rue de la Loi 1"
-                    className={`input-field ${errors.address ? "border-red-300" : ""}`}
-                  />
-                  {errors.address && (
-                    <p className="mt-1 text-xs text-red-500">{errors.address}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-600">
-                    {t("cart.postal_code")}
-                  </label>
-                  <input
-                    type="text"
-                    value={customerInfo.zipCode}
-                    readOnly
-                    className="input-field bg-neutral-50 text-neutral-500"
-                  />
-                </div>
-              </div>
-
-              {/* ── Payment method ────────────────────────────────────────── */}
-              <div className="mt-5 space-y-3">
-                <p className="text-sm font-semibold text-neutral-700">
-                  {t("payment.title")}
+                <p className="mt-2 text-xs text-ink-500">
+                  {isTakeaway
+                    ? t("order_type.takeaway_sub")
+                    : t("order_type.delivery_sub", {
+                        area: zipCodeConfig?.area || "jouw zone",
+                      })}
                 </p>
 
-                {/* Toggle buttons */}
+                <div className="mt-5">
+                  <p className="mb-2 text-sm font-semibold text-ink-800">
+                    {t("time.title")}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setTimeMode("asap"); setScheduledSlot(""); }}
+                      className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                        timeMode === "asap"
+                          ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                          : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                      }`}
+                    >
+                      <Clock size={16} className="flex-shrink-0" />
+                      <span>{t("time.asap")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTimeMode("scheduled")}
+                      className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                        timeMode === "scheduled"
+                          ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                          : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                      }`}
+                    >
+                      <CalendarClock size={16} className="flex-shrink-0" />
+                      <span>{t("time.scheduled")}</span>
+                    </button>
+                  </div>
+
+                  {timeMode === "scheduled" && (
+                    <div className="mt-3 animate-slide-up">
+                      {timeSlots.length > 0 ? (
+                        <select
+                          value={scheduledSlot}
+                          onChange={(e) => setScheduledSlot(e.target.value)}
+                          className="input-field text-sm"
+                        >
+                          <option value="">{t("time.pick_slot")}</option>
+                          {timeSlots.map((slot) => (
+                            <option key={slot.value} value={slot.value}>
+                              {formatSlotLabel(slot)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="flex items-center gap-2 rounded-xl2 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+                          <AlertCircle size={13} />
+                          {t("time.no_slots")}
+                        </div>
+                      )}
+                      {timeMode === "scheduled" && !scheduledSlot && timeSlots.length > 0 && (
+                        <p className="mt-1.5 text-xs text-ink-500">
+                          {t("time.slot_required")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {timeMode === "asap" && (
+                    <p className="mt-2 text-xs text-ink-500">
+                      {isTakeaway ? t("time.asap_sub_takeaway") : t("time.asap_sub_delivery")}
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              {/* Customer info */}
+              <section className="p-5">
+                <h2 className="mb-4 font-semibold text-ink-900">
+                  {isTakeaway ? t("cart.pickup_details") : t("cart.delivery_details")}
+                </h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-600">
+                      {t("cart.full_name")}
+                    </label>
+                    <input
+                      type="text"
+                      value={customerInfo.name}
+                      onChange={(e) =>
+                        setCustomerInfo((p) => ({ ...p, name: e.target.value }))
+                      }
+                      placeholder="Jane Doe"
+                      className={`input-field ${errors.name ? "border-red-300" : ""}`}
+                    />
+                    {errors.name && (
+                      <p className="mt-1 text-xs text-red-500">{errors.name}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-600">
+                      {t("cart.phone")}
+                    </label>
+                    <input
+                      type="tel"
+                      value={customerInfo.phone}
+                      onChange={(e) =>
+                        setCustomerInfo((p) => ({ ...p, phone: e.target.value }))
+                      }
+                      placeholder="+32 123 456 789"
+                      className={`input-field ${errors.phone ? "border-red-300" : ""}`}
+                    />
+                    {errors.phone && (
+                      <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                    )}
+                  </div>
+
+                  {!isTakeaway && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-600">
+                          {t("cart.delivery_address")}
+                        </label>
+                        <input
+                          type="text"
+                          value={customerInfo.address}
+                          onChange={(e) =>
+                            setCustomerInfo((p) => ({
+                              ...p,
+                              address: e.target.value,
+                            }))
+                          }
+                          placeholder="Rue de la Loi 1"
+                          className={`input-field ${errors.address ? "border-red-300" : ""}`}
+                        />
+                        {errors.address && (
+                          <p className="mt-1 text-xs text-red-500">{errors.address}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-600">
+                          {t("cart.postal_code")}
+                        </label>
+                        <input
+                          type="text"
+                          value={customerInfo.zipCode}
+                          readOnly
+                          className="input-field bg-ink-50 text-ink-500"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {isTakeaway && (
+                    <div className="flex items-start gap-2 rounded-xl2 bg-sage-50 px-3 py-2.5 text-xs text-sage-700">
+                      <Store size={13} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        {t("cart.takeaway_notice", {
+                          phone: customerInfo.phone.trim() || "—",
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Payment method */}
+              <section className="p-5">
+                <h2 className="mb-4 font-semibold text-ink-900">
+                  {t("payment.title")}
+                </h2>
+
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => { setPaymentMethod("online"); setCashDenomination(null); setCustomCash(""); }}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all ${
+                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
                       paymentMethod === "online"
-                        ? "border-sage-400 bg-sage-50 text-sage-700"
-                        : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-300"
+                        ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                        : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
                     }`}
                   >
                     <CreditCard size={16} className="flex-shrink-0" />
@@ -463,10 +721,10 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("cash")}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all ${
+                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
                       paymentMethod === "cash"
-                        ? "border-wood-400 bg-wood-50 text-wood-700"
-                        : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-300"
+                        ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                        : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
                     }`}
                   >
                     <Banknote size={16} className="flex-shrink-0" />
@@ -474,19 +732,16 @@ export default function CartPage() {
                   </button>
                 </div>
 
-                {/* Online sub-text */}
                 {paymentMethod === "online" && (
-                  <p className="text-xs text-neutral-400">{t("payment.online_sub")}</p>
+                  <p className="mt-2 text-xs text-ink-500">{t("payment.online_sub")}</p>
                 )}
 
-                {/* Cash denomination picker */}
                 {paymentMethod === "cash" && (
-                  <div className="space-y-3 animate-slide-up">
-                    <p className="text-xs font-medium text-neutral-600">
+                  <div className="mt-3 space-y-3 animate-slide-up">
+                    <p className="text-xs font-medium text-ink-600">
                       {t("payment.denomination_label")}
                     </p>
 
-                    {/* Preset bills */}
                     <div className="flex flex-wrap gap-2">
                       {DENOMINATIONS.filter((d) => d >= total || d >= 10).map((bill) => {
                         const selected = cashDenomination === bill;
@@ -496,12 +751,12 @@ export default function CartPage() {
                             key={bill}
                             type="button"
                             onClick={() => { setCashDenomination(bill); setCustomCash(""); }}
-                            className={`rounded-xl border px-4 py-2 text-sm font-bold transition-all ${
+                            className={`rounded-xl2 border px-4 py-2 text-sm font-bold transition-all tabular-nums ${
                               selected
-                                ? "border-wood-400 bg-wood-500 text-white shadow-sm"
+                                ? "border-gold-400 bg-gradient-to-br from-gold-400 to-gold-600 text-white shadow-sm"
                                 : tooLow
-                                ? "border-neutral-100 bg-neutral-50 text-neutral-300 cursor-not-allowed"
-                                : "border-neutral-200 bg-white text-neutral-700 hover:border-wood-300 hover:bg-wood-50"
+                                ? "border-ink-100 bg-ink-50 text-ink-300 cursor-not-allowed"
+                                : "border-ink-200 bg-white text-ink-700 hover:border-gold-300 hover:bg-gold-50"
                             }`}
                             disabled={tooLow}
                           >
@@ -510,9 +765,8 @@ export default function CartPage() {
                         );
                       })}
 
-                      {/* Custom input */}
                       <div className="relative">
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-neutral-400">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-ink-400">
                           €
                         </span>
                         <input
@@ -531,15 +785,14 @@ export default function CartPage() {
                       </div>
                     </div>
 
-                    {/* Change display */}
                     {cashDenomination !== null && cashDenomination < total && (
-                      <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-xs text-red-600">
+                      <div className="flex items-center gap-2 rounded-xl2 bg-red-50 px-3 py-2.5 text-xs text-red-600">
                         <AlertCircle size={13} className="flex-shrink-0" />
                         {t("payment.denomination_low", { total: total.toFixed(2) })}
                       </div>
                     )}
                     {cashDenomination !== null && cashDenomination >= total && (
-                      <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium ${
+                      <div className={`flex items-center gap-2 rounded-xl2 px-3 py-2.5 text-xs font-medium ${
                         cashDenomination === total
                           ? "bg-sage-50 text-sage-700"
                           : "bg-amber-50 text-amber-700"
@@ -552,30 +805,34 @@ export default function CartPage() {
                     )}
 
                     {cashDenomination === null && (
-                      <p className="text-xs text-neutral-400">{t("payment.denomination_required")}</p>
+                      <p className="text-xs text-ink-500">{t("payment.denomination_required")}</p>
                     )}
                   </div>
                 )}
-              </div>
+              </section>
 
-              <button
-                onClick={handlePlaceOrder}
-                disabled={
-                  placing ||
-                  belowMinimum ||
-                  (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total))
-                }
-                className="btn-primary mt-5 w-full justify-center py-3 text-base"
-              >
-                {placing ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>
-                    {paymentMethod === "cash" ? <Banknote size={18} /> : <ShoppingBag size={18} />}
-                    {t("cart.place_order", { total: total.toFixed(2) })}
-                  </>
-                )}
-              </button>
+              {/* Place order */}
+              <section className="p-5">
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={
+                    placing ||
+                    belowMinimum ||
+                    (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) ||
+                    (timeMode === "scheduled" && !scheduledSlot)
+                  }
+                  className="btn-gold w-full justify-center py-3.5 text-base"
+                >
+                  {placing ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <>
+                      {paymentMethod === "cash" ? <Banknote size={18} /> : <ShoppingBag size={18} />}
+                      {t("cart.place_order", { total: total.toFixed(2) })}
+                    </>
+                  )}
+                </button>
+              </section>
             </div>
           </div>
         </div>

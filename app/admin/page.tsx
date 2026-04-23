@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   Printer,
   RefreshCw,
@@ -10,6 +11,10 @@ import {
   Lock,
   Radio,
   UtensilsCrossed,
+  Truck,
+  Store,
+  CalendarClock,
+  Boxes,
 } from "lucide-react";
 import Header from "@/components/Header";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
@@ -74,13 +79,46 @@ function OrderCard({
     >
       <div className="flex items-start justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-bold text-neutral-500">
               #{order.id.toUpperCase()}
             </span>
             <span className={`tag-badge border text-xs ${cfg.color}`}>
               {cfg.label}
             </span>
+            <span
+              className={`tag-badge inline-flex items-center gap-1 border text-xs font-semibold ${
+                order.orderType === "takeaway"
+                  ? "border-wood-200 bg-wood-50 text-wood-800"
+                  : "border-sage-200 bg-sage-50 text-sage-800"
+              }`}
+            >
+              {order.orderType === "takeaway" ? (
+                <>
+                  <Store size={11} /> Afhalen
+                </>
+              ) : (
+                <>
+                  <Truck size={11} /> Bezorging
+                </>
+              )}
+            </span>
+            {order.fulfillmentTime?.mode === "scheduled" && (
+              <span className="tag-badge inline-flex items-center gap-1 border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-800">
+                <CalendarClock size={11} />
+                {new Date(order.fulfillmentTime.scheduledFor).toLocaleString("nl-BE", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            )}
+            {order.fulfillmentTime?.mode === "asap" && (
+              <span className="tag-badge inline-flex items-center gap-1 border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-800">
+                <Clock size={11} /> Zo snel mogelijk
+              </span>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-neutral-400">
             <Clock size={11} />
@@ -125,10 +163,12 @@ function OrderCard({
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-              Adres
+              {order.orderType === "takeaway" ? "Afhalen" : "Adres"}
             </div>
             <div className="font-medium text-neutral-800">
-              {order.customerInfo.address}, {order.customerInfo.zipCode}
+              {order.orderType === "takeaway"
+                ? "Klant haalt af in de winkel"
+                : `${order.customerInfo.address}, ${order.customerInfo.zipCode}`}
             </div>
           </div>
         </div>
@@ -199,7 +239,9 @@ function OrderCard({
           </div>
           <div className="shrink-0 text-right text-xs text-neutral-500">
             <div>Subtotaal: €{order.subtotal.toFixed(2)}</div>
-            <div>Bezorging: €{order.deliveryFee.toFixed(2)}</div>
+            {order.orderType !== "takeaway" && (
+              <div>Bezorging: €{order.deliveryFee.toFixed(2)}</div>
+            )}
             <div className="font-bold text-neutral-800">
               Totaal: €{order.total.toFixed(2)}
             </div>
@@ -437,6 +479,14 @@ export default function AdminPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/admin/inventory"
+              className="btn-secondary text-sm"
+              title="Beheer voorraad en product-beschikbaarheid"
+            >
+              <Boxes size={15} />
+              Voorraadbeheer
+            </Link>
             <div
               className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs shadow-sm"
               title="Live sync: polling every 10s + cross-tab storage"

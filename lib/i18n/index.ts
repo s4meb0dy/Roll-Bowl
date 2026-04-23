@@ -34,6 +34,11 @@ const nl: Dict = {
   "header.cart": "Winkelmandje",
   "header.kitchen": "Keuken",
 
+  // bottom nav
+  "nav.home": "Home",
+  "nav.menu": "Menu",
+  "nav.cart": "Winkelmandje",
+
   // landing
   "landing.badge": "Vers · Gezond · Lokaal",
   "landing.title1": "Jouw bowl,",
@@ -86,6 +91,8 @@ const nl: Dict = {
   "cart.total": "Totaal",
   "cart.min_warning": "Min. bestelling is €{amount}. Voeg €{diff} meer toe.",
   "cart.delivery_details": "Bezorggegevens",
+  "cart.pickup_details": "Afhaalgegevens",
+  "cart.takeaway_notice": "Je haalt zelf op — geen adres nodig. We bellen je op {phone} als je bestelling klaar is.",
   "cart.full_name": "Volledige naam *",
   "cart.phone": "Telefoonnummer *",
   "cart.delivery_address": "Bezorgadres *",
@@ -96,6 +103,24 @@ const nl: Dict = {
   "cart.item_note_ph": "Speciale wensen voor dit artikel…",
   "cart.each": "per stuk",
   "cart.note_btn": "📝 Notitie",
+
+  // order type + fulfillment time
+  "order_type.title": "Bestelwijze",
+  "order_type.label": "Bestelwijze",
+  "order_type.delivery": "Bezorgen",
+  "order_type.takeaway": "Afhalen",
+  "order_type.delivery_sub": "We bezorgen aan je deur in {area}.",
+  "order_type.takeaway_sub": "Geen bezorgkosten en geen minimumbedrag. Je haalt zelf af in de winkel.",
+  "time.title": "Wanneer wil je je bestelling?",
+  "time.label": "Wanneer",
+  "time.asap": "Zo snel mogelijk",
+  "time.scheduled": "Plan voor later",
+  "time.asap_sub_delivery": "Verwachte levertijd: 30–45 minuten.",
+  "time.asap_sub_takeaway": "Klaar voor afhaling in ongeveer 15–25 minuten.",
+  "time.pick_slot": "Kies een tijdslot",
+  "time.slot_required": "Kies een tijdslot om door te gaan.",
+  "time.no_slots": "Geen tijdslots beschikbaar. Probeer zo snel mogelijk te bestellen.",
+  "time.tomorrow": "Morgen",
 
   // validation
   "val.name": "Naam is verplicht",
@@ -136,6 +161,18 @@ const nl: Dict = {
   "burrito.title": "🌯 Stel je poké burrito samen",
   "burrito.review_title": "Jouw poké burrito",
 
+  // classic roll builder
+  "classic_roll.added_sub": "Jouw classic roll staat in het winkelmandje.",
+  "classic_roll.intro": "Kies proteïne, mix-ins en saus voor jouw perfecte classic roll.",
+  "classic_roll.title": "🍣 Stel je classic roll samen",
+  "classic_roll.review_title": "Jouw classic roll",
+
+  // inside-out roll builder
+  "inside_out_roll.added_sub": "Jouw inside-out roll staat in het winkelmandje.",
+  "inside_out_roll.intro": "Kies proteïne, mix-ins, saus en topping voor jouw perfecte inside-out roll.",
+  "inside_out_roll.title": "🍣 Stel je inside-out roll samen",
+  "inside_out_roll.review_title": "Jouw inside-out roll",
+
   // smoothie builder
   "smoothie.added_sub": "Jouw smoothie staat in het winkelmandje.",
   "smoothie.intro": "Kies jouw basis, mix-ins en optionele extras.",
@@ -159,6 +196,8 @@ const nl: Dict = {
   "sec.poke.sub": "Kant-en-klare poké bowls van onze chef.",
   "sec.burrito.title": "Poké burrito's",
   "sec.burrito.sub": "Al onze smaken, strak gerold in een verse tortilla. Geen keuze nodig — gewoon bestellen.",
+  "sec.rolls.title": "Signature rolls",
+  "sec.rolls.sub": "Vers bereide sushi rolls van ons huis. Gewoon kiezen en bestellen.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Vers gemixt met de beste ingrediënten. Gewoon kiezen en bestellen.",
   "sec.smoothie_bowls.title": "Smoothie bowls",
@@ -188,6 +227,8 @@ const nl: Dict = {
   "age.notice": "Alleen voor 18 jaar en ouder. Je bezorger zal je om een geldig ID vragen.",
   "type.poke_bowl": "Poké Bowl",
   "type.poke_burrito": "Poké Burrito",
+  "type.classic_roll": "Classic Roll",
+  "type.inside_out_roll": "Inside-Out Roll",
   "type.smoothie": "Smoothie",
   "type.extra": "Extra",
   "type.custom": "Custom Bowl",
@@ -218,6 +259,10 @@ const en: Dict = {
   "header.back_to_menu": "Back to menu",
   "header.cart": "Cart",
   "header.kitchen": "Kitchen",
+
+  "nav.home": "Home",
+  "nav.menu": "Menu",
+  "nav.cart": "Cart",
 
   "landing.badge": "Fresh · Healthy · Local",
   "landing.title1": "Your bowl,",
@@ -267,6 +312,8 @@ const en: Dict = {
   "cart.total": "Total",
   "cart.min_warning": "Min. order is €{amount}. Add €{diff} more.",
   "cart.delivery_details": "Delivery details",
+  "cart.pickup_details": "Pickup details",
+  "cart.takeaway_notice": "You'll pick it up — no address needed. We'll call you on {phone} when it's ready.",
   "cart.full_name": "Full name *",
   "cart.phone": "Phone number *",
   "cart.delivery_address": "Delivery address *",
@@ -277,6 +324,24 @@ const en: Dict = {
   "cart.item_note_ph": "Special requests for this item…",
   "cart.each": "each",
   "cart.note_btn": "📝 Note",
+
+  // order type + fulfillment time
+  "order_type.title": "How would you like your order?",
+  "order_type.label": "Order type",
+  "order_type.delivery": "Delivery",
+  "order_type.takeaway": "Takeaway",
+  "order_type.delivery_sub": "We'll deliver to your door in {area}.",
+  "order_type.takeaway_sub": "No delivery fee and no minimum order. You pick up at the store.",
+  "time.title": "When do you want your order?",
+  "time.label": "When",
+  "time.asap": "As soon as possible",
+  "time.scheduled": "Schedule for later",
+  "time.asap_sub_delivery": "Estimated delivery in 30–45 minutes.",
+  "time.asap_sub_takeaway": "Ready for pickup in about 15–25 minutes.",
+  "time.pick_slot": "Pick a time slot",
+  "time.slot_required": "Choose a time slot to continue.",
+  "time.no_slots": "No time slots available. Try ordering as soon as possible.",
+  "time.tomorrow": "Tomorrow",
 
   "val.name": "Name is required",
   "val.phone": "Phone is required",
@@ -312,6 +377,18 @@ const en: Dict = {
   "burrito.title": "🌯 Build your poke burrito",
   "burrito.review_title": "Your poke burrito",
 
+  // classic roll builder
+  "classic_roll.added_sub": "Your classic roll is in your basket.",
+  "classic_roll.intro": "Choose protein, mix-ins and sauce for your perfect classic roll.",
+  "classic_roll.title": "🍣 Build your classic roll",
+  "classic_roll.review_title": "Your classic roll",
+
+  // inside-out roll builder
+  "inside_out_roll.added_sub": "Your inside-out roll is in your basket.",
+  "inside_out_roll.intro": "Choose protein, mix-ins, sauce and topping for your perfect inside-out roll.",
+  "inside_out_roll.title": "🍣 Build your inside-out roll",
+  "inside_out_roll.review_title": "Your inside-out roll",
+
   "smoothie.added_sub": "Your smoothie is in your basket.",
   "smoothie.intro": "Choose your base, mix-ins and optional extras.",
   "smoothie.title": "🥤 Build your smoothie",
@@ -331,6 +408,8 @@ const en: Dict = {
   "sec.poke.sub": "Chef-curated poke bowls, ready to order.",
   "sec.burrito.title": "Poke burritos",
   "sec.burrito.sub": "All our flavors, tightly rolled in a fresh tortilla. No choices needed — just order.",
+  "sec.rolls.title": "Signature rolls",
+  "sec.rolls.sub": "Freshly prepared sushi rolls from our house. Just pick and order.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Freshly blended with the best ingredients. Just pick and order.",
   "sec.smoothie_bowls.title": "Smoothie bowls",
@@ -359,6 +438,8 @@ const en: Dict = {
   "age.notice": "Only for ages 18 and above. Your delivery person will ask for a valid ID.",
   "type.poke_bowl": "Poke Bowl",
   "type.poke_burrito": "Poke Burrito",
+  "type.classic_roll": "Classic Roll",
+  "type.inside_out_roll": "Inside-Out Roll",
   "type.smoothie": "Smoothie",
   "type.extra": "Extra",
   "type.custom": "Custom Bowl",
@@ -389,6 +470,10 @@ const fr: Dict = {
   "header.back_to_menu": "Retour au menu",
   "header.cart": "Panier",
   "header.kitchen": "Cuisine",
+
+  "nav.home": "Accueil",
+  "nav.menu": "Menu",
+  "nav.cart": "Panier",
 
   "landing.badge": "Frais · Sain · Local",
   "landing.title1": "Votre bowl,",
@@ -438,6 +523,8 @@ const fr: Dict = {
   "cart.total": "Total",
   "cart.min_warning": "Commande min. €{amount}. Ajoutez €{diff} de plus.",
   "cart.delivery_details": "Détails de livraison",
+  "cart.pickup_details": "Détails du retrait",
+  "cart.takeaway_notice": "Vous venez chercher — pas d'adresse nécessaire. Nous vous appelons au {phone} quand c'est prêt.",
   "cart.full_name": "Nom complet *",
   "cart.phone": "Numéro de téléphone *",
   "cart.delivery_address": "Adresse de livraison *",
@@ -448,6 +535,24 @@ const fr: Dict = {
   "cart.item_note_ph": "Demandes spéciales pour cet article…",
   "cart.each": "pièce",
   "cart.note_btn": "📝 Note",
+
+  // order type + fulfillment time
+  "order_type.title": "Comment voulez-vous votre commande ?",
+  "order_type.label": "Type de commande",
+  "order_type.delivery": "Livraison",
+  "order_type.takeaway": "À emporter",
+  "order_type.delivery_sub": "Nous livrons à votre porte à {area}.",
+  "order_type.takeaway_sub": "Pas de frais de livraison ni de minimum. Vous venez chercher en magasin.",
+  "time.title": "Quand voulez-vous votre commande ?",
+  "time.label": "Quand",
+  "time.asap": "Dès que possible",
+  "time.scheduled": "Planifier plus tard",
+  "time.asap_sub_delivery": "Livraison estimée dans 30–45 minutes.",
+  "time.asap_sub_takeaway": "Prêt à être récupéré dans environ 15–25 minutes.",
+  "time.pick_slot": "Choisissez un créneau horaire",
+  "time.slot_required": "Choisissez un créneau pour continuer.",
+  "time.no_slots": "Aucun créneau disponible. Essayez de commander dès que possible.",
+  "time.tomorrow": "Demain",
 
   "val.name": "Le nom est obligatoire",
   "val.phone": "Le téléphone est obligatoire",
@@ -483,6 +588,18 @@ const fr: Dict = {
   "burrito.title": "🌯 Composez votre poke burrito",
   "burrito.review_title": "Votre poke burrito",
 
+  // classic roll builder
+  "classic_roll.added_sub": "Votre classic roll est dans votre panier.",
+  "classic_roll.intro": "Choisissez la protéine, les mix-ins et la sauce pour votre classic roll parfait.",
+  "classic_roll.title": "🍣 Composez votre classic roll",
+  "classic_roll.review_title": "Votre classic roll",
+
+  // inside-out roll builder
+  "inside_out_roll.added_sub": "Votre inside-out roll est dans votre panier.",
+  "inside_out_roll.intro": "Choisissez la protéine, les mix-ins, la sauce et le topping pour votre inside-out roll parfait.",
+  "inside_out_roll.title": "🍣 Composez votre inside-out roll",
+  "inside_out_roll.review_title": "Votre inside-out roll",
+
   "smoothie.added_sub": "Votre smoothie est dans votre panier.",
   "smoothie.intro": "Choisissez votre base, vos mix-ins et vos extras optionnels.",
   "smoothie.title": "🥤 Composez votre smoothie",
@@ -502,6 +619,8 @@ const fr: Dict = {
   "sec.poke.sub": "Poke bowls du chef, prêts à commander.",
   "sec.burrito.title": "Poke burritos",
   "sec.burrito.sub": "Toutes nos saveurs, roulées dans une tortilla fraîche. Pas de choix nécessaire — commandez simplement.",
+  "sec.rolls.title": "Signature rolls",
+  "sec.rolls.sub": "Sushi rolls fraîchement préparés par notre chef. Choisissez et commandez.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Fraîchement mixés avec les meilleurs ingrédients. Choisissez et commandez.",
   "sec.smoothie_bowls.title": "Smoothie bowls",
@@ -530,6 +649,8 @@ const fr: Dict = {
   "age.notice": "Uniquement pour les 18 ans et plus. Le livreur vous demandera une pièce d'identité valide.",
   "type.poke_bowl": "Poke Bowl",
   "type.poke_burrito": "Poke Burrito",
+  "type.classic_roll": "Classic Roll",
+  "type.inside_out_roll": "Inside-Out Roll",
   "type.smoothie": "Smoothie",
   "type.extra": "Extra",
   "type.custom": "Bowl personnalisé",

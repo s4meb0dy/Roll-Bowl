@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Clock, ChefHat, ArrowLeft, CreditCard, Banknote } from "lucide-react";
+import { CheckCircle2, Clock, ChefHat, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock } from "lucide-react";
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
 
@@ -79,10 +79,57 @@ function ConfirmedContent() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
-        <Clock size={15} />
-        Estimated delivery: <strong>30–45 minutes</strong>
-      </div>
+      {/* Order type + fulfillment time */}
+      {order && (
+        <div className="mb-3 grid w-full max-w-sm grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm text-neutral-700">
+            {order.orderType === "takeaway" ? (
+              <Store size={15} className="flex-shrink-0 text-wood-500" />
+            ) : (
+              <Truck size={15} className="flex-shrink-0 text-sage-500" />
+            )}
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                {order.orderType === "takeaway" ? "Afhalen" : "Bezorging"}
+              </div>
+              <div className="font-medium">
+                {order.orderType === "takeaway" ? "Takeaway" : "Delivery"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm text-neutral-700">
+            {order.fulfillmentTime.mode === "scheduled" ? (
+              <CalendarClock size={15} className="flex-shrink-0 text-sage-500" />
+            ) : (
+              <Clock size={15} className="flex-shrink-0 text-sage-500" />
+            )}
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                {order.fulfillmentTime.mode === "scheduled" ? "Gepland" : "Zo snel mogelijk"}
+              </div>
+              <div className="font-medium">
+                {order.fulfillmentTime.mode === "scheduled"
+                  ? new Date(order.fulfillmentTime.scheduledFor).toLocaleString("nl-BE", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : order.orderType === "takeaway"
+                  ? "15–25 min"
+                  : "30–45 min"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!order && (
+        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <Clock size={15} />
+          Estimated delivery: <strong>30–45 minutes</strong>
+        </div>
+      )}
 
       {/* Payment info */}
       {order && (

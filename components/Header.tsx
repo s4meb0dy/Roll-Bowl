@@ -1,12 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ShoppingCart, ChefHat, ArrowLeft } from "lucide-react";
+import { ShoppingCart, ArrowLeft } from "lucide-react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useEffect, useState } from "react";
+
+function LogoMark({ size = 40 }: { size?: number }) {
+  return (
+    <Image
+      src="/logo.png"
+      alt="Roll & Bowl"
+      width={size}
+      height={size}
+      priority
+      className="rounded-full object-cover shadow-sm ring-1 ring-sage-200"
+    />
+  );
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -24,15 +38,13 @@ export default function Header() {
 
   if (isAdminPage) {
     return (
-      <header className="sticky top-0 z-50 border-b border-neutral-100 bg-white/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-ink-200/60 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-500 text-white">
-              <ChefHat size={20} />
-            </span>
+            <LogoMark size={40} />
             <div>
-              <span className="font-display text-lg font-bold text-sage-700">Roll&Bowl</span>
-              <span className="ml-2 rounded-full bg-sage-100 px-2 py-0.5 text-[11px] font-semibold text-sage-600">
+              <span className="font-display text-lg font-bold text-ink-900">Roll<span className="text-gold-600">&amp;</span>Bowl</span>
+              <span className="ml-2 rounded-full bg-gold-50 px-2 py-0.5 text-[11px] font-semibold text-gold-700">
                 {t("header.kitchen")}
               </span>
             </div>
@@ -44,21 +56,17 @@ export default function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-100 bg-white/90 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b border-ink-200/60 bg-white/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-500 text-white">
-            <ChefHat size={20} />
-          </span>
-          <span className="font-display text-lg font-bold text-sage-700">
-            Roll&amp;Bowl
+          <LogoMark size={40} />
+          <span className="font-display text-lg font-bold text-ink-900">
+            Roll<span className="text-gold-600">&amp;</span>Bowl
           </span>
         </Link>
 
-        {/* Zone indicator */}
         {mounted && zipCode && zipCodeConfig && (
-          <span className="hidden rounded-full border border-sage-200 bg-sage-50 px-3 py-1 text-xs font-medium text-sage-700 sm:block">
+          <span className="chip hidden border-sage-200 bg-sage-50 text-sage-700 sm:inline-flex">
             📍 {zipCodeConfig.area} ({zipCode})
           </span>
         )}
@@ -70,17 +78,18 @@ export default function Header() {
           {isCartPage ? (
             <Link href="/menu" className="btn-ghost text-sm">
               <ArrowLeft size={16} />
-              {t("header.back_to_menu")}
+              <span className="hidden sm:inline">{t("header.back_to_menu")}</span>
             </Link>
           ) : (
             <Link
               href="/cart"
-              className="relative flex h-10 items-center gap-2 rounded-xl border border-sage-200 bg-white px-4 py-2 text-sm font-semibold text-sage-700 shadow-sm transition hover:bg-sage-50"
+              aria-label={t("header.cart")}
+              className="tap-target relative hidden h-10 items-center gap-2 rounded-xl2 border border-ink-200 bg-white px-4 text-sm font-semibold text-ink-700 shadow-soft transition hover:border-gold-300 hover:text-gold-700 md:inline-flex"
             >
               <ShoppingCart size={17} />
               <span>{t("header.cart")}</span>
               {count > 0 && (
-                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-sage-500 px-1 text-[11px] font-bold text-white">
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold-500 px-1 text-[11px] font-bold text-white motion-safe:animate-cart-pop">
                   {count}
                 </span>
               )}

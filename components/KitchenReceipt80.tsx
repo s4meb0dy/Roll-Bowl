@@ -15,11 +15,32 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
     minute: "2-digit",
   });
 
+  const isTakeaway = order.orderType === "takeaway";
+  const scheduled =
+    order.fulfillmentTime?.mode === "scheduled"
+      ? new Date(order.fulfillmentTime.scheduledFor).toLocaleString("nl-BE", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
   return (
     <div className="kitchen-receipt-80mm text-black">
       <div className="border-b border-dashed border-neutral-400 pb-2 text-center">
         <div className="text-base font-black uppercase tracking-tight">Rollen Bowl</div>
         <div className="text-[10px] font-semibold">Keukenbon · 80 mm</div>
+      </div>
+
+      {/* Big, loud banner so the kitchen immediately sees pickup vs delivery. */}
+      <div className="mt-2 border-y-2 border-black py-1 text-center">
+        <div className="text-sm font-black uppercase tracking-wider">
+          {isTakeaway ? "★ AFHALEN ★" : "★ BEZORGEN ★"}
+        </div>
+        <div className="text-[10px] font-bold uppercase">
+          {scheduled ? `Gepland: ${scheduled}` : "Zo snel mogelijk"}
+        </div>
       </div>
 
       <div className="mt-2 font-mono text-[11px] leading-snug">
@@ -28,9 +49,15 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
           <span className="font-bold">#{order.id.toUpperCase()}</span>
         </div>
         <div className="flex justify-between gap-2">
-          <span className="text-neutral-600">Tijd</span>
+          <span className="text-neutral-600">Besteld op</span>
           <span>{time}</span>
         </div>
+        {scheduled && (
+          <div className="flex justify-between gap-2">
+            <span className="text-neutral-600">Klaarzetten om</span>
+            <span className="font-bold">{scheduled}</span>
+          </div>
+        )}
       </div>
 
       <div className="my-2 border-t border-dashed border-neutral-400" />
@@ -39,11 +66,15 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
         <div className="font-bold uppercase">Klant</div>
         <div>{order.customerInfo.name}</div>
         <div>{order.customerInfo.phone}</div>
-        <div className="mt-1 whitespace-pre-wrap">
-          {order.customerInfo.address}
-          {"\n"}
-          {order.customerInfo.zipCode}
-        </div>
+        {isTakeaway ? (
+          <div className="mt-1 font-bold uppercase">Afhaling — klant komt zelf</div>
+        ) : (
+          <div className="mt-1 whitespace-pre-wrap">
+            {order.customerInfo.address}
+            {"\n"}
+            {order.customerInfo.zipCode}
+          </div>
+        )}
       </div>
 
       <div className="my-2 border-t border-dashed border-neutral-400" />
@@ -67,10 +98,12 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
           <span>Subtotaal</span>
           <span>€{order.subtotal.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between">
-          <span>Bezorging</span>
-          <span>€{order.deliveryFee.toFixed(2)}</span>
-        </div>
+        {!isTakeaway && (
+          <div className="flex justify-between">
+            <span>Bezorging</span>
+            <span>€{order.deliveryFee.toFixed(2)}</span>
+          </div>
+        )}
         <div className="mt-1 flex justify-between font-bold">
           <span>TOTAAL</span>
           <span>€{order.total.toFixed(2)}</span>

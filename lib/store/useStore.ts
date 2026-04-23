@@ -2,7 +2,16 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { CartItem, CustomerInfo, Order, OrderStatus, ZipCodeConfig, PaymentMethod } from "@/lib/types";
+import type {
+  CartItem,
+  CustomerInfo,
+  Order,
+  OrderStatus,
+  ZipCodeConfig,
+  PaymentMethod,
+  OrderType,
+  FulfillmentTime,
+} from "@/lib/types";
 import type { Locale } from "@/lib/i18n/index";
 
 function generateId(): string {
@@ -40,7 +49,14 @@ interface AppState {
   updateNote: (cartId: string, note: string) => void;
   clearCart: () => void;
 
-  placeOrder: (customerInfo: CustomerInfo, generalNote: string, paymentMethod: PaymentMethod, cashDenomination?: number) => string;
+  placeOrder: (args: {
+    customerInfo: CustomerInfo;
+    generalNote: string;
+    paymentMethod: PaymentMethod;
+    cashDenomination?: number;
+    orderType: OrderType;
+    fulfillmentTime: FulfillmentTime;
+  }) => string;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   markKitchenPrinted: (orderId: string) => void;
 
@@ -95,13 +111,15 @@ export const useStore = create<AppState>()(
 
       clearCart: () => set({ cart: [] }),
 
-      placeOrder: (customerInfo, generalNote, paymentMethod, cashDenomination) => {
+      placeOrder: ({ customerInfo, generalNote, paymentMethod, cashDenomination, orderType, fulfillmentTime }) => {
         const state = get();
         const subtotal = state.cart.reduce(
           (sum, item) => sum + item.price * item.quantity,
           0
         );
-        const deliveryFee = state.zipCodeConfig?.deliveryFee ?? 0;
+        // Takeaway skips the delivery fee entirely.
+        const deliveryFee =
+          orderType === "takeaway" ? 0 : state.zipCodeConfig?.deliveryFee ?? 0;
         const order: Order = {
           id: generateId(),
           items: state.cart,
@@ -114,6 +132,8 @@ export const useStore = create<AppState>()(
           ...(paymentMethod === "cash" && cashDenomination !== undefined
             ? { cashDenomination }
             : {}),
+          orderType,
+          fulfillmentTime,
           status: "pending",
           createdAt: new Date().toISOString(),
         };
@@ -139,20 +159,35 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "roll-bowl-store",
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
-        const p = persistedState as Partial<AppState> | null;
+        let p = persistedState as Partial<AppState> | null;
         if (version < 2 && p?.orders) {
-          return {
+          p = {
             ...p,
             orders: p.orders.map((o) =>
               (o as { status: string }).status === "pending"
                 ? ({ ...o, status: "paid" } as Order)
                 : o
             ),
-          } as Partial<AppState>;
+          };
         }
-        return persistedState as Partial<AppState>;
+        // v4: backfill orderType / fulfillmentTime on legacy orders so the
+        // admin/receipt UIs can render them without null-checks everywhere.
+        if (version < 4 && p?.orders) {
+          p = {
+            ...p,
+            orders: p.orders.map((raw) => {
+              const legacy = raw as Partial<Order> & Order;
+              return {
+                ...legacy,
+                orderType: legacy.orderType ?? "delivery",
+                fulfillmentTime: legacy.fulfillmentTime ?? { mode: "asap" },
+              } as Order;
+            }),
+          };
+        }
+        return p as Partial<AppState>;
       },
       merge: (persistedState, currentState) => {
         const p = (persistedState || {}) as Partial<AppState>;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Leaf } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, Plus } from "lucide-react";
 import {
   BOWL_SIZES,
   BUILDER_BASES,
@@ -14,9 +14,11 @@ import {
 } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
+import { useInventory } from "@/lib/inventory/client";
 import type { BuilderOption, BowlSize, PokeBuilderSelections } from "@/lib/types";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import OptionRow from "@/components/builder/OptionRow";
+import StepIndicator, { StepCategory } from "@/components/builder/StepIndicator";
+import WizardShell from "@/components/builder/WizardShell";
 
 type SelectionKey =
   | "basis"
@@ -47,8 +49,6 @@ type BuilderState = { size: BowlSize | null } & Record<
   BuilderOption | null
 >;
 
-// ─── Step definitions ─────────────────────────────────────────────────────────
-
 const STEPS: StepConfig[] = [
   { key: "basis",        labelKey: "step.basis",        options: BUILDER_BASES },
   { key: "saus1",        labelKey: "step.saus_1",        options: BUILDER_SAUCES },
@@ -66,7 +66,7 @@ const STEPS: StepConfig[] = [
   { key: "topping3",     labelKey: "step.topping",       labelVars: { n: 3 }, options: BUILDER_TOPPINGS },
 ];
 
-const TOTAL_STEPS = STEPS.length; // 14
+const TOTAL_STEPS = STEPS.length;
 
 const INITIAL_STATE: BuilderState = {
   size: null,
@@ -103,17 +103,13 @@ const SELECTION_KEYS: SelectionKey[] = [
   "topping3",
 ];
 
-// Category labels for the progress bar
-// Each entry: [label, firstStepIndex, lastStepIndex]
-const CATEGORIES: [string, number, number][] = [
-  ["cat.basis",    0,  0],
-  ["cat.saus",     1,  2],
-  ["cat.mixins",   3,  8],
-  ["cat.protein",  9, 10],
-  ["cat.toppings", 11, 13],
+const CATEGORIES: StepCategory[] = [
+  { labelKey: "cat.basis",    start: 0,  end: 0 },
+  { labelKey: "cat.saus",     start: 1,  end: 2 },
+  { labelKey: "cat.mixins",   start: 3,  end: 8 },
+  { labelKey: "cat.protein",  start: 9,  end: 10 },
+  { labelKey: "cat.toppings", start: 11, end: 13 },
 ];
-
-// ─── Price computation ────────────────────────────────────────────────────────
 
 function computePrice(state: BuilderState): number {
   if (!state.size) return 0;
@@ -125,107 +121,28 @@ function computePrice(state: BuilderState): number {
   return total;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StepIndicator({ step }: { step: number }) {
-  const t = useT();
-  const isReview = step >= TOTAL_STEPS;
-  const pct = step < 0 ? 0 : Math.round(((step + 1) / 15) * 100);
-
-  return (
-    <div className="mb-6">
-      <div className="mb-2.5 flex items-center justify-between text-xs">
-        {CATEGORIES.map(([labelKey, start, end]) => {
-          const isDone = step > end;
-          const isActive = step >= start && step <= end;
-          return (
-            <span
-              key={labelKey}
-              className={`font-medium transition-colors ${
-                isActive ? "text-neutral-800" : isDone ? "text-sage-500" : "text-neutral-300"
-              }`}
-            >
-              {t(labelKey)}
-            </span>
-          );
-        })}
-        <span className={`font-medium ${isReview ? "text-neutral-800" : "text-neutral-300"}`}>
-          {t("cat.review")}
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
-        <div
-          className="h-full rounded-full bg-sage-400 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function OptionRow({
-  option,
-  selected,
-  onSelect,
-}: {
-  option: BuilderOption;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
-        selected
-          ? "border-sage-400 bg-sage-50"
-          : "border-neutral-100 bg-neutral-50 hover:border-sage-200 hover:bg-white"
-      }`}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={`h-4 w-4 rounded-full border-2 flex-shrink-0 transition-colors ${
-            selected ? "border-sage-500 bg-sage-500" : "border-neutral-300"
-          }`}
-        />
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-neutral-800">{option.name}</p>
-          {(option.isVegan || option.isGlutenFree) && (
-            <div className="flex gap-1 mt-0.5">
-              {option.isVegan && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-600">
-                  <Leaf size={8} />
-                  vegan
-                </span>
-              )}
-              {option.isGlutenFree && (
-                <span className="inline-flex items-center rounded-full bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-600">
-                  gf
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      {option.priceExtra > 0 && (
-        <span
-          className={`text-xs font-semibold flex-shrink-0 ml-3 ${
-            selected ? "text-sage-600" : "text-neutral-500"
-          }`}
-        >
-          +€{option.priceExtra.toFixed(2)}
-        </span>
-      )}
-    </button>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
 export default function BowlBuilder() {
   const t = useT();
   const addToCart = useStore((s) => s.addToCart);
+  const { isItemAvailable } = useInventory();
   const [step, setStep] = useState<number>(-1);
   const [state, setState] = useState<BuilderState>(INITIAL_STATE);
+
+  useEffect(() => {
+    setState((prev) => {
+      let changed = false;
+      const next: BuilderState = { ...prev };
+      for (const key of SELECTION_KEYS) {
+        const opt = prev[key];
+        if (opt && !isItemAvailable(opt.id)) {
+          next[key] = null;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [isItemAvailable]);
+
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
@@ -241,7 +158,6 @@ export default function BowlBuilder() {
     return true;
   };
 
-  // For optional steps clicking the same item deselects it; required steps only select
   const handleSelect = (key: SelectionKey, option: BuilderOption, isOptional: boolean) => {
     setState((prev) => {
       if (isOptional && prev[key]?.id === option.id) {
@@ -275,24 +191,22 @@ export default function BowlBuilder() {
     }, 2000);
   };
 
-  // ── Added screen ──────────────────────────────────────────────────────────
   if (added) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
         <div className="mb-4 text-6xl">🎉</div>
-        <h3 className="font-display text-xl font-bold text-neutral-800">{t("common.added")}</h3>
-        <p className="mt-1 text-sm text-neutral-500">{t("bowl.added_sub")}</p>
+        <h3 className="font-display text-xl font-bold text-ink-900">{t("common.added")}</h3>
+        <p className="mt-1 text-sm text-ink-500">{t("bowl.added_sub")}</p>
       </div>
     );
   }
 
-  // ── Size selection (step -1) ──────────────────────────────────────────────
   if (step === -1) {
     return (
       <div className="animate-slide-up">
         <div className="mb-7">
-          <h2 className="font-display text-xl font-bold text-neutral-800">{t("bowl.title")}</h2>
-          <p className="mt-1 text-sm text-neutral-500">{t("bowl.subtitle")}</p>
+          <h2 className="font-display text-2xl font-bold text-ink-900">{t("bowl.title")}</h2>
+          <p className="mt-1 text-sm text-ink-500">{t("bowl.subtitle")}</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {BOWL_SIZES.map((size) => (
@@ -302,15 +216,15 @@ export default function BowlBuilder() {
                 setState((p) => ({ ...p, size }));
                 setStep(0);
               }}
-              className="card flex flex-col items-center justify-center gap-2 p-8 text-center border-2 border-transparent transition hover:-translate-y-0.5 hover:shadow-card-hover hover:border-sage-300 active:scale-[0.98]"
+              className="card-hoverable flex flex-col items-center justify-center gap-2 border-2 border-transparent p-8 text-center transition hover:border-sage-300 active:scale-[0.98]"
             >
               <span className="text-5xl">
                 {size.id === "medium" ? "🥣" : "🍲"}
               </span>
-              <h3 className="font-display text-lg font-bold text-neutral-800">
+              <h3 className="font-display text-lg font-bold text-ink-900">
                 {size.label}
               </h3>
-              <p className="text-sm font-semibold text-sage-600">
+              <p className="text-sm font-semibold text-gold-700 tabular-nums">
                 {t("common.from")} €{size.basePrice.toFixed(2)}
               </p>
             </button>
@@ -320,7 +234,6 @@ export default function BowlBuilder() {
     );
   }
 
-  // ── Review step (step === TOTAL_STEPS) ────────────────────────────────────
   if (step === TOTAL_STEPS) {
     const reviewRows: [string, string][] = [
       ["Formaat",   state.size?.label     ?? ""],
@@ -342,21 +255,21 @@ export default function BowlBuilder() {
 
     return (
       <div className="animate-slide-up">
-        <StepIndicator step={step} />
+        <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={15} />
 
-        <h2 className="font-display mb-1 text-xl font-bold text-neutral-800">{t("bowl.review_title")}</h2>
-        <p className="mb-5 text-sm text-neutral-500">{t("builder.review_sub")}</p>
+        <h2 className="font-display mb-1 text-xl font-bold text-ink-900">{t("bowl.review_title")}</h2>
+        <p className="mb-5 text-sm text-ink-500">{t("builder.review_sub")}</p>
 
-        <div className="card mb-4 divide-y divide-neutral-100 px-5 py-1">
+        <div className="card mb-4 divide-y divide-ink-100 px-5 py-1">
           {reviewRows.map(([label, value]) => (
             <div
               key={label}
               className="flex items-start justify-between gap-4 py-2.5"
             >
-              <span className="text-sm font-medium text-neutral-500 flex-shrink-0 w-24">
+              <span className="w-24 flex-shrink-0 text-sm font-medium text-ink-500">
                 {label}
               </span>
-              <span className="text-sm font-semibold text-neutral-800 text-right">
+              <span className="text-right text-sm font-semibold text-ink-800">
                 {value}
               </span>
             </div>
@@ -364,9 +277,9 @@ export default function BowlBuilder() {
         </div>
 
         <div className="card mb-4 p-4">
-          <label className="mb-2 block text-sm font-medium text-neutral-700">
+          <label className="mb-2 block text-sm font-medium text-ink-700">
             {t("common.note")}{" "}
-            <span className="font-normal text-neutral-400">{t("common.optional_note")}</span>
+            <span className="font-normal text-ink-400">{t("common.optional_note")}</span>
           </label>
           <textarea
             value={note}
@@ -377,18 +290,18 @@ export default function BowlBuilder() {
           />
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 text-lg font-bold text-neutral-600 transition hover:bg-neutral-100"
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
             >
               −
             </button>
-            <span className="w-6 text-center font-semibold">{quantity}</span>
+            <span className="w-6 text-center font-semibold tabular-nums">{quantity}</span>
             <button
               onClick={() => setQuantity((q) => q + 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 text-lg font-bold text-neutral-600 transition hover:bg-neutral-100"
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
             >
               +
             </button>
@@ -399,7 +312,7 @@ export default function BowlBuilder() {
               <ChevronLeft size={16} />
               {t("common.back")}
             </button>
-            <button onClick={handleAddToCart} className="btn-primary">
+            <button onClick={handleAddToCart} className="btn-gold">
               <Plus size={16} />
               {t("common.order")} · €{(totalPrice * quantity).toFixed(2)}
             </button>
@@ -408,7 +321,7 @@ export default function BowlBuilder() {
 
         <button
           onClick={resetAll}
-          className="mt-4 w-full text-center text-xs text-neutral-400 transition hover:text-neutral-600"
+          className="mt-4 w-full text-center text-xs text-ink-400 transition hover:text-ink-600"
         >
           {t("common.restart")}
         </button>
@@ -416,72 +329,61 @@ export default function BowlBuilder() {
     );
   }
 
-  // ── Regular / optional step (step 0–13) ──────────────────────────────────
   const currentStep = STEPS[step];
   const currentSelection = state[currentStep.key];
   const isOptional = !!currentStep.isOptional;
 
   return (
     <div className="animate-slide-up">
-      <StepIndicator step={step} />
+      <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={15} />
 
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <h2 className="font-display text-xl font-bold text-neutral-800">
-            {t(currentStep.labelKey, currentStep.labelVars)}
-          </h2>
-          {isOptional ? (
-            <span className="tag-badge bg-neutral-100 text-neutral-500 flex-shrink-0">
-              {t("common.optional")}
-            </span>
-          ) : (
-            <span className="tag-badge bg-red-50 text-red-500 flex-shrink-0">
-              {t("common.required_1")}
-            </span>
+      <WizardShell
+        stepKey={step}
+        onBack={() => setStep((s) => s - 1)}
+        onNext={() => setStep((s) => s + 1)}
+        canAdvance={canAdvance()}
+        nextLabel={step === TOTAL_STEPS - 1 ? t("common.review") : t("common.next")}
+        priceChip={totalPrice > 0 ? `€${totalPrice.toFixed(2)}` : undefined}
+      >
+        <div className="mb-5">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-xl font-bold text-ink-900">
+              {t(currentStep.labelKey, currentStep.labelVars)}
+            </h2>
+            {isOptional ? (
+              <span className="tag-badge bg-ink-100 text-ink-500">{t("common.optional")}</span>
+            ) : (
+              <span className="tag-badge bg-gold-50 text-gold-700">{t("common.required_1")}</span>
+            )}
+          </div>
+          <p className="text-sm text-ink-500">
+            {t("common.step_of", { n: step + 1, total: TOTAL_STEPS })}
+            {totalPrice > 0 && (
+              <span className="ml-2 font-semibold text-gold-700 sm:hidden">
+                · €{totalPrice.toFixed(2)} {t("common.so_far")}
+              </span>
+            )}
+          </p>
+          {isOptional && (
+            <p className="mt-1 text-xs text-ink-400">{t("common.click_deselect")}</p>
           )}
         </div>
-        <p className="text-sm text-neutral-500">
-          {t("common.step_of", { n: step + 1, total: TOTAL_STEPS })}
-          {totalPrice > 0 && (
-            <span className="ml-2 font-semibold text-sage-600">
-              · €{totalPrice.toFixed(2)} {t("common.so_far")}
-            </span>
-          )}
-        </p>
-        {isOptional && (
-          <p className="mt-1 text-xs text-neutral-400">{t("common.click_deselect")}</p>
-        )}
-      </div>
 
-      <div className="space-y-1.5 mb-6">
-        {currentStep.options.map((option) => (
-          <OptionRow
-            key={option.id}
-            option={option}
-            selected={currentSelection?.id === option.id}
-            onSelect={() => handleSelect(currentStep.key, option, isOptional)}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setStep((s) => s - 1)}
-          className="btn-secondary"
-        >
-          <ChevronLeft size={16} />
-          {step === 0 ? t("cat.basis") : t("common.back")}
-        </button>
-
-        <button
-          onClick={() => setStep((s) => s + 1)}
-          disabled={!canAdvance()}
-          className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {step === TOTAL_STEPS - 1 ? t("common.review") : t("common.next")}
-          <ChevronRight size={16} />
-        </button>
-      </div>
+        <div className="mb-6 space-y-2">
+          {currentStep.options.map((option) => {
+            const optUnavailable = !isItemAvailable(option.id);
+            return (
+              <OptionRow
+                key={option.id}
+                option={option}
+                selected={currentSelection?.id === option.id}
+                unavailable={optUnavailable}
+                onSelect={() => handleSelect(currentStep.key, option, isOptional)}
+              />
+            );
+          })}
+        </div>
+      </WizardShell>
     </div>
   );
 }

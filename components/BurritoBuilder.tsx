@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Leaf } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, Plus } from "lucide-react";
 import {
   BURRITO_BASE_PRICE,
   BURRITO_PROTEINS,
@@ -11,9 +11,11 @@ import {
 } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
+import { useInventory } from "@/lib/inventory/client";
 import type { BuilderOption, BurritoBuilderSelections } from "@/lib/types";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import OptionRow from "@/components/builder/OptionRow";
+import StepIndicator, { StepCategory } from "@/components/builder/StepIndicator";
+import WizardShell from "@/components/builder/WizardShell";
 
 type SelectionKey = "protein" | "saus" | "mixin1" | "mixin2" | "mixin3" | "topping1" | "topping2";
 
@@ -26,8 +28,6 @@ interface StepConfig {
 
 type BuilderState = Record<SelectionKey, BuilderOption | null>;
 
-// ─── Step definitions ─────────────────────────────────────────────────────────
-
 const STEPS: StepConfig[] = [
   { key: "protein",  labelKey: "step.protein",               options: BURRITO_PROTEINS },
   { key: "saus",     labelKey: "step.saus",                   options: BUILDER_SAUCES },
@@ -38,7 +38,7 @@ const STEPS: StepConfig[] = [
   { key: "topping2", labelKey: "step.topping", labelVars: { n: 2 }, options: BUILDER_TOPPINGS },
 ];
 
-const TOTAL_STEPS = STEPS.length; // 7
+const TOTAL_STEPS = STEPS.length;
 
 const INITIAL_STATE: BuilderState = {
   protein: null,
@@ -54,15 +54,12 @@ const SELECTION_KEYS: SelectionKey[] = [
   "protein", "saus", "mixin1", "mixin2", "mixin3", "topping1", "topping2",
 ];
 
-// Category labels for the progress bar
-const CATEGORIES: [string, number, number][] = [
-  ["cat.protein",  0, 0],
-  ["cat.saus",     1, 1],
-  ["cat.mixins",   2, 4],
-  ["cat.toppings", 5, 6],
+const CATEGORIES: StepCategory[] = [
+  { labelKey: "cat.protein",  start: 0, end: 0 },
+  { labelKey: "cat.saus",     start: 1, end: 1 },
+  { labelKey: "cat.mixins",   start: 2, end: 4 },
+  { labelKey: "cat.toppings", start: 5, end: 6 },
 ];
-
-// ─── Price computation ────────────────────────────────────────────────────────
 
 function computePrice(state: BuilderState): number {
   let total = BURRITO_BASE_PRICE;
@@ -73,105 +70,30 @@ function computePrice(state: BuilderState): number {
   return total;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StepIndicator({ step }: { step: number }) {
-  const t = useT();
-  const isReview = step >= TOTAL_STEPS;
-  const pct = step < 0 ? 0 : Math.round(((step + 1) / 8) * 100);
-
-  return (
-    <div className="mb-6">
-      <div className="mb-2.5 flex items-center justify-between text-xs">
-        {CATEGORIES.map(([labelKey, start, end]) => {
-          const isDone = step > end;
-          const isActive = step >= start && step <= end;
-          return (
-            <span
-              key={labelKey}
-              className={`font-medium transition-colors ${
-                isActive ? "text-neutral-800" : isDone ? "text-sage-500" : "text-neutral-300"
-              }`}
-            >
-              {t(labelKey)}
-            </span>
-          );
-        })}
-        <span className={`font-medium ${isReview ? "text-neutral-800" : "text-neutral-300"}`}>
-          {t("cat.review")}
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
-        <div
-          className="h-full rounded-full bg-wood-400 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function OptionRow({
-  option,
-  selected,
-  onSelect,
-}: {
-  option: BuilderOption;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
-        selected
-          ? "border-wood-400 bg-wood-50"
-          : "border-neutral-100 bg-neutral-50 hover:border-wood-200 hover:bg-white"
-      }`}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={`h-4 w-4 rounded-full border-2 flex-shrink-0 transition-colors ${
-            selected ? "border-wood-500 bg-wood-500" : "border-neutral-300"
-          }`}
-        />
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-neutral-800">{option.name}</p>
-          {(option.isVegan || option.isGlutenFree) && (
-            <div className="flex gap-1 mt-0.5">
-              {option.isVegan && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-600">
-                  <Leaf size={8} />vegan
-                </span>
-              )}
-              {option.isGlutenFree && (
-                <span className="inline-flex items-center rounded-full bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-600">
-                  gf
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      {option.priceExtra > 0 && (
-        <span className={`text-xs font-semibold flex-shrink-0 ml-3 ${selected ? "text-wood-600" : "text-neutral-500"}`}>
-          +€{option.priceExtra.toFixed(2)}
-        </span>
-      )}
-    </button>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
 export default function BurritoBuilder() {
   const t = useT();
   const addToCart = useStore((s) => s.addToCart);
+  const { isItemAvailable } = useInventory();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<BuilderState>(INITIAL_STATE);
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    setState((prev) => {
+      let changed = false;
+      const next: BuilderState = { ...prev };
+      for (const key of SELECTION_KEYS) {
+        const opt = prev[key];
+        if (opt && !isItemAvailable(opt.id)) {
+          next[key] = null;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [isItemAvailable]);
 
   const totalPrice = computePrice(state);
 
@@ -207,24 +129,22 @@ export default function BurritoBuilder() {
     }, 2000);
   };
 
-  // ── Added screen ──────────────────────────────────────────────────────────
   if (added) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
         <div className="mb-4 text-6xl">🌯</div>
-        <h3 className="font-display text-xl font-bold text-neutral-800">{t("common.added")}</h3>
-        <p className="mt-1 text-sm text-neutral-500">{t("burrito.added_sub")}</p>
+        <h3 className="font-display text-xl font-bold text-ink-900">{t("common.added")}</h3>
+        <p className="mt-1 text-sm text-ink-500">{t("burrito.added_sub")}</p>
       </div>
     );
   }
 
-  // ── Intro / header ────────────────────────────────────────────────────────
   const introHeader = (
     <div className="mb-7">
-      <h2 className="font-display text-xl font-bold text-neutral-800">{t("burrito.title")}</h2>
-      <p className="mt-1 text-sm text-neutral-500">
+      <h2 className="font-display text-2xl font-bold text-ink-900">{t("burrito.title")}</h2>
+      <p className="mt-1 text-sm text-ink-500">
         {t("burrito.intro")}{" "}
-        <span className="font-semibold text-neutral-700">
+        <span className="font-semibold text-gold-700">
           vanaf €{BURRITO_BASE_PRICE.toFixed(2)}
         </span>
         .
@@ -232,7 +152,6 @@ export default function BurritoBuilder() {
     </div>
   );
 
-  // ── Review step ───────────────────────────────────────────────────────────
   if (step === TOTAL_STEPS) {
     const reviewRows: [string, string][] = [
       ["Proteïne",  state.protein?.name  ?? ""],
@@ -247,18 +166,18 @@ export default function BurritoBuilder() {
     return (
       <div className="animate-slide-up">
         {introHeader}
-        <StepIndicator step={step} />
+        <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={8} />
 
-        <h2 className="font-display mb-1 text-xl font-bold text-neutral-800">{t("burrito.review_title")}</h2>
-        <p className="mb-5 text-sm text-neutral-500">{t("builder.review_sub")}</p>
+        <h2 className="font-display mb-1 text-xl font-bold text-ink-900">{t("burrito.review_title")}</h2>
+        <p className="mb-5 text-sm text-ink-500">{t("builder.review_sub")}</p>
 
-        <div className="card mb-4 divide-y divide-neutral-100 px-5 py-1">
+        <div className="card mb-4 divide-y divide-ink-100 px-5 py-1">
           {reviewRows.map(([label, value]) => (
             <div key={label} className="flex items-start justify-between gap-4 py-2.5">
-              <span className="text-sm font-medium text-neutral-500 flex-shrink-0 w-20">
+              <span className="w-20 flex-shrink-0 text-sm font-medium text-ink-500">
                 {label}
               </span>
-              <span className="text-sm font-semibold text-neutral-800 text-right">
+              <span className="text-right text-sm font-semibold text-ink-800">
                 {value}
               </span>
             </div>
@@ -266,9 +185,9 @@ export default function BurritoBuilder() {
         </div>
 
         <div className="card mb-4 p-4">
-          <label className="mb-2 block text-sm font-medium text-neutral-700">
+          <label className="mb-2 block text-sm font-medium text-ink-700">
             Opmerking{" "}
-            <span className="font-normal text-neutral-400">(optioneel)</span>
+            <span className="font-normal text-ink-400">(optioneel)</span>
           </label>
           <textarea
             value={note}
@@ -279,18 +198,18 @@ export default function BurritoBuilder() {
           />
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 text-lg font-bold text-neutral-600 transition hover:bg-neutral-100"
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
             >
               −
             </button>
-            <span className="w-6 text-center font-semibold">{quantity}</span>
+            <span className="w-6 text-center font-semibold tabular-nums">{quantity}</span>
             <button
               onClick={() => setQuantity((q) => q + 1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 text-lg font-bold text-neutral-600 transition hover:bg-neutral-100"
+              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
             >
               +
             </button>
@@ -301,7 +220,7 @@ export default function BurritoBuilder() {
               <ChevronLeft size={16} />
               {t("common.back")}
             </button>
-            <button onClick={handleAddToCart} className="btn-primary">
+            <button onClick={handleAddToCart} className="btn-gold">
               <Plus size={16} />
               {t("common.order")} · €{(totalPrice * quantity).toFixed(2)}
             </button>
@@ -310,7 +229,7 @@ export default function BurritoBuilder() {
 
         <button
           onClick={resetAll}
-          className="mt-4 w-full text-center text-xs text-neutral-400 transition hover:text-neutral-600"
+          className="mt-4 w-full text-center text-xs text-ink-400 transition hover:text-ink-600"
         >
           {t("common.restart")}
         </button>
@@ -318,64 +237,57 @@ export default function BurritoBuilder() {
     );
   }
 
-  // ── Regular step (step 0–6) ───────────────────────────────────────────────
   const currentStep = STEPS[step];
   const currentSelection = state[currentStep.key];
 
   return (
     <div className="animate-slide-up">
       {step === 0 && introHeader}
-      <StepIndicator step={step} />
+      <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={8} />
 
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <h2 className="font-display text-xl font-bold text-neutral-800">
-            {t(currentStep.labelKey, currentStep.labelVars)}
-          </h2>
-          <span className="tag-badge bg-red-50 text-red-500 flex-shrink-0">
-            {t("common.required_1")}
-          </span>
-        </div>
-        <p className="text-sm text-neutral-500">
-          {t("common.step_of", { n: step + 1, total: TOTAL_STEPS })}
-          {totalPrice > BURRITO_BASE_PRICE && (
-            <span className="ml-2 font-semibold text-wood-600">
-              · €{totalPrice.toFixed(2)} {t("common.so_far")}
+      <WizardShell
+        stepKey={step}
+        onBack={step === 0 ? undefined : () => setStep((s) => Math.max(0, s - 1))}
+        canBack={step > 0}
+        onNext={() => setStep((s) => s + 1)}
+        canAdvance={canAdvance()}
+        nextLabel={step === TOTAL_STEPS - 1 ? t("common.review") : t("common.next")}
+        priceChip={totalPrice > BURRITO_BASE_PRICE ? `€${totalPrice.toFixed(2)}` : undefined}
+      >
+        <div className="mb-5">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-xl font-bold text-ink-900">
+              {t(currentStep.labelKey, currentStep.labelVars)}
+            </h2>
+            <span className="tag-badge bg-gold-50 text-gold-700">
+              {t("common.required_1")}
             </span>
-          )}
-        </p>
-      </div>
+          </div>
+          <p className="text-sm text-ink-500">
+            {t("common.step_of", { n: step + 1, total: TOTAL_STEPS })}
+            {totalPrice > BURRITO_BASE_PRICE && (
+              <span className="ml-2 font-semibold text-gold-700 sm:hidden">
+                · €{totalPrice.toFixed(2)} {t("common.so_far")}
+              </span>
+            )}
+          </p>
+        </div>
 
-      <div className="space-y-1.5 mb-6">
-        {currentStep.options.map((option) => (
-          <OptionRow
-            key={option.id}
-            option={option}
-            selected={currentSelection?.id === option.id}
-            onSelect={() => handleSelect(currentStep.key, option)}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
-          disabled={step === 0}
-          className="btn-secondary disabled:invisible"
-        >
-          <ChevronLeft size={16} />
-          {t("common.back")}
-        </button>
-
-        <button
-          onClick={() => setStep((s) => s + 1)}
-          disabled={!canAdvance()}
-          className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {step === TOTAL_STEPS - 1 ? t("common.review") : t("common.next")}
-          <ChevronRight size={16} />
-        </button>
-      </div>
+        <div className="mb-6 space-y-2">
+          {currentStep.options.map((option) => {
+            const optUnavailable = !isItemAvailable(option.id);
+            return (
+              <OptionRow
+                key={option.id}
+                unavailable={optUnavailable}
+                option={option}
+                selected={currentSelection?.id === option.id}
+                onSelect={() => handleSelect(currentStep.key, option)}
+              />
+            );
+          })}
+        </div>
+      </WizardShell>
     </div>
   );
 }
