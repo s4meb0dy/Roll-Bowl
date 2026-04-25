@@ -232,10 +232,32 @@ export const useStore = create<AppState>()(
       },
       merge: (persistedState, currentState) => {
         const p = (persistedState || {}) as Partial<AppState>;
+        const pOrders = p.orders ?? [];
+        const cOrders = currentState.orders;
+        // Union by id; current wins (avoids a stale rehydrate wiping a just-placed order).
+        const byId = new Map<string, Order>();
+        for (const o of pOrders) byId.set(o.id, o);
+        for (const o of cOrders) byId.set(o.id, o);
+        const orders = [...byId.values()].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const hasNewerOrder = cOrders.some(
+          (c) => !pOrders.some((po) => po.id === c.id)
+        );
+        // After checkout the cart is cleared in memory; old localStorage can still
+        // hold pre-checkout cart — do not restore that over an empty post-checkout cart.
+        const cart =
+          hasNewerOrder && currentState.cart.length === 0
+            ? currentState.cart
+            : p.cart !== undefined
+              ? p.cart
+              : currentState.cart;
         return {
           ...currentState,
           ...p,
-          orders: p.orders ?? currentState.orders,
+          cart,
+          orders,
           kitchenPrintedOrderIds: Array.isArray(p.kitchenPrintedOrderIds)
             ? p.kitchenPrintedOrderIds
             : currentState.kitchenPrintedOrderIds,

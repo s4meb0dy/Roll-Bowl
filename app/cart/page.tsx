@@ -178,55 +178,62 @@ export default function CartPage() {
     });
 
     const order = useStore.getState().orders.find((o) => o.id === id);
+
+    // Navigate immediately: placeOrder already cleared the cart. If we await
+    // inbox/push first, a slow or hanging fetch leaves the user on /cart with
+    // an empty cart and no confirmation screen.
+    setPlacing(false);
+    router.push(`/order-confirmed?id=${id}`);
+
     if (order) {
-      try {
-        await fetch("/api/orders/inbox", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order }),
-          keepalive: true,
-        });
-      } catch (e) {
-        console.error("[orders/inbox]", e);
-      }
-      try {
-        const res = await fetch("/api/orders/push", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order }),
-        });
-        const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
-          error?: string;
-        };
-        if (data.state) {
-          setOrderLightspeed(id, {
-            state: data.state,
-            pushedAt: data.pushedAt ?? new Date().toISOString(),
-            saleId: data.saleId,
-            accountIdentifier: data.accountIdentifier,
-            errorMessage: data.errorMessage,
-            httpStatus: data.httpStatus ?? (res.ok ? undefined : res.status),
-            dryRun: data.dryRun,
+      void (async () => {
+        try {
+          await fetch("/api/orders/inbox", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order }),
+            keepalive: true,
           });
-        } else {
+        } catch (e) {
+          console.error("[orders/inbox]", e);
+        }
+        try {
+          const res = await fetch("/api/orders/push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order }),
+          });
+          const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
+            error?: string;
+          };
+          if (data.state) {
+            setOrderLightspeed(id, {
+              state: data.state,
+              pushedAt: data.pushedAt ?? new Date().toISOString(),
+              saleId: data.saleId,
+              accountIdentifier: data.accountIdentifier,
+              errorMessage: data.errorMessage,
+              httpStatus: data.httpStatus ?? (res.ok ? undefined : res.status),
+              dryRun: data.dryRun,
+            });
+          } else {
+            setOrderLightspeed(id, {
+              state: "failed",
+              pushedAt: new Date().toISOString(),
+              errorMessage: data.errorMessage ?? data.error ?? res.statusText ?? "Onbekende POS-fout",
+              httpStatus: res.status,
+            });
+          }
+        } catch (e) {
+          console.error("[orders/push] network error", e);
           setOrderLightspeed(id, {
             state: "failed",
             pushedAt: new Date().toISOString(),
-            errorMessage: data.errorMessage ?? data.error ?? res.statusText ?? "Onbekende POS-fout",
-            httpStatus: res.status,
+            errorMessage: "Geen verbinding met keuken/POS. Bestelling lokaal opgeslagen.",
           });
         }
-      } catch (e) {
-        console.error("[orders/push] network error", e);
-        setOrderLightspeed(id, {
-          state: "failed",
-          pushedAt: new Date().toISOString(),
-          errorMessage: "Geen verbinding met keuken/POS. Bestelling lokaal opgeslagen.",
-        });
-      }
+      })();
     }
-
-    router.push(`/order-confirmed?id=${id}`);
   };
 
   // Preset euro bill denominations
