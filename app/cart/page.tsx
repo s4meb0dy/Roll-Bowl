@@ -178,30 +178,59 @@ export default function CartPage() {
     });
     const id = order.id;
 
-    // Inbox must complete *before* client navigation. A background fetch started
-    // right before router.push is often aborted (SPA navigation), so the kitchen
-    // never sees the order in Redis from phones.
-    if (order) {
+    // Inbox to Redis: JSON round-trip drops non-JSON; absolute URL + retry + sendBeacon
+    // help some mobile / flaky networks. Must finish before client navigation.
+    const inboxUrl = `${window.location.origin}/api/orders/inbox`;
+    let serialized: { order: typeof order };
+    try {
+      serialized = JSON.parse(JSON.stringify({ order })) as { order: typeof order };
+    } catch {
+      serialized = { order };
+    }
+    const body = JSON.stringify(serialized);
+    {
       const ac = new AbortController();
       const t = window.setTimeout(() => ac.abort(), 12_000);
+      let ok = false;
       try {
-        const inboxRes = await fetch("/api/orders/inbox", {
+        let inboxRes = await fetch(inboxUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order }),
+          body,
           signal: ac.signal,
           keepalive: true,
         });
-        if (!inboxRes.ok) {
-          console.error("[orders/inbox] HTTP", inboxRes.status, await inboxRes.text().catch(() => ""));
+        if (inboxRes.ok) {
+          ok = true;
+        } else {
+          const txt = await inboxRes.text().catch(() => "");
+          console.error("[orders/inbox] HTTP", inboxRes.status, txt);
+        }
+        if (!ok) {
+          inboxRes = await fetch(inboxUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          });
+          if (inboxRes.ok) ok = true;
+          else {
+            const txt2 = await inboxRes.text().catch(() => "");
+            console.error("[orders/inbox] retry", inboxRes.status, txt2);
+          }
         }
       } catch (e) {
         const err = e as Error;
         if (err.name !== "AbortError") {
           console.error("[orders/inbox]", e);
+        } else {
+          console.error("[orders/inbox] timeout 12s");
         }
       } finally {
         window.clearTimeout(t);
+      }
+      if (!ok && typeof navigator.sendBeacon === "function") {
+        navigator.sendBeacon(inboxUrl, new Blob([body], { type: "application/json" }));
       }
     }
 

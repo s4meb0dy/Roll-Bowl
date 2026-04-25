@@ -7,13 +7,26 @@ import { getInboxRedis, isWrongTypeError } from "@/lib/orders/inboxRedis";
 const LIST_KEY = "order:inbox";
 const MAX_LEN = 200;
 
-function isValidOrderBody(o: unknown): o is Order {
-  if (!o || typeof o !== "object") return false;
+function validateOrderInboxPayload(
+  o: unknown
+): { ok: true; order: Order } | { ok: false; reason: string } {
+  if (!o || typeof o !== "object") {
+    return { ok: false, reason: "not_an_object" };
+  }
   const x = o as Record<string, unknown>;
-  if (typeof x.id !== "string" || !x.id) return false;
-  if (!Array.isArray(x.items) || !x.createdAt) return false;
-  if (!x.customerInfo || typeof x.customerInfo !== "object") return false;
-  return true;
+  if (typeof x.id !== "string" || !x.id.trim()) {
+    return { ok: false, reason: "id" };
+  }
+  if (!Array.isArray(x.items)) {
+    return { ok: false, reason: "items_not_array" };
+  }
+  if (x.createdAt == null || (typeof x.createdAt === "string" && !x.createdAt)) {
+    return { ok: false, reason: "createdAt" };
+  }
+  if (x.customerInfo == null || typeof x.customerInfo !== "object" || Array.isArray(x.customerInfo)) {
+    return { ok: false, reason: "customerInfo" };
+  }
+  return { ok: true, order: o as Order };
 }
 
 /**
@@ -81,18 +94,18 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const order = (body as { order?: Order }).order;
-  if (!isValidOrderBody(order)) {
-    const o = order && typeof order === "object" ? (order as Record<string, unknown>) : null;
-    console.error("[orders/inbox] reject", {
-      hasOrder: Boolean(order),
-      id: o && typeof o.id,
-      items: o && Array.isArray(o.items),
-      createdAt: o && Boolean(o.createdAt),
-      customerInfo: o && o.customerInfo && typeof o.customerInfo,
+  const rawOrder = (body as { order?: Order }).order;
+  const checked = validateOrderInboxPayload(rawOrder);
+  if (!checked.ok) {
+    console.error("[orders/inbox] reject", checked.reason, {
+      hasOrder: rawOrder != null,
     });
-    return NextResponse.json({ error: "Missing or invalid order" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing or invalid order", reason: checked.reason },
+      { status: 400 }
+    );
   }
+  const order = checked.order;
   try {
     const redis = getInboxRedis();
     await redis.lpush(LIST_KEY, JSON.stringify(order));
