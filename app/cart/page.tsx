@@ -21,7 +21,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
-import type { CustomerInfo, OrderLightspeedMeta, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
+import type { CustomerInfo, PaymentMethod, Order, OrderType, FulfillmentTime } from "@/lib/types";
 import {
   getAvailableTimeSlots,
   isOpenNow,
@@ -42,12 +42,12 @@ export default function CartPage() {
   const removeFromCart = useStore((s) => s.removeFromCart);
   const updateQuantity = useStore((s) => s.updateQuantity);
   const updateNote = useStore((s) => s.updateNote);
-  const placeOrder = useStore((s) => s.placeOrder);
-  const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
+  const addSubmittedOrder = useStore((s) => s.addSubmittedOrder);
 
   const [mounted, setMounted] = useState(false);
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [generalNote, setGeneralNote] = useState("");
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
     name: "",
@@ -148,14 +148,14 @@ export default function CartPage() {
     return Object.keys(e).length === 0;
   };
 
-  const handlePlaceOrder = async () => {
+  const handleSubmitOrder = async () => {
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
     if (timeMode === "scheduled" && !scheduledSlot) return;
     if (!isOpenNow(new Date()) && timeMode === "asap") return;
 
     setPlacing(true);
-    await new Promise((r) => setTimeout(r, 900));
+    setSubmitMessage(null);
 
     const fulfillmentTime: FulfillmentTime =
       timeMode === "asap"
@@ -168,114 +168,36 @@ export default function CartPage() {
       ? { ...customerInfo, address: "", zipCode: "" }
       : customerInfo;
 
-    const order = placeOrder({
-      customerInfo: finalCustomerInfo,
-      generalNote,
-      paymentMethod,
-      cashDenomination: cashDenomination ?? undefined,
-      orderType,
-      fulfillmentTime,
-    });
-    const id = order.id;
-
-    // Inbox to Redis: JSON round-trip drops non-JSON; absolute URL + retry + sendBeacon
-    // help some mobile / flaky networks. Must finish before client navigation.
-    const inboxUrl = `${window.location.origin}/api/orders/inbox`;
-    let serialized: { order: typeof order };
     try {
-      serialized = JSON.parse(JSON.stringify({ order })) as { order: typeof order };
-    } catch {
-      serialized = { order };
-    }
-    const body = JSON.stringify(serialized);
-    {
-      const ac = new AbortController();
-      const t = window.setTimeout(() => ac.abort(), 12_000);
-      let ok = false;
-      try {
-        let inboxRes = await fetch(inboxUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          signal: ac.signal,
-          keepalive: true,
-        });
-        if (inboxRes.ok) {
-          ok = true;
-        } else {
-          const txt = await inboxRes.text().catch(() => "");
-          console.error("[orders/inbox] HTTP", inboxRes.status, txt);
-        }
-        if (!ok) {
-          inboxRes = await fetch(inboxUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-          if (inboxRes.ok) ok = true;
-          else {
-            const txt2 = await inboxRes.text().catch(() => "");
-            console.error("[orders/inbox] retry", inboxRes.status, txt2);
-          }
-        }
-      } catch (e) {
-        const err = e as Error;
-        if (err.name !== "AbortError") {
-          console.error("[orders/inbox]", e);
-        } else {
-          console.error("[orders/inbox] timeout 12s");
-        }
-      } finally {
-        window.clearTimeout(t);
+      const res = await fetch("/api/order/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cart,
+          customerInfo: finalCustomerInfo,
+          generalNote,
+          paymentMethod,
+          cashDenomination: cashDenomination ?? undefined,
+          orderType,
+          fulfillmentTime,
+          deliveryFee,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        order?: Order;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.order) {
+        throw new Error(data.error || res.statusText || "Bestelling kon niet worden verzonden.");
       }
-      if (!ok && typeof navigator.sendBeacon === "function") {
-        navigator.sendBeacon(inboxUrl, new Blob([body], { type: "application/json" }));
-      }
-    }
-
-    // POS can stay async — kitchen inbox already has the order if POST succeeded.
-    setPlacing(false);
-    router.push(`/order-confirmed?id=${id}`);
-
-    if (order) {
-      void (async () => {
-        try {
-          const res = await fetch("/api/orders/push", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order }),
-          });
-          const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
-            error?: string;
-          };
-          if (data.state) {
-            setOrderLightspeed(id, {
-              state: data.state,
-              pushedAt: data.pushedAt ?? new Date().toISOString(),
-              saleId: data.saleId,
-              accountIdentifier: data.accountIdentifier,
-              errorMessage: data.errorMessage,
-              httpStatus: data.httpStatus ?? (res.ok ? undefined : res.status),
-              dryRun: data.dryRun,
-            });
-          } else {
-            setOrderLightspeed(id, {
-              state: "failed",
-              pushedAt: new Date().toISOString(),
-              errorMessage: data.errorMessage ?? data.error ?? res.statusText ?? "Onbekende POS-fout",
-              httpStatus: res.status,
-            });
-          }
-        } catch (e) {
-          console.error("[orders/push] network error", e);
-          setOrderLightspeed(id, {
-            state: "failed",
-            pushedAt: new Date().toISOString(),
-            errorMessage: "Geen verbinding met keuken/POS. Bestelling lokaal opgeslagen.",
-          });
-        }
-      })();
+      addSubmittedOrder(data.order);
+      setSubmitMessage({ type: "success", text: "Bestelling ontvangen. We openen je bevestiging..." });
+      router.push(`/order-confirmed?id=${data.order.id}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Bestelling kon niet worden verzonden.";
+      setSubmitMessage({ type: "error", text: message });
+      setPlacing(false);
     }
   };
 
@@ -910,8 +832,20 @@ export default function CartPage() {
 
               {/* Place order */}
               <section className="p-5">
+                {submitMessage && (
+                  <div
+                    className={`mb-3 rounded-xl2 px-3 py-2.5 text-sm font-medium ${
+                      submitMessage.type === "success"
+                        ? "bg-sage-50 text-sage-700"
+                        : "bg-red-50 text-red-700"
+                    }`}
+                    role="status"
+                  >
+                    {submitMessage.text}
+                  </div>
+                )}
                 <button
-                  onClick={handlePlaceOrder}
+                  onClick={handleSubmitOrder}
                   disabled={
                     placing ||
                     belowMinimum ||

@@ -156,6 +156,7 @@ function buildOrderNoteForPos(order: Order): string {
 function buildLinesPayload(order: Order) {
   return order.items.map((item) => {
     const { categoryId, printerGroupId } = getLightspeedKitchenRouting(item);
+    const modifiers = buildItemModifiers(item);
     return {
       name: item.name,
       quantity: item.quantity,
@@ -165,8 +166,80 @@ function buildLinesPayload(order: Order) {
       printerGroupId,
       lineType: item.type,
       menuItemId: item.menuItemId ?? null,
+      note: item.note || undefined,
+      modifiers,
+      description: modifiers.join(" · ") || undefined,
     };
   });
+}
+
+function buildItemModifiers(item: Order["items"][0]): string[] {
+  const parts: string[] = [];
+  const add = (label: string, value?: string | null) => {
+    if (value) parts.push(`${label}: ${value}`);
+  };
+
+  if (item.components) {
+    add("Basis", item.components.base?.name);
+    add("Proteine", item.components.protein?.name);
+    add("Toppings", item.components.toppings.map((t) => t.name).join(", "));
+    add("Saus", item.components.sauce?.name);
+  }
+  if (item.selectedSize) add("Maat", item.selectedSize.label);
+  if (item.selectedBase) add("Basis", item.selectedBase.name);
+
+  const poke = item.pokeSelections;
+  if (poke) {
+    add("Basis", poke.basis?.name);
+    add("Proteine", poke.protein?.name);
+    add("Extra proteine", poke.extraProtein?.name);
+    add("Sauzen", [poke.saus1?.name, poke.saus2?.name].filter(Boolean).join(", "));
+    add(
+      "Mix-ins",
+      [poke.mixin1?.name, poke.mixin2?.name, poke.mixin3?.name, poke.mixin4?.name, poke.mixin5?.name]
+        .filter(Boolean)
+        .join(", ")
+    );
+    add("Extra mix-in", poke.extraMixin?.name);
+  }
+
+  const burrito = item.burritoSelections;
+  if (burrito) {
+    add("Proteine", burrito.protein?.name);
+    add("Saus", burrito.saus?.name);
+    add("Mix-ins", [burrito.mixin1?.name, burrito.mixin2?.name, burrito.mixin3?.name].filter(Boolean).join(", "));
+    add("Toppings", [burrito.topping1?.name, burrito.topping2?.name].filter(Boolean).join(", "));
+  }
+
+  const smoothie = item.smoothieSelections;
+  if (smoothie) {
+    add("Basis", smoothie.basis?.name);
+    add("Mix-ins", [smoothie.mixin1?.name, smoothie.mixin2?.name, smoothie.mixin3?.name].filter(Boolean).join(", "));
+    add("Extra mix-in", smoothie.extraMixin?.name);
+    add("Protein scoop", smoothie.proteinScoop?.name);
+  }
+
+  const classic = item.classicRollSelections;
+  if (classic) {
+    add("Proteine", classic.protein?.name);
+    add("Extra proteine", classic.extraProtein?.name);
+    add("Mix-ins", [classic.mixin1?.name, classic.mixin2?.name].filter(Boolean).join(", "));
+    add("Extra mix-in", classic.extraMixin?.name);
+    add("Saus", classic.sauce?.name);
+  }
+
+  const insideOut = item.insideOutRollSelections;
+  if (insideOut) {
+    add("Proteine", insideOut.protein?.name);
+    add("Extra proteine", insideOut.extraProtein?.name);
+    add("Mix-ins", [insideOut.mixin1?.name, insideOut.mixin2?.name].filter(Boolean).join(", "));
+    add("Extra mix-in", insideOut.extraMixin?.name);
+    add("Saus", insideOut.sauce?.name);
+    add("Topping", insideOut.topping?.name);
+  }
+
+  if (item.note) add("Opmerking", item.note);
+  return parts;
 }
 
 export function isLightspeedOrderPushConfigured(): boolean {

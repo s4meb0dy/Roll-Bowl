@@ -4,20 +4,17 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   CartItem,
-  CustomerInfo,
   Order,
-  OrderLightspeedMeta,
   OrderStatus,
   ZipCodeConfig,
-  PaymentMethod,
-  OrderType,
-  FulfillmentTime,
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/index";
-import { isNewCustomerByPhone } from "@/lib/customerIdentity";
 
 function generateId(): string {
-  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
 interface AppState {
@@ -38,9 +35,6 @@ interface AppState {
   // Transient: timestamp of last addToCart (not persisted, drives upsell panel)
   lastAddedAt: number;
 
-  /** Order IDs that have been auto-printed on the kitchen terminal (persisted) */
-  kitchenPrintedOrderIds: string[];
-
   // Actions
   setZipCode: (code: string, config: ZipCodeConfig, address: string) => void;
   clearZipCode: () => void;
@@ -50,18 +44,8 @@ interface AppState {
   updateQuantity: (cartId: string, quantity: number) => void;
   updateNote: (cartId: string, note: string) => void;
   clearCart: () => void;
-
-  placeOrder: (args: {
-    customerInfo: CustomerInfo;
-    generalNote: string;
-    paymentMethod: PaymentMethod;
-    cashDenomination?: number;
-    orderType: OrderType;
-    fulfillmentTime: FulfillmentTime;
-  }) => Order;
+  addSubmittedOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  markKitchenPrinted: (orderId: string) => void;
-  setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
   /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
   mergeOrderFromInbox: (order: Order) => void;
 
@@ -70,7 +54,7 @@ interface AppState {
 
 export const useStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       zipCode: null,
       zipCodeConfig: null,
       deliveryAddress: null,
@@ -78,7 +62,6 @@ export const useStore = create<AppState>()(
       orders: [],
       locale: "nl",
       lastAddedAt: 0,
-      kitchenPrintedOrderIds: [],
 
       setZipCode: (code, config, address) =>
         set({ zipCode: code, zipCodeConfig: config, deliveryAddress: address }),
@@ -116,59 +99,21 @@ export const useStore = create<AppState>()(
 
       clearCart: () => set({ cart: [] }),
 
-      placeOrder: ({ customerInfo, generalNote, paymentMethod, cashDenomination, orderType, fulfillmentTime }) => {
-        const state = get();
-        const subtotal = state.cart.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
-        );
-        // Takeaway skips the delivery fee entirely.
-        const deliveryFee =
-          orderType === "takeaway" ? 0 : state.zipCodeConfig?.deliveryFee ?? 0;
-        const isFirstTimeCustomer = isNewCustomerByPhone(
-          state.orders,
-          customerInfo.phone,
-        );
-        const order: Order = {
-          id: generateId(),
-          items: state.cart,
-          subtotal,
-          deliveryFee,
-          total: subtotal + deliveryFee,
-          customerInfo,
-          generalNote,
-          paymentMethod,
-          ...(paymentMethod === "cash" && cashDenomination !== undefined
-            ? { cashDenomination }
-            : {}),
-          orderType,
-          fulfillmentTime,
-          status: "pending",
-          createdAt: new Date().toISOString(),
-          isFirstTimeCustomer,
-        };
-        set((s) => ({ orders: [order, ...s.orders], cart: [] }));
-        return order;
-      },
+      addSubmittedOrder: (order) =>
+        set((state) => {
+          const exists = state.orders.some((o) => o.id === order.id);
+          return {
+            orders: exists
+              ? state.orders.map((o) => (o.id === order.id ? order : o))
+              : [order, ...state.orders],
+            cart: [],
+          };
+        }),
 
       updateOrderStatus: (orderId, status) =>
         set((state) => ({
           orders: state.orders.map((o) =>
             o.id === orderId ? { ...o, status } : o
-          ),
-        })),
-
-      markKitchenPrinted: (orderId) =>
-        set((state) => ({
-          kitchenPrintedOrderIds: state.kitchenPrintedOrderIds.includes(orderId)
-            ? state.kitchenPrintedOrderIds
-            : [...state.kitchenPrintedOrderIds, orderId],
-        })),
-
-      setOrderLightspeed: (orderId, meta) =>
-        set((state) => ({
-          orders: state.orders.map((o) =>
-            o.id === orderId ? { ...o, lightspeed: meta } : o
           ),
         })),
 
@@ -258,9 +203,6 @@ export const useStore = create<AppState>()(
           ...p,
           cart,
           orders,
-          kitchenPrintedOrderIds: Array.isArray(p.kitchenPrintedOrderIds)
-            ? p.kitchenPrintedOrderIds
-            : currentState.kitchenPrintedOrderIds,
         };
       },
       storage: createJSONStorage(() =>
@@ -275,7 +217,6 @@ export const useStore = create<AppState>()(
         cart: state.cart,
         orders: state.orders,
         locale: state.locale,
-        kitchenPrintedOrderIds: state.kitchenPrintedOrderIds,
       }),
     }
   )

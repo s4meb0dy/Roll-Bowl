@@ -4,13 +4,26 @@
  * prefixed vars before any `kv` call. Import this module before `@vercel/kv`.
  */
 
+/** Vercel / .env sometimes store values with wrapping quotes — strip once. */
+function trimEnv(v: string | undefined): string | undefined {
+  if (v == null || v === "") return undefined;
+  let s = v.trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s || undefined;
+}
+
 function copyIfMissing(
   toKey: "KV_REST_API_URL" | "KV_REST_API_TOKEN",
   fromKeys: string[]
 ) {
   if (process.env[toKey]) return;
   for (const from of fromKeys) {
-    const v = process.env[from];
+    const v = trimEnv(process.env[from]);
     if (v) {
       process.env[toKey] = v;
       return;
