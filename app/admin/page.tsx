@@ -392,6 +392,7 @@ export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
+  const mergeOrderFromInbox = useStore((s) => s.mergeOrderFromInbox);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -402,6 +403,8 @@ export default function AdminPage() {
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
   const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
+  /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
+  const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
@@ -523,6 +526,34 @@ export default function AdminPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  /** Pull orders placed on other devices (phone) into this kitchen browser (PC). */
+  useEffect(() => {
+    if (!storeHydrated || !unlocked) return;
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const res = await fetch("/api/orders/inbox", { cache: "no-store" });
+        const data = (await res.json()) as {
+          orders?: Order[];
+          inboxEnabled?: boolean;
+        };
+        if (cancelled) return;
+        setOrderInboxEnabled(data.inboxEnabled ?? false);
+        for (const o of data.orders ?? []) {
+          mergeOrderFromInbox(o);
+        }
+      } catch (e) {
+        console.error("[admin] order inbox pull", e);
+      }
+    };
+    void pull();
+    const id = window.setInterval(pull, 8_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [storeHydrated, unlocked, mergeOrderFromInbox]);
+
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);
     if (typeof window !== "undefined") {
@@ -593,6 +624,18 @@ export default function AdminPage() {
             <p className="text-sm text-neutral-400">
               {orders.length} total order(s)
             </p>
+            {orderInboxEnabled === false && (
+              <p className="mt-2 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
+                <strong>Telefoon → PC:</strong> bestellingen staan in localStorage per toestel. Koppel in Vercel
+                <strong> Storage → Redis (Upstash) </strong>
+                en zet env-variabelen, daarna komen bestellingen van elke telefoon hier binnen. Zie README / order inbox.
+              </p>
+            )}
+            {orderInboxEnabled === true && (
+              <p className="mt-1 text-xs font-medium text-emerald-800">
+                Order-inbox (Redis) actief — bestellingen van andere toestellen worden elke ~8s binnengehaald.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -606,7 +649,7 @@ export default function AdminPage() {
             </Link>
             <div
               className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs shadow-sm"
-              title="Live sync: rehydrate every 2s + cross-tab storage"
+              title="Live: localStorage (deze browser) + cross-tab. Telefoonorders: Redis order-inbox (zie tekst erboven)"
             >
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />

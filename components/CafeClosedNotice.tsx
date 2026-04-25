@@ -19,6 +19,7 @@ export default function CafeClosedNotice({ className = "" }: { className?: strin
   }, []);
 
   const visible = useMemo(() => {
+    void nowTick; // bump every minute via setInterval; triggers re-check of open/closed and slots
     const now = new Date();
     if (isOpenNow(now)) return false;
     return getAvailableTimeSlots(now).length > 0;

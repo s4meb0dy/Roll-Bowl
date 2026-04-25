@@ -180,6 +180,16 @@ export default function CartPage() {
     const order = useStore.getState().orders.find((o) => o.id === id);
     if (order) {
       try {
+        await fetch("/api/orders/inbox", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order }),
+          keepalive: true,
+        });
+      } catch (e) {
+        console.error("[orders/inbox]", e);
+      }
+      try {
         const res = await fetch("/api/orders/push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

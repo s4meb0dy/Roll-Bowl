@@ -174,3 +174,17 @@ LIGHTSPEED_PRINTER_EXTRAS_ID=
 
 Rejections and HTTP errors are logged on the server (`console.error` with response body).
 The admin order card shows a green **“Naar keuken / POS”** badge when the push succeeds.
+
+### Order inbox (phone → kitchen PC)
+
+Orders are stored in **localStorage per browser**. A phone and a PC do **not** share the same list, so the kitchen terminal on a PC would not see orders placed on a customer’s phone unless you add **server-side storage**.
+
+This project includes **`POST /api/orders/inbox`** and **`GET /api/orders/inbox`**, backed by **Vercel Redis (Upstash)** via `@vercel/kv`. After checkout, the order is appended to Redis; the admin page **polls every ~8s** and merges new orders into the board.
+
+1. In the [Vercel dashboard](https://vercel.com) → your project → **Storage** → create / link **Redis** (Upstash).
+2. Ensure these environment variables are present (Vercel usually injects them when the store is linked):
+
+   - `KV_REST_API_URL` and `KV_REST_API_TOKEN`, **or**
+   - `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
+
+3. Redeploy. On the kitchen admin, a green line confirms **Order-inbox (Redis) actief**. If Redis is not configured, you’ll see an amber notice explaining that phone orders require this link.

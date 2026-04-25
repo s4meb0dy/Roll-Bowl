@@ -62,6 +62,8 @@ interface AppState {
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   markKitchenPrinted: (orderId: string) => void;
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
+  /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
+  mergeOrderFromInbox: (order: Order) => void;
 
   setLocale: (locale: Locale) => void;
 }
@@ -169,6 +171,12 @@ export const useStore = create<AppState>()(
             o.id === orderId ? { ...o, lightspeed: meta } : o
           ),
         })),
+
+      mergeOrderFromInbox: (order) =>
+        set((state) => {
+          if (state.orders.some((o) => o.id === order.id)) return state;
+          return { orders: [order, ...state.orders] };
+        }),
 
       setLocale: (locale) => set({ locale }),
     }),
