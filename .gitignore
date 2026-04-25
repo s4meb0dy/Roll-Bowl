@@ -26,4 +26,3 @@ next-env.d.ts
 # Runtime-generated inventory overrides (persisted at /data/inventory.json)
 /data/*.json
 
-.vercel

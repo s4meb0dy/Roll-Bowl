@@ -2,7 +2,32 @@ import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
-import { readInboxOrders } from "@/lib/orders/inboxStore";
+import { getInboxRedis, isWrongTypeError } from "@/lib/orders/inboxRedis";
+
+const LIST_KEY = "order:inbox";
+const MAX_LEN = 200;
+
+function validateOrderInboxPayload(
+  o: unknown
+): { ok: true; order: Order } | { ok: false; reason: string } {
+  if (!o || typeof o !== "object") {
+    return { ok: false, reason: "not_an_object" };
+  }
+  const x = o as Record<string, unknown>;
+  if (typeof x.id !== "string" || !x.id.trim()) {
+    return { ok: false, reason: "id" };
+  }
+  if (!Array.isArray(x.items)) {
+    return { ok: false, reason: "items_not_array" };
+  }
+  if (x.createdAt == null || (typeof x.createdAt === "string" && !x.createdAt)) {
+    return { ok: false, reason: "createdAt" };
+  }
+  if (x.customerInfo == null || typeof x.customerInfo !== "object" || Array.isArray(x.customerInfo)) {
+    return { ok: false, reason: "customerInfo" };
+  }
+  return { ok: true, order: o as Order };
+}
 
 /**
  * GET — recent orders for the kitchen / admin to merge (cross-device).
@@ -12,9 +37,36 @@ export async function GET() {
   if (!isOrderInboxConfigured()) {
     return NextResponse.json({ orders: [] as Order[], inboxEnabled: false });
   }
+  const redis = getInboxRedis();
+  const read = async () => {
+    return (await redis.lrange(LIST_KEY, 0, MAX_LEN - 1)) as string[];
+  };
 
   try {
-    const orders = await readInboxOrders();
+    let raw: string[];
+    try {
+      raw = await read();
+    } catch (e) {
+      if (isWrongTypeError(e)) {
+        // Key was e.g. a string from a bug or manual set — make it a list again.
+        await redis.del(LIST_KEY);
+        raw = [];
+      } else {
+        throw e;
+      }
+    }
+    const byId = new Map<string, Order>();
+    for (const j of raw) {
+      try {
+        const o = JSON.parse(j) as Order;
+        if (o?.id) byId.set(o.id, o);
+      } catch {
+        /* skip */
+      }
+    }
+    const orders = [...byId.values()].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
     return NextResponse.json({ orders, inboxEnabled: true });
   } catch (e) {
     console.error("[orders/inbox] GET", e);
@@ -27,6 +79,53 @@ export async function GET() {
         error: "read_failed",
         ...(debug ? { read_error: errMsg } : {}),
       },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  if (!isOrderInboxConfigured()) {
+    return NextResponse.json({ ok: true, stored: false, reason: "inbox_not_configured" });
+  }
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const rawOrder = (body as { order?: Order }).order;
+  const checked = validateOrderInboxPayload(rawOrder);
+  if (!checked.ok) {
+    console.error("[orders/inbox] reject", checked.reason, {
+      hasOrder: rawOrder != null,
+    });
+    return NextResponse.json(
+      { error: "Missing or invalid order", reason: checked.reason },
+      { status: 400 }
+    );
+  }
+  const order = checked.order;
+  try {
+    const redis = getInboxRedis();
+    await redis.lpush(LIST_KEY, JSON.stringify(order));
+    await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
+    return NextResponse.json({ ok: true, stored: true });
+  } catch (e) {
+    if (isWrongTypeError(e)) {
+      const redis = getInboxRedis();
+      try {
+        await redis.del(LIST_KEY);
+        await redis.lpush(LIST_KEY, JSON.stringify(order));
+        await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
+        return NextResponse.json({ ok: true, stored: true, recovered: "wrongtype" });
+      } catch (e2) {
+        console.error("[orders/inbox] POST after wrongtype del", e2);
+      }
+    }
+    console.error("[orders/inbox] POST", e);
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Store failed" },
       { status: 500 }
     );
   }

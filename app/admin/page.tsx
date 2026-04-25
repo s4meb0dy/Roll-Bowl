@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
+  Printer,
   RefreshCw,
   Clock,
   ChefHat,
@@ -20,6 +22,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Header from "@/components/Header";
+import KitchenReceipt80 from "@/components/KitchenReceipt80";
 import { useStore } from "@/lib/store/useStore";
 import {
   isKitchenAlarmMuted,
@@ -51,9 +54,13 @@ function formatCheckedTime(d: Date) {
 
 function OrderCard({
   order,
+  onAcceptAndPrint,
+  onPrintReceipt,
   isAlarmTarget,
 }: {
   order: Order;
+  onAcceptAndPrint: (id: string) => void;
+  onPrintReceipt: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
@@ -163,6 +170,17 @@ function OrderCard({
         </div>
 
         <div className="flex flex-col items-end gap-2 text-right">
+          {order.status !== "pending" && (
+            <button
+              type="button"
+              onClick={() => onPrintReceipt(order.id)}
+              className="no-print flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+              title="Bon afdrukken"
+            >
+              <Printer size={14} />
+              Print
+            </button>
+          )}
           <div>
             <div className="font-bold text-neutral-800">€{order.total.toFixed(2)}</div>
             <div className="text-xs text-neutral-400">
@@ -287,10 +305,11 @@ function OrderCard({
         <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
           <button
             type="button"
-            onClick={() => updateOrderStatus(order.id, "preparing")}
+            onClick={() => onAcceptAndPrint(order.id)}
             className="btn-primary flex w-full items-center justify-center gap-2 text-sm"
           >
-            Accepteren
+            <Printer size={16} />
+            Accepteren & afdrukken
           </button>
         </div>
       )}
@@ -371,6 +390,8 @@ function PinGate({ onUnlock }: { onUnlock: () => void }) {
 
 export default function AdminPage() {
   const orders = useStore((s) => s.orders);
+  const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
+  const updateOrderStatus = useStore((s) => s.updateOrderStatus);
   const mergeOrderFromInbox = useStore((s) => s.mergeOrderFromInbox);
 
   const [mounted, setMounted] = useState(false);
@@ -379,13 +400,59 @@ export default function AdminPage() {
   const [kitchenMode, setKitchenMode] = useState(false);
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(() => new Date());
+  const [printTargetId, setPrintTargetId] = useState<string | null>(null);
   const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
   /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
 
+  const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
   const seenOrderIds = useRef<Set<string>>(new Set());
+
+  const triggerKitchenPrint = useCallback(
+    (orderId: string) => {
+      if (printFlightRef.current) return;
+      printFlightRef.current = { id: orderId };
+      setPrintTargetId(orderId);
+
+      const printTimer = window.setTimeout(() => {
+        document.body.classList.add("kitchen-printing-active");
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.print();
+          });
+        });
+      }, 100);
+
+      let fallbackTimer: number | null = null;
+      const finish = () => {
+        if (fallbackTimer !== null) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        clearTimeout(printTimer);
+        document.body.classList.remove("kitchen-printing-active");
+        markKitchenPrinted(orderId);
+        setPrintTargetId(null);
+        printFlightRef.current = null;
+      };
+
+      window.addEventListener("afterprint", finish, { once: true });
+      fallbackTimer = window.setTimeout(finish, 4000);
+    },
+    [markKitchenPrinted]
+  );
+
+  const handleAcceptAndPrint = useCallback(
+    (orderId: string) => {
+      updateOrderStatus(orderId, "preparing");
+      stopKitchenAlarmLoop();
+      setAlarmOrderId((cur) => (cur === orderId ? null : cur));
+      triggerKitchenPrint(orderId);
+    },
+    [updateOrderStatus, triggerKitchenPrint]
+  );
 
   useEffect(() => {
     setSoundMuted(isKitchenAlarmMuted());
@@ -514,6 +581,8 @@ export default function AdminPage() {
     ready: orders.filter((o) => o.status === "ready").length,
     delivered: orders.filter((o) => o.status === "delivered").length,
   };
+
+  const printOrder = printTargetId ? orders.find((o) => o.id === printTargetId) : undefined;
 
   return (
     <div className="min-h-screen bg-cream pb-24">
@@ -654,15 +723,24 @@ export default function AdminPage() {
         </div>
 
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
-          <button
-            onClick={() => {
-              setLastChecked(new Date());
-              void useStore.persist.rehydrate();
-            }}
-            className="btn-ghost text-neutral-400"
-          >
-            <RefreshCw size={15} />
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="btn-secondary text-sm"
+            >
+              <Printer size={15} />
+              Print view
+            </button>
+            <button
+              onClick={() => {
+                setLastChecked(new Date());
+                void useStore.persist.rehydrate();
+              }}
+              className="btn-ghost text-neutral-400"
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
         </div>
 
         <div className="no-print mb-6 flex flex-wrap gap-2">
@@ -700,11 +778,17 @@ export default function AdminPage() {
                 key={order.id}
                 order={order}
                 isAlarmTarget={order.id === alarmOrderId}
+                onAcceptAndPrint={handleAcceptAndPrint}
+                onPrintReceipt={triggerKitchenPrint}
               />
             ))}
           </div>
         )}
       </main>
+
+      {typeof document !== "undefined" &&
+        printOrder &&
+        createPortal(<KitchenReceipt80 order={printOrder} />, document.body)}
     </div>
   );
 }

@@ -31,11 +31,6 @@ export const metadata: Metadata = {
   description:
     "Build your perfect bowl or choose from our chef-curated ready-made selections. Healthy, delicious, delivered fast.",
   keywords: ["healthy food", "bowls", "delivery", "fresh", "vegan", "gluten-free"],
-  formatDetection: {
-    telephone: false,
-    address: false,
-    email: false,
-  },
   icons: {
     icon: [
       { url: "/logo.png", type: "image/png" },
@@ -59,11 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`scroll-smooth ${inter.variable} ${manrope.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={`scroll-smooth ${inter.variable} ${manrope.variable}`}>
       <body className="min-h-screen">
         <StoreHydration />
         {children}
