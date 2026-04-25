@@ -14,6 +14,7 @@ import {
 } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
+import QuantityStepper from "@/components/QuantityStepper";
 import { useInventory } from "@/lib/inventory/client";
 import type { BuilderOption, BowlSize, PokeBuilderSelections } from "@/lib/types";
 import OptionRow from "@/components/builder/OptionRow";
@@ -290,29 +291,20 @@ export default function BowlBuilder() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 min-[500px]:flex-row min-[500px]:flex-wrap min-[500px]:items-center min-[500px]:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
-            >
-              −
-            </button>
-            <span className="w-6 text-center font-semibold tabular-nums">{quantity}</span>
-            <button
-              onClick={() => setQuantity((q) => q + 1)}
-              className="tap-target flex items-center justify-center rounded-full border border-ink-200 text-lg font-bold text-ink-600 transition hover:bg-ink-100"
-            >
-              +
-            </button>
+            <QuantityStepper
+              value={quantity}
+              onChange={setQuantity}
+            />
           </div>
 
-          <div className="flex items-center gap-3">
-            <button onClick={() => setStep(TOTAL_STEPS - 1)} className="btn-secondary">
+          <div className="flex w-full min-w-0 flex-col gap-2 min-[400px]:flex-row min-[400px]:items-stretch min-[400px]:justify-end min-[400px]:gap-3">
+            <button type="button" onClick={() => setStep(TOTAL_STEPS - 1)} className="btn-secondary w-full min-[400px]:w-auto">
               <ChevronLeft size={16} />
               {t("common.back")}
             </button>
-            <button onClick={handleAddToCart} className="btn-gold">
+            <button type="button" onClick={handleAddToCart} className="btn-gold w-full min-[400px]:w-auto min-[400px]:shrink-0">
               <Plus size={16} />
               {t("common.order")} · €{(totalPrice * quantity).toFixed(2)}
             </button>

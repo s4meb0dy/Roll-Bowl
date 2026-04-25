@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Plus, Flame, Leaf, CheckCircle2, X, Minus } from "lucide-react";
+import { Plus, Flame, Leaf, CheckCircle2, X } from "lucide-react";
+import QuantityStepper from "@/components/QuantityStepper";
 import { READY_MADE, SIZE_OPTIONS, BASE_OPTIONS } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
@@ -36,7 +37,7 @@ function BowlModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <div
@@ -163,7 +164,7 @@ function BowlModal({
           </section>
         </div>
 
-        <div className="flex-shrink-0 rounded-b-3xl border-t border-ink-200/60 bg-white px-5 py-4">
+        <div className="safe-bottom flex-shrink-0 rounded-b-3xl border-t border-ink-200/60 bg-white px-5 pb-6 pt-4">
           <p className="mb-3 text-xs text-ink-500">
             Basisprijs: €{item.price.toFixed(2)}
             {selectedSize.priceExtra > 0 && (
@@ -178,21 +179,7 @@ function BowlModal({
           </p>
           <div className="flex items-center gap-3">
             <div className="flex shrink-0 items-center gap-1 rounded-xl2 border border-ink-200 bg-white px-1 py-1">
-              <button
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-500 transition hover:bg-ink-100"
-              >
-                <Minus size={13} />
-              </button>
-              <span className="w-6 text-center text-sm font-semibold tabular-nums text-ink-800">
-                {quantity}
-              </span>
-              <button
-                onClick={() => setQuantity((q) => q + 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-500 transition hover:bg-ink-100"
-              >
-                <Plus size={13} />
-              </button>
+              <QuantityStepper size="md" value={quantity} onChange={setQuantity} />
             </div>
             <button
               onClick={() => onAdd(selectedSize, selectedBase, note, quantity)}

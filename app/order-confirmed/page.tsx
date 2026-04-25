@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Clock, ChefHat, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock } from "lucide-react";
+import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock } from "lucide-react";
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
+import { useT } from "@/lib/i18n";
 
 function ConfirmedContent() {
   const params = useSearchParams();
   const orderId = params.get("id");
   const [dots, setDots] = useState(".");
+  const t = useT();
   const orders = useStore((s) => s.orders);
   const [mounted, setMounted] = useState(false);
 
@@ -27,39 +29,57 @@ function ConfirmedContent() {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 text-center">
+    <div className="flex min-h-screen flex-col items-center bg-cream px-4 pb-28 pt-10 text-center sm:justify-center sm:px-6 sm:pb-8 sm:pt-12">
+      <div className="flex w-full max-w-md flex-col items-center">
       {/* Icon */}
-      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sage-500 shadow-lg">
-        <CheckCircle2 size={40} className="text-white" />
+      <div className="mb-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-sage-500 shadow-lg sm:mb-6 sm:h-20 sm:w-20">
+        <CheckCircle2 className="h-9 w-9 text-white sm:h-10 sm:w-10" />
       </div>
 
-      <h1 className="font-display mb-2 text-3xl font-bold text-neutral-800">
+      <h1 className="font-display mb-2 text-2xl font-bold text-neutral-800 sm:text-3xl">
         Order confirmed!
       </h1>
-      <p className="mb-1 text-neutral-500">
+      <p className="mb-3 max-w-sm text-[15px] leading-relaxed text-neutral-600 sm:text-base">
         We&apos;ve received your order and the kitchen is on it{dots}
       </p>
       {orderId && (
-        <p className="mb-8 text-xs text-neutral-400">
+        <p className="mb-3 text-sm text-neutral-500">
           Order ID:{" "}
-          <span className="font-mono font-semibold text-neutral-600">
+          <span className="break-all font-mono font-semibold text-neutral-700">
             #{orderId.toUpperCase()}
           </span>
         </p>
       )}
+      {orderId && order?.lightspeed?.state === "success" && (
+        <p className="mb-5 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm font-medium text-emerald-900 sm:mb-6 sm:text-center">
+          ✓ Doorgegeven aan de keuken (POS{order.lightspeed.saleId && order.lightspeed.saleId !== "dry-run" ? ` · ${order.lightspeed.saleId}` : ""}
+          {order.lightspeed.dryRun && " — testmodus"}).
+        </p>
+      )}
+      {orderId && order?.lightspeed?.state === "failed" && (
+        <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-950 sm:mb-6 sm:text-center">
+          Je bestelling is binnen. Konden we niet bevestigen bij het kassasysteem — bel de zaak indien nodig.{" "}
+          {order.lightspeed.errorMessage && <span className="mt-1 block text-xs opacity-90 sm:mt-0 sm:inline">({order.lightspeed.errorMessage.slice(0, 120)})</span>}
+        </p>
+      )}
+      {orderId && order?.isFirstTimeCustomer && (
+        <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-medium text-amber-950 sm:mb-6 sm:text-center">
+          {t("order.first_order_welcome")}
+        </p>
+      )}
 
       {/* Status card */}
-      <div className="mb-8 w-full max-w-sm rounded-2xl border border-sage-100 bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between">
+      <div className="mb-6 w-full rounded-2xl border border-sage-100 bg-white p-4 shadow-card sm:mb-8 sm:p-6">
+        <div className="flex items-start justify-between gap-1.5 sm:gap-2">
           {[
             { icon: "📝", label: "Confirmed" },
             { icon: "👨‍🍳", label: "Preparing" },
             { icon: "🛵", label: "On the way" },
             { icon: "🏠", label: "Delivered" },
           ].map((s, i) => (
-            <div key={s.label} className="flex flex-col items-center gap-1">
+            <div key={s.label} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-lg ${
+                className={`flex h-9 w-9 items-center justify-center rounded-full text-base sm:h-10 sm:w-10 sm:text-lg ${
                   i === 0
                     ? "bg-sage-500 shadow-sm"
                     : "bg-neutral-100"
@@ -68,7 +88,7 @@ function ConfirmedContent() {
                 {s.icon}
               </div>
               <span
-                className={`text-[10px] font-medium ${
+                className={`max-w-[4.5rem] text-[9px] font-medium leading-tight sm:max-w-none sm:text-[11px] ${
                   i === 0 ? "text-sage-600" : "text-neutral-400"
                 }`}
               >
@@ -81,7 +101,7 @@ function ConfirmedContent() {
 
       {/* Order type + fulfillment time */}
       {order && (
-        <div className="mb-3 grid w-full max-w-sm grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="mb-2 grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2">
           <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left text-sm text-neutral-700">
             {order.orderType === "takeaway" ? (
               <Store size={15} className="flex-shrink-0 text-wood-500" />
@@ -125,15 +145,15 @@ function ConfirmedContent() {
       )}
 
       {!order && (
-        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          <Clock size={15} />
-          Estimated delivery: <strong>30–45 minutes</strong>
+        <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-left text-sm text-amber-700">
+          <Clock size={15} className="shrink-0" />
+          <span>Estimated delivery: <strong>30–45 minutes</strong></span>
         </div>
       )}
 
       {/* Payment info */}
       {order && (
-        <div className={`mt-4 flex w-full max-w-sm items-start gap-3 rounded-2xl border px-5 py-4 ${
+        <div className={`mt-1 flex w-full items-start gap-3 rounded-2xl border px-4 py-4 sm:px-5 ${
           order.paymentMethod === "cash"
             ? "border-amber-200 bg-amber-50 text-amber-800"
             : "border-sage-200 bg-sage-50 text-sage-800"
@@ -143,12 +163,12 @@ function ConfirmedContent() {
               ? <Banknote size={18} />
               : <CreditCard size={18} />}
           </div>
-          <div className="text-sm">
+          <div className="min-w-0 flex-1 text-left text-sm sm:text-sm">
             {order.paymentMethod === "cash" ? (
               <>
                 <p className="font-semibold">Contant betalen</p>
                 {order.cashDenomination !== undefined && (
-                  <p className="mt-0.5 text-xs">
+                  <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">
                     {order.cashDenomination === order.total
                       ? "Exact bedrag — geen wisselgeld nodig."
                       : `Zorg voor €${order.cashDenomination.toFixed(2)} — de koerier geeft €${(order.cashDenomination - order.total).toFixed(2)} wisselgeld terug.`}
@@ -158,22 +178,22 @@ function ConfirmedContent() {
             ) : (
               <>
                 <p className="font-semibold">Online / Kaart</p>
-                <p className="mt-0.5 text-xs">Betaal bij levering via kaart of app.</p>
+                <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">Betaal bij levering via kaart of app.</p>
               </>
             )}
           </div>
         </div>
       )}
 
-      <div className="mt-8 flex gap-3">
-        <Link href="/menu" className="btn-secondary">
-          <ArrowLeft size={15} />
+      <div className="mt-6 w-full sm:mt-8">
+        <Link
+          href="/menu"
+          className="btn-secondary flex w-full min-h-[48px] items-center justify-center gap-2 sm:w-auto sm:min-w-[200px] sm:px-8"
+        >
+          <ArrowLeft size={16} className="shrink-0" />
           Order again
         </Link>
-        <Link href="/admin" className="btn-ghost text-neutral-400">
-          <ChefHat size={15} />
-          Kitchen view
-        </Link>
+      </div>
       </div>
     </div>
   );

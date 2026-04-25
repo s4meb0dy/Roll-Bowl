@@ -57,7 +57,7 @@ const nl: Dict = {
   "landing.reviews": "van {count}+ tevreden klanten",
   "landing.how_title": "Hoe werkt het?",
   "landing.footer_copy": "Gemaakt met 💚 voor gezond eten.",
-  "landing.hours": "Ma–Zo · 11:00–22:00",
+  "landing.hours": "Ma, za, zo: 16:00–21:00 · di–do: 11:00–13:15 & 16:00–21:00 · vr: 11:00–14:15 & 16:00–21:00",
   "landing.kitchen_link": "Keukenbeheer",
   "landing.hero_custom": "Stel zelf samen",
   "landing.hero_custom_sub": "Jij bepaalt alles",
@@ -104,6 +104,9 @@ const nl: Dict = {
   "cart.each": "per stuk",
   "cart.note_btn": "📝 Notitie",
 
+  "order.first_order_welcome":
+    "Welkom! Volgens onze gegevens is dit je eerste bestelling bij ons — de keuken ziet het mee op de bon.",
+
   // order type + fulfillment time
   "order_type.title": "Bestelwijze",
   "order_type.label": "Bestelwijze",
@@ -121,6 +124,10 @@ const nl: Dict = {
   "time.slot_required": "Kies een tijdslot om door te gaan.",
   "time.no_slots": "Geen tijdslots beschikbaar. Probeer zo snel mogelijk te bestellen.",
   "time.tomorrow": "Morgen",
+  "time.closed_banner":
+    "We zijn nu even gesloten. Je kunt wél al bestellen en in je winkelmand een tijd kiezen voor afhalen of levering wanneer we open zijn.",
+  "time.closed_pick_scheduled":
+    "Kies ‘Plan voor later’ en een tijd — zo snel mogelijk is nu niet mogelijk wanneer we gesloten zijn.",
 
   // validation
   "val.name": "Naam is verplicht",
@@ -196,8 +203,8 @@ const nl: Dict = {
   "sec.poke.sub": "Kant-en-klare poké bowls van onze chef.",
   "sec.burrito.title": "Poké burrito's",
   "sec.burrito.sub": "Al onze smaken, strak gerold in een verse tortilla. Geen keuze nodig — gewoon bestellen.",
-  "sec.rolls.title": "Signature rolls",
-  "sec.rolls.sub": "Vers bereide sushi rolls van ons huis. Gewoon kiezen en bestellen.",
+  "sec.rolls.title": "Sushi Push Pop",
+  "sec.rolls.sub": "Onze rolls in de handige push pop — duw omhoog en geniet. Vers bereid, gewoon kiezen en bestellen.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Vers gemixt met de beste ingrediënten. Gewoon kiezen en bestellen.",
   "sec.smoothie_bowls.title": "Smoothie bowls",
@@ -281,7 +288,7 @@ const en: Dict = {
   "landing.reviews": "from {count}+ happy customers",
   "landing.how_title": "How it works",
   "landing.footer_copy": "Made with 💚 for healthy eating.",
-  "landing.hours": "Mon–Sun · 11:00–22:00",
+  "landing.hours": "Mon, Sat, Sun: 4–9pm · Tue–Thu: 11am–1:15pm & 4–9pm · Fri: 11am–2:15pm & 4–9pm",
   "landing.kitchen_link": "Kitchen view",
   "landing.hero_custom": "Build your own",
   "landing.hero_custom_sub": "You decide everything",
@@ -325,6 +332,9 @@ const en: Dict = {
   "cart.each": "each",
   "cart.note_btn": "📝 Note",
 
+  "order.first_order_welcome":
+    "Welcome! This looks like your first order with us — the kitchen will see it on the ticket too.",
+
   // order type + fulfillment time
   "order_type.title": "How would you like your order?",
   "order_type.label": "Order type",
@@ -342,6 +352,10 @@ const en: Dict = {
   "time.slot_required": "Choose a time slot to continue.",
   "time.no_slots": "No time slots available. Try ordering as soon as possible.",
   "time.tomorrow": "Tomorrow",
+  "time.closed_banner":
+    "We're closed right now. You can still add items to your cart and pick a pickup or delivery time for when we're open — at checkout, choose “Schedule for later”.",
+  "time.closed_pick_scheduled":
+    "Select “Schedule for later” and a time — we can’t do “as soon as possible” while we’re closed.",
 
   "val.name": "Name is required",
   "val.phone": "Phone is required",
@@ -408,8 +422,8 @@ const en: Dict = {
   "sec.poke.sub": "Chef-curated poke bowls, ready to order.",
   "sec.burrito.title": "Poke burritos",
   "sec.burrito.sub": "All our flavors, tightly rolled in a fresh tortilla. No choices needed — just order.",
-  "sec.rolls.title": "Signature rolls",
-  "sec.rolls.sub": "Freshly prepared sushi rolls from our house. Just pick and order.",
+  "sec.rolls.title": "Sushi Push Pop",
+  "sec.rolls.sub": "Our rolls in a handy push pop tube—push up and enjoy. Freshly made, just pick and order.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Freshly blended with the best ingredients. Just pick and order.",
   "sec.smoothie_bowls.title": "Smoothie bowls",
@@ -492,7 +506,7 @@ const fr: Dict = {
   "landing.reviews": "de {count}+ clients satisfaits",
   "landing.how_title": "Comment ça marche?",
   "landing.footer_copy": "Fait avec 💚 pour une alimentation saine.",
-  "landing.hours": "Lun–Dim · 11h00–22h00",
+  "landing.hours": "Lun, sam, dim: 16h–21h · mar–jeu: 11h–13h15 & 16h–21h · ven: 11h–14h15 & 16h–21h",
   "landing.kitchen_link": "Vue cuisine",
   "landing.hero_custom": "Composez vous-même",
   "landing.hero_custom_sub": "Vous décidez tout",
@@ -536,6 +550,9 @@ const fr: Dict = {
   "cart.each": "pièce",
   "cart.note_btn": "📝 Note",
 
+  "order.first_order_welcome":
+    "Bienvenue ! C’est apparemment votre première commande chez nous — la cuisine le verra aussi sur le ticket.",
+
   // order type + fulfillment time
   "order_type.title": "Comment voulez-vous votre commande ?",
   "order_type.label": "Type de commande",
@@ -553,6 +570,10 @@ const fr: Dict = {
   "time.slot_required": "Choisissez un créneau pour continuer.",
   "time.no_slots": "Aucun créneau disponible. Essayez de commander dès que possible.",
   "time.tomorrow": "Demain",
+  "time.closed_banner":
+    "Nous sommes fermés pour l’instant. Vous pouvez quand même commander et choisir un créneau d’enlèvement ou de livraison quand nous sommes ouverts — au panier, choisissez « Planifier plus tard ».",
+  "time.closed_pick_scheduled":
+    "Choisissez « Planifier plus tard » et un horaire — « Dès que possible » n’est pas possible pendant la fermeture.",
 
   "val.name": "Le nom est obligatoire",
   "val.phone": "Le téléphone est obligatoire",
@@ -619,8 +640,8 @@ const fr: Dict = {
   "sec.poke.sub": "Poke bowls du chef, prêts à commander.",
   "sec.burrito.title": "Poke burritos",
   "sec.burrito.sub": "Toutes nos saveurs, roulées dans une tortilla fraîche. Pas de choix nécessaire — commandez simplement.",
-  "sec.rolls.title": "Signature rolls",
-  "sec.rolls.sub": "Sushi rolls fraîchement préparés par notre chef. Choisissez et commandez.",
+  "sec.rolls.title": "Sushi Push Pop",
+  "sec.rolls.sub": "Nos rolls en push pop pratique—poussez et savourez. Préparés frais, il suffit de choisir et commander.",
   "sec.smoothies.title": "Smoothies",
   "sec.smoothies.sub": "Fraîchement mixés avec les meilleurs ingrédients. Choisissez et commandez.",
   "sec.smoothie_bowls.title": "Smoothie bowls",

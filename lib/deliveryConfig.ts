@@ -11,22 +11,38 @@ export const ZIP_CODES = zipCodesData as Record<string, ZipCodeConfig>;
 export const TAKEAWAY_MIN_ORDER = 0;
 export const TAKEAWAY_DELIVERY_FEE = 0;
 
+/** One continuous window when the kitchen accepts orders (local time). */
+export type OpenInterval = {
+  openHour: number;
+  openMinute: number;
+  closeHour: number;
+  closeMinute: number;
+};
+
 /**
- * Restaurant kitchen opening hours (local time).
- * Keys are JS `Date.getDay()` values: 0 = Sunday … 6 = Saturday.
- * Set a weekday to `null` to mark it as closed.
+ * Restaurant kitchen hours (local time). Multiple entries = split shifts the same day.
+ * Keys: JS `Date.getDay()`: 0 = Sunday … 6 = Saturday. `null` = closed.
  */
-export const OPENING_HOURS: Record<
-  number,
-  { openHour: number; openMinute: number; closeHour: number; closeMinute: number } | null
-> = {
-  0: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Sunday
-  1: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Monday
-  2: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Tuesday
-  3: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Wednesday
-  4: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Thursday
-  5: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Friday
-  6: { openHour: 12, openMinute: 0, closeHour: 22, closeMinute: 0 }, // Saturday
+export const OPENING_HOURS: Record<number, OpenInterval[] | null> = {
+  0: [{ openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 }], // Sunday
+  1: [{ openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 }], // Monday
+  2: [
+    { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
+    { openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 },
+  ], // Tuesday
+  3: [
+    { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
+    { openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 },
+  ], // Wednesday
+  4: [
+    { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
+    { openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 },
+  ], // Thursday
+  5: [
+    { openHour: 11, openMinute: 0, closeHour: 14, closeMinute: 15 },
+    { openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 },
+  ], // Friday
+  6: [{ openHour: 16, openMinute: 0, closeHour: 21, closeMinute: 0 }], // Saturday
 };
 
 /** Time-slot granularity when scheduling for later. */
@@ -81,30 +97,30 @@ export function getAvailableTimeSlots(
   for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
     const date = new Date(now);
     date.setDate(date.getDate() + dayOffset);
-    const hrs = OPENING_HOURS[date.getDay()];
-    if (!hrs) continue;
+    const dayWindows = OPENING_HOURS[date.getDay()];
+    if (!dayWindows || dayWindows.length === 0) continue;
 
-    const open = new Date(date);
-    open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
-    const close = new Date(date);
-    close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
+    for (const hrs of dayWindows) {
+      const open = new Date(date);
+      open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
+      const close = new Date(date);
+      close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
 
-    // Day's starting slot: later of earliest-allowed and the day's opening,
-    // then aligned up to the next interval.
-    let slot = roundUpToInterval(
-      new Date(Math.max(open.getTime(), earliest.getTime())),
-      interval,
-    );
+      let slot = roundUpToInterval(
+        new Date(Math.max(open.getTime(), earliest.getTime())),
+        interval,
+      );
 
-    while (slot.getTime() <= close.getTime()) {
-      result.push({
-        value: slot.toISOString(),
-        hour: slot.getHours(),
-        minute: slot.getMinutes(),
-        dayOffset,
-        date: new Date(slot),
-      });
-      slot = new Date(slot.getTime() + interval * 60_000);
+      while (slot.getTime() <= close.getTime()) {
+        result.push({
+          value: slot.toISOString(),
+          hour: slot.getHours(),
+          minute: slot.getMinutes(),
+          dayOffset,
+          date: new Date(slot),
+        });
+        slot = new Date(slot.getTime() + interval * 60_000);
+      }
     }
   }
 
@@ -113,11 +129,16 @@ export function getAvailableTimeSlots(
 
 /** `true` when the kitchen is currently accepting orders. */
 export function isOpenNow(now: Date = new Date()): boolean {
-  const hrs = OPENING_HOURS[now.getDay()];
-  if (!hrs) return false;
-  const open = new Date(now);
-  open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
-  const close = new Date(now);
-  close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
-  return now >= open && now <= close;
+  const windows = OPENING_HOURS[now.getDay()];
+  if (!windows || windows.length === 0) return false;
+  for (const hrs of windows) {
+    const open = new Date(now);
+    open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
+    const close = new Date(now);
+    close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
+    if (now.getTime() >= open.getTime() && now.getTime() <= close.getTime()) {
+      return true;
+    }
+  }
+  return false;
 }

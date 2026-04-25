@@ -21,39 +21,16 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
-import type { CustomerInfo, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
+import type { CustomerInfo, OrderLightspeedMeta, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
 import {
   getAvailableTimeSlots,
+  isOpenNow,
   TAKEAWAY_DELIVERY_FEE,
   TAKEAWAY_MIN_ORDER,
   type TimeSlot,
 } from "@/lib/deliveryConfig";
-
-function QuantityControl({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => onChange(value - 1)}
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-sm font-bold text-ink-600 transition hover:bg-ink-100"
-      >
-        −
-      </button>
-      <span className="w-5 text-center text-sm font-semibold tabular-nums">{value}</span>
-      <button
-        onClick={() => onChange(value + 1)}
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-ink-200 text-sm font-bold text-ink-600 transition hover:bg-ink-100"
-      >
-        +
-      </button>
-    </div>
-  );
-}
+import QuantityStepper from "@/components/QuantityStepper";
+import CafeClosedNotice from "@/components/CafeClosedNotice";
 
 export default function CartPage() {
   const router = useRouter();
@@ -66,6 +43,7 @@ export default function CartPage() {
   const updateQuantity = useStore((s) => s.updateQuantity);
   const updateNote = useStore((s) => s.updateNote);
   const placeOrder = useStore((s) => s.placeOrder);
+  const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
 
   const [mounted, setMounted] = useState(false);
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
@@ -112,6 +90,12 @@ export default function CartPage() {
   // hook order stable across the `!mounted` early return below.
   const timeSlots = useMemo<TimeSlot[]>(
     () => (mounted ? getAvailableTimeSlots(new Date()) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mounted, nowTick],
+  );
+
+  const cafeOpen = useMemo(
+    () => (mounted ? isOpenNow(new Date()) : true),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mounted, nowTick],
   );
@@ -168,6 +152,7 @@ export default function CartPage() {
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
     if (timeMode === "scheduled" && !scheduledSlot) return;
+    if (!isOpenNow(new Date()) && timeMode === "asap") return;
 
     setPlacing(true);
     await new Promise((r) => setTimeout(r, 900));
@@ -191,6 +176,46 @@ export default function CartPage() {
       orderType,
       fulfillmentTime,
     });
+
+    const order = useStore.getState().orders.find((o) => o.id === id);
+    if (order) {
+      try {
+        const res = await fetch("/api/orders/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
+          error?: string;
+        };
+        if (data.state) {
+          setOrderLightspeed(id, {
+            state: data.state,
+            pushedAt: data.pushedAt ?? new Date().toISOString(),
+            saleId: data.saleId,
+            accountIdentifier: data.accountIdentifier,
+            errorMessage: data.errorMessage,
+            httpStatus: data.httpStatus ?? (res.ok ? undefined : res.status),
+            dryRun: data.dryRun,
+          });
+        } else {
+          setOrderLightspeed(id, {
+            state: "failed",
+            pushedAt: new Date().toISOString(),
+            errorMessage: data.errorMessage ?? data.error ?? res.statusText ?? "Onbekende POS-fout",
+            httpStatus: res.status,
+          });
+        }
+      } catch (e) {
+        console.error("[orders/push] network error", e);
+        setOrderLightspeed(id, {
+          state: "failed",
+          pushedAt: new Date().toISOString(),
+          errorMessage: "Geen verbinding met keuken/POS. Bestelling lokaal opgeslagen.",
+        });
+      }
+    }
+
     router.push(`/order-confirmed?id=${id}`);
   };
 
@@ -277,9 +302,9 @@ export default function CartPage() {
 
   if (cart.length === 0) {
     return (
-      <div className="min-h-screen bg-cream-100 pb-28 md:pb-0">
+      <div className="min-h-screen bg-cream-100">
         <Header />
-        <div className="flex flex-col items-center justify-center py-32 text-center">
+        <div className="flex flex-col items-center justify-center px-4 py-32 pb-28 text-center md:pb-32">
           <div className="mb-4 text-6xl">🛒</div>
           <h2 className="font-display text-2xl font-bold text-ink-900">
             {t("cart.empty_title")}
@@ -295,10 +320,10 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream-100 pb-28 md:pb-8">
+    <div className="min-h-screen bg-cream-100">
       <Header />
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-6xl overflow-x-clip px-4 py-8 pb-28 sm:px-6 md:pb-8">
         <h1 className="font-display mb-6 text-3xl font-bold text-ink-900">
           {t("cart.title")}
         </h1>
@@ -385,31 +410,35 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between">
+                <div className="mt-3 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-center min-[400px]:justify-between">
                   <div className="flex items-center gap-3">
-                    <QuantityControl
+                    <QuantityStepper
                       value={item.quantity}
                       onChange={(v) => updateQuantity(item.cartId, v)}
+                      min={0}
+                      max={999}
                     />
                     <span className="text-xs tabular-nums text-ink-400">
                       €{item.price.toFixed(2)} {t("cart.each")}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex w-full min-w-0 items-center justify-end gap-1 min-[400px]:w-auto min-[400px]:justify-end">
                     <button
+                      type="button"
                       onClick={() =>
                         setExpandedNote(
                           expandedNote === item.cartId ? null : item.cartId
                         )
                       }
-                      className="btn-ghost text-xs text-ink-500"
+                      className="btn-ghost min-w-0 text-xs text-ink-500"
                     >
                       {t("cart.note_btn")}
                     </button>
                     <button
+                      type="button"
                       onClick={() => removeFromCart(item.cartId)}
-                      className="btn-ghost text-ink-400 hover:text-red-500"
+                      className="btn-ghost shrink-0 text-ink-400 hover:text-red-500"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -447,6 +476,7 @@ export default function CartPage() {
 
           <div className="lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
             <div className="card divide-y divide-ink-200/60">
+              <CafeClosedNotice className="m-0 border-0 border-b border-amber-200/80 bg-amber-50/95 p-4" />
               {/* Order summary */}
               <section className="p-5">
                 <h2 className="mb-4 font-semibold text-ink-900">
@@ -504,11 +534,11 @@ export default function CartPage() {
                   {t("order_type.title")}
                 </h2>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => setOrderType("delivery")}
-                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                    className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       orderType === "delivery"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                         : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -520,7 +550,7 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={() => setOrderType("takeaway")}
-                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                    className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       orderType === "takeaway"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                         : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -543,11 +573,11 @@ export default function CartPage() {
                   <p className="mb-2 text-sm font-semibold text-ink-800">
                     {t("time.title")}
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => { setTimeMode("asap"); setScheduledSlot(""); }}
-                      className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                      className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                         timeMode === "asap"
                           ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                           : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -559,7 +589,7 @@ export default function CartPage() {
                     <button
                       type="button"
                       onClick={() => setTimeMode("scheduled")}
-                      className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                      className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                         timeMode === "scheduled"
                           ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                           : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -602,6 +632,13 @@ export default function CartPage() {
                   {timeMode === "asap" && (
                     <p className="mt-2 text-xs text-ink-500">
                       {isTakeaway ? t("time.asap_sub_takeaway") : t("time.asap_sub_delivery")}
+                    </p>
+                  )}
+
+                  {!cafeOpen && timeMode === "asap" && timeSlots.length > 0 && (
+                    <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-amber-800">
+                      <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                      {t("time.closed_pick_scheduled")}
                     </p>
                   )}
                 </div>
@@ -705,11 +742,11 @@ export default function CartPage() {
                   {t("payment.title")}
                 </h2>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => { setPaymentMethod("online"); setCashDenomination(null); setCustomCash(""); }}
-                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                    className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       paymentMethod === "online"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                         : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -721,7 +758,7 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("cash")}
-                    className={`flex items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-all tap-target ${
+                    className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       paymentMethod === "cash"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
                         : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
@@ -751,7 +788,7 @@ export default function CartPage() {
                             key={bill}
                             type="button"
                             onClick={() => { setCashDenomination(bill); setCustomCash(""); }}
-                            className={`rounded-xl2 border px-4 py-2 text-sm font-bold transition-all tabular-nums ${
+                            className={`tap-target min-h-[44px] rounded-xl2 border px-4 py-2 text-sm font-bold transition-transform motion-reduce:transition-none tabular-nums active:scale-[0.98] motion-reduce:active:scale-100 ${
                               selected
                                 ? "border-gold-400 bg-gradient-to-br from-gold-400 to-gold-600 text-white shadow-sm"
                                 : tooLow
@@ -819,7 +856,8 @@ export default function CartPage() {
                     placing ||
                     belowMinimum ||
                     (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) ||
-                    (timeMode === "scheduled" && !scheduledSlot)
+                    (timeMode === "scheduled" && !scheduledSlot) ||
+                    (!cafeOpen && timeMode === "asap")
                   }
                   className="btn-gold w-full justify-center py-3.5 text-base"
                 >

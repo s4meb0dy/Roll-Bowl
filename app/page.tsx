@@ -100,12 +100,6 @@ export default function LandingPage() {
         </div>
         <div className="flex items-center gap-3">
           <LanguageSwitcher />
-          <a
-            href="/admin"
-            className="hidden rounded-lg px-3 py-1.5 text-xs font-medium text-ink-500 transition hover:text-ink-700 sm:block"
-          >
-            {t("landing.kitchen_link")}
-          </a>
         </div>
       </nav>
 

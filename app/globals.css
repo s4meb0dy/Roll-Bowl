@@ -23,19 +23,19 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl2 bg-sage-500 px-5 py-3 text-sm font-semibold text-white shadow-soft transition-all hover:bg-sage-600 hover:shadow-soft-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl2 bg-sage-500 px-5 py-3 text-sm font-semibold text-white shadow-soft transition-transform motion-reduce:transition-none hover:bg-sage-600 hover:shadow-soft-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl2 border border-ink-200 bg-white px-5 py-3 text-sm font-semibold text-ink-700 shadow-soft transition-all hover:border-ink-300 hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl2 border border-ink-200 bg-white px-5 py-3 text-sm font-semibold text-ink-700 shadow-soft transition-transform motion-reduce:transition-none hover:border-ink-300 hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl2 px-4 py-2 text-sm font-medium text-ink-600 transition-all hover:bg-ink-100 active:scale-[0.97];
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl2 px-4 py-2 text-sm font-medium text-ink-600 transition-transform motion-reduce:transition-none hover:bg-ink-100 active:scale-[0.98] motion-reduce:active:scale-100;
   }
 
   .btn-gold {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl2 bg-gradient-to-br from-gold-400 to-gold-600 px-5 py-3 text-sm font-semibold text-white shadow-soft transition-all hover:shadow-soft-hover hover:brightness-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl2 bg-gradient-to-br from-gold-400 to-gold-600 px-5 py-3 text-sm font-semibold text-white shadow-soft transition-transform motion-reduce:transition-none hover:shadow-soft-hover hover:brightness-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100;
     position: relative;
     overflow: hidden;
   }
@@ -88,7 +88,7 @@
   }
 
   .step-toggle {
-    @apply inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl2 border border-ink-200 bg-white px-4 text-sm font-semibold text-ink-700 transition-all hover:border-ink-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200;
+    @apply inline-flex h-11 min-h-[44px] min-w-11 items-center justify-center gap-2 rounded-xl2 border border-ink-200 bg-white px-4 text-sm font-semibold text-ink-700 transition-transform motion-reduce:transition-none hover:border-ink-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 active:scale-[0.98] motion-reduce:active:scale-100;
   }
 
   .step-toggle-active {

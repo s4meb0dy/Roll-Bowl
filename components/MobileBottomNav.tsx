@@ -70,7 +70,7 @@ export default function MobileBottomNav() {
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`tap-target relative flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold transition-colors ${
+                className={`tap-target relative flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold transition-transform motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 ${
                   active ? "text-ink-900" : "text-ink-500"
                 }`}
               >

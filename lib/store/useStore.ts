@@ -6,6 +6,7 @@ import type {
   CartItem,
   CustomerInfo,
   Order,
+  OrderLightspeedMeta,
   OrderStatus,
   ZipCodeConfig,
   PaymentMethod,
@@ -13,6 +14,7 @@ import type {
   FulfillmentTime,
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/index";
+import { isNewCustomerByPhone } from "@/lib/customerIdentity";
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
@@ -59,6 +61,7 @@ interface AppState {
   }) => string;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   markKitchenPrinted: (orderId: string) => void;
+  setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
 
   setLocale: (locale: Locale) => void;
 }
@@ -120,6 +123,10 @@ export const useStore = create<AppState>()(
         // Takeaway skips the delivery fee entirely.
         const deliveryFee =
           orderType === "takeaway" ? 0 : state.zipCodeConfig?.deliveryFee ?? 0;
+        const isFirstTimeCustomer = isNewCustomerByPhone(
+          state.orders,
+          customerInfo.phone,
+        );
         const order: Order = {
           id: generateId(),
           items: state.cart,
@@ -136,6 +143,7 @@ export const useStore = create<AppState>()(
           fulfillmentTime,
           status: "pending",
           createdAt: new Date().toISOString(),
+          isFirstTimeCustomer,
         };
         set((s) => ({ orders: [order, ...s.orders], cart: [] }));
         return order.id;
@@ -155,11 +163,18 @@ export const useStore = create<AppState>()(
             : [...state.kitchenPrintedOrderIds, orderId],
         })),
 
+      setOrderLightspeed: (orderId, meta) =>
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === orderId ? { ...o, lightspeed: meta } : o
+          ),
+        })),
+
       setLocale: (locale) => set({ locale }),
     }),
     {
       name: "roll-bowl-store",
-      version: 4,
+      version: 6,
       migrate: (persistedState, version) => {
         let p = persistedState as Partial<AppState> | null;
         if (version < 2 && p?.orders) {
@@ -184,6 +199,24 @@ export const useStore = create<AppState>()(
                 orderType: legacy.orderType ?? "delivery",
                 fulfillmentTime: legacy.fulfillmentTime ?? { mode: "asap" },
               } as Order;
+            }),
+          };
+        }
+        if (version < 5 && p?.orders) {
+          p = {
+            ...p,
+            orders: p.orders.map((o) => o as Order),
+          };
+        }
+        if (version < 6 && p?.orders) {
+          p = {
+            ...p,
+            orders: p.orders.map((raw) => {
+              const o = raw as Order;
+              return {
+                ...o,
+                isFirstTimeCustomer: o.isFirstTimeCustomer ?? false,
+              };
             }),
           };
         }

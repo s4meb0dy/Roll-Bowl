@@ -172,6 +172,18 @@ export type FulfillmentTime =
   | { mode: "asap" }
   | { mode: "scheduled"; scheduledFor: string };
 
+/** Result of POST to Lightspeed / POS (kitchen) — shown on order + admin. */
+export interface OrderLightspeedMeta {
+  state: "success" | "failed" | "skipped";
+  pushedAt: string;
+  /** POS / Lightspeed sale or ticket id (when success). */
+  saleId?: string;
+  accountIdentifier?: string;
+  errorMessage?: string;
+  httpStatus?: number;
+  dryRun?: boolean;
+}
+
 export interface Order {
   id: string;
   items: CartItem[];
@@ -186,4 +198,11 @@ export interface Order {
   fulfillmentTime: FulfillmentTime;
   status: OrderStatus;
   createdAt: string;
+  /** When set, the web order was pushed to the POS (or skip/fail recorded). */
+  lightspeed?: OrderLightspeedMeta;
+  /**
+   * True when this is the first completed order for this phone number
+   * in the device’s order history (see `isNewCustomerByPhone`).
+   */
+  isFirstTimeCustomer?: boolean;
 }

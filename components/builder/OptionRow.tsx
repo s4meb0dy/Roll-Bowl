@@ -25,12 +25,12 @@ export default function OptionRow({
       disabled={unavailable}
       aria-disabled={unavailable}
       aria-pressed={selected}
-      className={`group flex w-full items-center justify-between rounded-xl2 border px-4 py-3.5 text-left transition-all motion-safe:animate-step-fade ${
+      className={`group flex w-full min-w-0 max-w-full items-center justify-between overflow-hidden rounded-xl2 border px-4 py-3.5 text-left transition-transform motion-reduce:transition-none motion-safe:animate-step-fade ${
         unavailable
           ? "cursor-not-allowed border-ink-100 bg-ink-50 opacity-55 select-none"
           : selected
-          ? "border-gold-300 bg-gold-50/70 shadow-sm ring-1 ring-gold-200/60"
-          : "border-ink-200 bg-white hover:-translate-y-0.5 hover:border-sage-300 hover:bg-sage-50/50 hover:shadow-soft"
+          ? "border-gold-300 bg-gold-50/70 shadow-sm ring-1 ring-gold-200/60 active:scale-[0.98] motion-reduce:active:scale-100"
+          : "border-ink-200 bg-white active:scale-[0.98] motion-reduce:active:scale-100 md:hover:-translate-y-0.5 active:md:hover:translate-y-0 hover:border-sage-300 hover:bg-sage-50/50 hover:shadow-soft"
       }`}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -47,9 +47,9 @@ export default function OptionRow({
             <span className="block h-1.5 w-1.5 rounded-full bg-white" />
           )}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 break-words">
           <p
-            className={`text-sm font-semibold ${
+            className={`text-sm font-semibold [overflow-wrap:anywhere] ${
               unavailable ? "text-ink-400 line-through" : "text-ink-800"
             }`}
           >

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Plus, Minus, Leaf, CheckCircle2 } from "lucide-react";
+import { Plus, Leaf, CheckCircle2 } from "lucide-react";
+import QuantityStepper from "@/components/QuantityStepper";
 import { BURRITOS } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
@@ -149,21 +150,7 @@ function BurritoCard({ item }: { item: ReadyMadeItem }) {
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex shrink-0 items-center gap-1 rounded-xl2 border border-ink-200 bg-white px-1 py-1">
-              <button
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-500 transition hover:bg-ink-100"
-              >
-                <Minus size={13} />
-              </button>
-              <span className="w-6 text-center text-sm font-semibold tabular-nums text-ink-800">
-                {quantity}
-              </span>
-              <button
-                onClick={() => setQuantity((q) => q + 1)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-500 transition hover:bg-ink-100"
-              >
-                <Plus size={13} />
-              </button>
+              <QuantityStepper size="sm" value={quantity} onChange={setQuantity} />
             </div>
 
             <div className="relative flex-1">

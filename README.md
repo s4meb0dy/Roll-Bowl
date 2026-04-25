@@ -132,3 +132,45 @@ LIGHTSPEED_API_TOKEN=<oauth-bearer-token>
 Then wire the real fetch call inside `fetchLightspeedAvailability()` — the
 bulk-apply pipeline (`applyBulk`) and the SSE broadcast are already in place,
 so the UI will update instantly across every connected browser.
+
+### Kitchen / Lightspeed order push (checkout → POS)
+
+After checkout, the app `POST`s the order to `POST /api/orders/push`, which
+calls `lib/lightspeed/pushOrder.ts`. The JSON body sent to your endpoint includes:
+
+- **`status` / `posStatus`:** `PAID` (online payment) or `ACCEPTED` (cash) — as required
+  by many POS flows to fire kitchen printers.
+- **`items[]`:** each line has `name`, `quantity`, `unitPrice`, `lineTotal`, `lineType`,
+  `menuItemId`, **`categoryId`**, and **`printerGroupId`** (from env mapping; bowls,
+  burritos, sushi/rolls, smoothies, extras go to the correct station when IDs are set).
+
+**Environment variables**
+
+```bash
+# Target URL for your proxy or Lightspeed-compatible POST handler (required to push)
+LIGHTSPEED_ORDER_PUSH_URL=https://your-pos-gateway.example/orders
+# or alias:
+# LIGHTSPEED_KITCHEN_API_URL=...
+
+# Bearer token (or reuse inventory token)
+LIGHTSPEED_API_TOKEN=...
+# LIGHTSPEED_ORDER_API_TOKEN=...  # optional alias
+
+# Optional: per-station category + printer group IDs (strings your POS expects)
+LIGHTSPEED_CATEGORY_BOWLS_ID=
+LIGHTSPEED_CATEGORY_BURRITOS_ID=
+LIGHTSPEED_CATEGORY_SUSHI_ID=
+LIGHTSPEED_CATEGORY_SMOOTHIES_ID=
+LIGHTSPEED_CATEGORY_EXTRAS_ID=
+LIGHTSPEED_PRINTER_BOWLS_ID=      # defaults to category id if empty
+LIGHTSPEED_PRINTER_BURRITOS_ID=
+LIGHTSPEED_PRINTER_SUSHI_ID=
+LIGHTSPEED_PRINTER_SMOOTHIES_ID=
+LIGHTSPEED_PRINTER_EXTRAS_ID=
+
+# Log payload without calling the network (development)
+# LIGHTSPEED_PUSH_DRY_RUN=1
+```
+
+Rejections and HTTP errors are logged on the server (`console.error` with response body).
+The admin order card shows a green **“Naar keuken / POS”** badge when the push succeeds.

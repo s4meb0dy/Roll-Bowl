@@ -60,7 +60,7 @@ export default function UpsellPanel() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upsell-title"
@@ -78,7 +78,7 @@ export default function UpsellPanel() {
             <button
               type="button"
               onClick={dismiss}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-700 hover:text-white"
+              className="tap-target flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-neutral-400 transition-transform motion-reduce:transition-none hover:bg-neutral-700 hover:text-white active:scale-[0.98] motion-reduce:active:scale-100"
               aria-label={t("upsell.close")}
             >
               <X size={16} />
@@ -103,7 +103,7 @@ export default function UpsellPanel() {
                   <button
                     type="button"
                     onClick={() => !added && handleAdd(item)}
-                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition ${
+                    className={`tap-target flex h-11 w-11 min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-full transition-transform motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 ${
                       added
                         ? "bg-sage-500 text-white"
                         : "bg-neutral-700 text-neutral-200 hover:bg-wood-500 hover:text-white"

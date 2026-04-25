@@ -110,7 +110,7 @@ export const INVENTORY_CATALOG: InventoryCategoryConfig[] = [
     id: "sushi",
     label: "Sushi rolls",
     description:
-      "Signature rolls + 'Stel zelf samen (Classic Roll / Inside-Out Roll)'. Beschermd tegen globaal uitschakelen.",
+      "Sushi Push Pop (signature rolls) + 'Stel zelf samen (Classic Roll / Inside-Out Roll)'. Beschermd tegen globaal uitschakelen.",
     protected: true,
     readyMade: SIGNATURE_ROLLS,
     builderGroups: [

@@ -43,6 +43,12 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
         </div>
       </div>
 
+      {order.isFirstTimeCustomer && (
+        <div className="mt-2 border-2 border-black bg-black py-1.5 text-center text-[10px] font-black uppercase leading-tight text-white">
+          ★ Nieuwe klant · 1e bestelling ★
+        </div>
+      )}
+
       <div className="mt-2 font-mono text-[11px] leading-snug">
         <div className="flex justify-between gap-2">
           <span className="text-neutral-600">Bestelling</span>

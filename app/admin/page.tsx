@@ -15,11 +15,22 @@ import {
   Store,
   CalendarClock,
   Boxes,
+  Bell,
+  BellOff,
+  Volume2,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import Header from "@/components/Header";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
 import { useStore } from "@/lib/store/useStore";
-import { playNewOrderChime } from "@/lib/kitchenSound";
+import {
+  isKitchenAlarmMuted,
+  setKitchenAlarmMuted,
+  startKitchenAlarmLoop,
+  stopKitchenAlarmLoop,
+  playTestKitchenAlarm,
+} from "@/lib/kitchenSound";
 import type { Order, OrderStatus } from "@/lib/types";
 
 const ADMIN_PIN = "1234";
@@ -45,10 +56,12 @@ function OrderCard({
   order,
   onAcceptAndPrint,
   onPrintReceipt,
+  isAlarmTarget,
 }: {
   order: Order;
   onAcceptAndPrint: (id: string) => void;
   onPrintReceipt: (id: string) => void;
+  isAlarmTarget?: boolean;
 }) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
   const cfg = STATUS_CONFIG[order.status];
@@ -75,7 +88,7 @@ function OrderCard({
     <div
       className={`card overflow-hidden border print-break ${
         order.status === "delivered" ? "opacity-60" : ""
-      }`}
+      } ${isAlarmTarget ? "ring-2 ring-gold-400 ring-offset-2" : ""}`}
     >
       <div className="flex items-start justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
         <div>
@@ -86,6 +99,27 @@ function OrderCard({
             <span className={`tag-badge border text-xs ${cfg.color}`}>
               {cfg.label}
             </span>
+            {order.lightspeed?.state === "success" && (
+              <span className="tag-badge border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-800">
+                <CheckCircle2 size={12} className="inline" /> Naar keuken / POS
+                {order.lightspeed.saleId && order.lightspeed.saleId !== "dry-run" && (
+                  <span className="ml-1 font-mono text-[10px]">#{String(order.lightspeed.saleId).slice(0, 8)}</span>
+                )}
+              </span>
+            )}
+            {order.lightspeed?.state === "failed" && (
+              <span
+                className="tag-badge border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-800"
+                title={order.lightspeed.errorMessage ?? "POS weigerde de order"}
+              >
+                POS-sync fout
+              </span>
+            )}
+            {order.lightspeed?.state === "skipped" && (
+              <span className="tag-badge border border-amber-200 bg-amber-50 text-xs text-amber-900">
+                POS: niet geconfigureerd
+              </span>
+            )}
             <span
               className={`tag-badge inline-flex items-center gap-1 border text-xs font-semibold ${
                 order.orderType === "takeaway"
@@ -119,6 +153,15 @@ function OrderCard({
                 <Clock size={11} /> Zo snel mogelijk
               </span>
             )}
+            {order.isFirstTimeCustomer && (
+              <span
+                className="tag-badge inline-flex items-center gap-1 border border-amber-300 bg-amber-100 text-xs font-bold text-amber-950"
+                title="Eerste bestelling met dit telefoonnummer in dit systeem"
+              >
+                <Sparkles size={12} className="shrink-0" />
+                1e bestelling
+              </span>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-neutral-400">
             <Clock size={11} />
@@ -146,6 +189,15 @@ function OrderCard({
           </div>
         </div>
       </div>
+
+      {order.isFirstTimeCustomer && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-center text-sm font-bold text-amber-950">
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <Sparkles size={16} className="text-amber-600" />
+            Nieuwe klant — eerste bestelling (uniek telefoonnr.)
+          </span>
+        </div>
+      )}
 
       <div className="border-b border-neutral-100 px-5 py-3">
         <div className="grid grid-cols-3 gap-4 text-sm">
@@ -348,8 +400,12 @@ export default function AdminPage() {
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(() => new Date());
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
+  const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
+  const [soundMuted, setSoundMuted] = useState(false);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
+  const newOrderWatchInit = useRef(false);
+  const seenOrderIds = useRef<Set<string>>(new Set());
 
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
@@ -388,11 +444,45 @@ export default function AdminPage() {
   const handleAcceptAndPrint = useCallback(
     (orderId: string) => {
       updateOrderStatus(orderId, "preparing");
-      playNewOrderChime();
+      stopKitchenAlarmLoop();
+      setAlarmOrderId((cur) => (cur === orderId ? null : cur));
       triggerKitchenPrint(orderId);
     },
     [updateOrderStatus, triggerKitchenPrint]
   );
+
+  useEffect(() => {
+    setSoundMuted(isKitchenAlarmMuted());
+  }, []);
+
+  useEffect(() => {
+    if (!storeHydrated || !unlocked) return;
+    if (!newOrderWatchInit.current) {
+      newOrderWatchInit.current = true;
+      orders.forEach((o) => seenOrderIds.current.add(o.id));
+      return;
+    }
+    for (const o of orders) {
+      if (!seenOrderIds.current.has(o.id)) {
+        seenOrderIds.current.add(o.id);
+        if (o.status === "pending") {
+          setAlarmOrderId(o.id);
+          startKitchenAlarmLoop();
+        }
+      }
+    }
+  }, [orders, storeHydrated, unlocked]);
+
+  const acknowledgeAlarm = useCallback(() => {
+    stopKitchenAlarmLoop();
+    setAlarmOrderId(null);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const next = !soundMuted;
+    setSoundMuted(next);
+    setKitchenAlarmMuted(next);
+  }, [soundMuted]);
 
   useEffect(() => {
     setMounted(true);
@@ -417,7 +507,7 @@ export default function AdminPage() {
       setLastChecked(new Date());
       void useStore.persist.rehydrate();
     };
-    const id = window.setInterval(tick, 10_000);
+    const id = window.setInterval(tick, 2_000);
     return () => window.clearInterval(id);
   }, [mounted, storeHydrated]);
 
@@ -464,8 +554,35 @@ export default function AdminPage() {
   const printOrder = printTargetId ? orders.find((o) => o.id === printTargetId) : undefined;
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-cream pb-24">
       <Header />
+
+      {alarmOrderId && (
+        <div
+          className="no-print fixed bottom-0 left-0 right-0 z-[200] border-t border-amber-300 bg-amber-100/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm safe-bottom md:pr-0"
+          role="alert"
+        >
+          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-bold text-amber-950">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-60" />
+                <span className="relative h-3 w-3 rounded-full bg-amber-500" />
+              </span>
+              <Bell className="shrink-0 text-amber-800" size={20} />
+              <span className="truncate">Nieuw order — #{alarmOrderId.toUpperCase()}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={acknowledgeAlarm}
+                className="btn-primary rounded-xl px-4 py-2 text-sm"
+              >
+                Bevestig gehoord
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -489,7 +606,7 @@ export default function AdminPage() {
             </Link>
             <div
               className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs shadow-sm"
-              title="Live sync: polling every 10s + cross-tab storage"
+              title="Live sync: rehydrate every 2s + cross-tab storage"
             >
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
@@ -513,10 +630,36 @@ export default function AdminPage() {
             <div>
               <p className="text-sm font-bold text-neutral-800">Kitchen mode</p>
               <p className="text-xs text-neutral-500">
-                New orders start as <strong>wachtend</strong>: tap <strong>Accepteren &amp; afdrukken</strong> for
-                chime + 80mm bon. Use Chrome with{" "}
-                <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> for silent printing.
+                <strong>Pieptonen</strong> ca. 5s (stopt vanzelf). Dempen,{" "}
+                <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>. 80mm bon. Chrome:{" "}
+                <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> voor stille print.
               </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm ${
+                  soundMuted
+                    ? "border-neutral-200 bg-neutral-100 text-neutral-600"
+                    : "border-amber-200 bg-amber-50 text-amber-900"
+                }`}
+              >
+                {soundMuted ? <BellOff size={15} /> : <Bell size={15} />}
+                {soundMuted ? "Geluid aan" : "Dempen"}
+              </button>
+              <button
+                type="button"
+                onClick={() => playTestKitchenAlarm()}
+                disabled={soundMuted}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-sage-200 bg-white px-3 py-2 text-xs font-semibold text-sage-800 shadow-sm disabled:opacity-40"
+                title="Test de alarmtoon (na interactie geeft de browser vaak toestemming)"
+              >
+                <Volume2 size={15} />
+                Test geluid
+              </button>
             </div>
           </div>
           <button
@@ -591,6 +734,7 @@ export default function AdminPage() {
               <OrderCard
                 key={order.id}
                 order={order}
+                isAlarmTarget={order.id === alarmOrderId}
                 onAcceptAndPrint={handleAcceptAndPrint}
                 onPrintReceipt={triggerKitchenPrint}
               />
