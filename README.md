@@ -187,5 +187,6 @@ This project includes **`POST /api/orders/inbox`** and **`GET /api/orders/inbox`
    - `KV_REST_API_URL` and `KV_REST_API_TOKEN`, **or**
    - `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
    - If the Vercel integration used a **custom prefix** (e.g. `STORAGE_REST_API_URL` / `STORAGE_REST_API_TOKEN`), the app copies those to `KV_*` at runtime (`lib/orders/ensureKvEnv.ts`).
+   - If you only have **`REDIS_URL`** (redis `://` from Upstash), the app maps it to the REST `https://<host>` + token so `@vercel/kv` works.
 
 3. Redeploy. On the kitchen admin, a green line confirms **Order-inbox (Redis) actief**. If Redis is not configured, you’ll see an amber notice explaining that phone orders require this link.

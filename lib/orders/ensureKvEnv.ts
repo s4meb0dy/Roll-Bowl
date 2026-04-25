@@ -29,4 +29,33 @@ if (typeof process !== "undefined") {
   if (!process.env.KV_URL && process.env.STORAGE_URL) {
     process.env.KV_URL = process.env.STORAGE_URL;
   }
+
+  /**
+   * Vercel/Upstash often add only `REDIS_URL` (redis:// or rediss:// with user:password
+   * in the host part). @vercel/kv uses the Upstash **HTTP** REST API — same host,
+   * token = password in the URL (usually user `default`).
+   */
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    const raw = process.env.REDIS_URL;
+    if (raw) {
+      try {
+        const u = new URL(raw);
+        if ((u.protocol === "redis:" || u.protocol === "rediss:") && u.hostname) {
+          const token = u.password
+            ? decodeURIComponent(u.password)
+            : (process.env.REDIS_TOKEN ? String(process.env.REDIS_TOKEN) : "");
+          if (token) {
+            if (!process.env.KV_REST_API_URL) {
+              process.env.KV_REST_API_URL = `https://${u.hostname}`;
+            }
+            if (!process.env.KV_REST_API_TOKEN) {
+              process.env.KV_REST_API_TOKEN = token;
+            }
+          }
+        }
+      } catch {
+        /* invalid REDIS_URL */
+      }
+    }
+  }
 }
