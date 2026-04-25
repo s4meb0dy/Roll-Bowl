@@ -83,6 +83,14 @@ export async function POST(req: Request) {
   }
   const order = (body as { order?: Order }).order;
   if (!isValidOrderBody(order)) {
+    const o = order && typeof order === "object" ? (order as Record<string, unknown>) : null;
+    console.error("[orders/inbox] reject", {
+      hasOrder: Boolean(order),
+      id: o && typeof o.id,
+      items: o && Array.isArray(o.items),
+      createdAt: o && Boolean(o.createdAt),
+      customerInfo: o && o.customerInfo && typeof o.customerInfo,
+    });
     return NextResponse.json({ error: "Missing or invalid order" }, { status: 400 });
   }
   try {

@@ -58,7 +58,7 @@ interface AppState {
     cashDenomination?: number;
     orderType: OrderType;
     fulfillmentTime: FulfillmentTime;
-  }) => string;
+  }) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   markKitchenPrinted: (orderId: string) => void;
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
@@ -148,7 +148,7 @@ export const useStore = create<AppState>()(
           isFirstTimeCustomer,
         };
         set((s) => ({ orders: [order, ...s.orders], cart: [] }));
-        return order.id;
+        return order;
       },
 
       updateOrderStatus: (orderId, status) =>

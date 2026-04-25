@@ -168,7 +168,7 @@ export default function CartPage() {
       ? { ...customerInfo, address: "", zipCode: "" }
       : customerInfo;
 
-    const id = placeOrder({
+    const order = placeOrder({
       customerInfo: finalCustomerInfo,
       generalNote,
       paymentMethod,
@@ -176,8 +176,7 @@ export default function CartPage() {
       orderType,
       fulfillmentTime,
     });
-
-    const order = useStore.getState().orders.find((o) => o.id === id);
+    const id = order.id;
 
     // Inbox must complete *before* client navigation. A background fetch started
     // right before router.push is often aborted (SPA navigation), so the kitchen

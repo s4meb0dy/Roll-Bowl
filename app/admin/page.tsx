@@ -526,9 +526,9 @@ export default function AdminPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  /** Pull orders placed on other devices (phone) into this kitchen browser (PC). */
+  /** Pull orders from Redis even before PIN: kitchen tab can sit on the gate while phones order. */
   useEffect(() => {
-    if (!storeHydrated || !unlocked) return;
+    if (!storeHydrated) return;
     let cancelled = false;
     const pull = async () => {
       try {
@@ -552,7 +552,7 @@ export default function AdminPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [storeHydrated, unlocked, mergeOrderFromInbox]);
+  }, [storeHydrated, mergeOrderFromInbox]);
 
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);
