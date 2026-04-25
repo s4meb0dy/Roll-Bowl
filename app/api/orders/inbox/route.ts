@@ -1,3 +1,4 @@
+import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
 import type { Order } from "@/lib/types";
