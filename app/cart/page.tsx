@@ -179,24 +179,39 @@ export default function CartPage() {
 
     const order = useStore.getState().orders.find((o) => o.id === id);
 
-    // Navigate immediately: placeOrder already cleared the cart. If we await
-    // inbox/push first, a slow or hanging fetch leaves the user on /cart with
-    // an empty cart and no confirmation screen.
+    // Inbox must complete *before* client navigation. A background fetch started
+    // right before router.push is often aborted (SPA navigation), so the kitchen
+    // never sees the order in Redis from phones.
+    if (order) {
+      const ac = new AbortController();
+      const t = window.setTimeout(() => ac.abort(), 12_000);
+      try {
+        const inboxRes = await fetch("/api/orders/inbox", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order }),
+          signal: ac.signal,
+          keepalive: true,
+        });
+        if (!inboxRes.ok) {
+          console.error("[orders/inbox] HTTP", inboxRes.status, await inboxRes.text().catch(() => ""));
+        }
+      } catch (e) {
+        const err = e as Error;
+        if (err.name !== "AbortError") {
+          console.error("[orders/inbox]", e);
+        }
+      } finally {
+        window.clearTimeout(t);
+      }
+    }
+
+    // POS can stay async — kitchen inbox already has the order if POST succeeded.
     setPlacing(false);
     router.push(`/order-confirmed?id=${id}`);
 
     if (order) {
       void (async () => {
-        try {
-          await fetch("/api/orders/inbox", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order }),
-            keepalive: true,
-          });
-        } catch (e) {
-          console.error("[orders/inbox]", e);
-        }
         try {
           const res = await fetch("/api/orders/push", {
             method: "POST",
