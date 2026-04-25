@@ -1,8 +1,8 @@
 import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
+import { getInboxRedis, isWrongTypeError } from "@/lib/orders/inboxRedis";
 
 const LIST_KEY = "order:inbox";
 const MAX_LEN = 200;
@@ -24,8 +24,24 @@ export async function GET() {
   if (!isOrderInboxConfigured()) {
     return NextResponse.json({ orders: [] as Order[], inboxEnabled: false });
   }
+  const redis = getInboxRedis();
+  const read = async () => {
+    return (await redis.lrange(LIST_KEY, 0, MAX_LEN - 1)) as string[];
+  };
+
   try {
-    const raw = (await kv.lrange(LIST_KEY, 0, MAX_LEN - 1)) as string[];
+    let raw: string[];
+    try {
+      raw = await read();
+    } catch (e) {
+      if (isWrongTypeError(e)) {
+        // Key was e.g. a string from a bug or manual set — make it a list again.
+        await redis.del(LIST_KEY);
+        raw = [];
+      } else {
+        throw e;
+      }
+    }
     const byId = new Map<string, Order>();
     for (const j of raw) {
       try {
@@ -41,8 +57,15 @@ export async function GET() {
     return NextResponse.json({ orders, inboxEnabled: true });
   } catch (e) {
     console.error("[orders/inbox] GET", e);
+    const debug = process.env.ORDER_INBOX_DEBUG === "1";
+    const errMsg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { orders: [] as Order[], inboxEnabled: true, error: "read_failed" },
+      {
+        orders: [] as Order[],
+        inboxEnabled: true,
+        error: "read_failed",
+        ...(debug ? { read_error: errMsg } : {}),
+      },
       { status: 500 }
     );
   }
@@ -63,10 +86,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing or invalid order" }, { status: 400 });
   }
   try {
-    await kv.lpush(LIST_KEY, JSON.stringify(order));
-    await kv.ltrim(LIST_KEY, 0, MAX_LEN - 1);
+    const redis = getInboxRedis();
+    await redis.lpush(LIST_KEY, JSON.stringify(order));
+    await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
     return NextResponse.json({ ok: true, stored: true });
   } catch (e) {
+    if (isWrongTypeError(e)) {
+      const redis = getInboxRedis();
+      try {
+        await redis.del(LIST_KEY);
+        await redis.lpush(LIST_KEY, JSON.stringify(order));
+        await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
+        return NextResponse.json({ ok: true, stored: true, recovered: "wrongtype" });
+      } catch (e2) {
+        console.error("[orders/inbox] POST after wrongtype del", e2);
+      }
+    }
     console.error("[orders/inbox] POST", e);
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Store failed" },
