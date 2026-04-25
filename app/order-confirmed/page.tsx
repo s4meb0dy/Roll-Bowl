@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock } from "lucide-react";
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
+import type { Order } from "@/lib/types";
 
 function ConfirmedContent() {
   const params = useSearchParams();
@@ -15,10 +16,65 @@ function ConfirmedContent() {
   const t = useT();
   const orders = useStore((s) => s.orders);
   const [mounted, setMounted] = useState(false);
+  const inboxPostOk = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
   const order = mounted ? orders.find((o) => o.id === orderId) : undefined;
+
+  /**
+   * iOS Safari / some phones drop the first POST from /cart during soft navigation.
+   * Re-POST the order from this stable page so Redis gets a reliable write.
+   */
+  useEffect(() => {
+    if (!orderId || typeof window === "undefined") return;
+
+    const post = async (o: Order) => {
+      if (inboxPostOk.current) return;
+      const url = `${window.location.origin}/api/orders/inbox`;
+      let body: string;
+      try {
+        body = JSON.stringify(JSON.parse(JSON.stringify({ order: o })) as { order: Order });
+      } catch {
+        body = JSON.stringify({ order: o });
+      }
+      try {
+        let r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+        });
+        if (r.ok) {
+          inboxPostOk.current = true;
+          return;
+        }
+        r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+        });
+        if (r.ok) inboxPostOk.current = true;
+      } catch {
+        /* retry via delayed ticks */
+      }
+    };
+
+    const tryNow = () => {
+      if (inboxPostOk.current) return;
+      const o = useStore.getState().orders.find((x) => x.id === orderId);
+      if (o) void post(o);
+    };
+
+    tryNow();
+    const t1 = setTimeout(tryNow, 400);
+    const t2 = setTimeout(tryNow, 2_000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [orderId, orders]);
 
   useEffect(() => {
     const t = setInterval(
