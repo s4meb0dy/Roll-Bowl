@@ -8,7 +8,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ADMIN_PIN = process.env.ADMIN_PIN ?? "1234";
+const ADMIN_PIN = process.env.ADMIN_PIN ?? "4355";
 
 export async function POST(req: Request) {
   const pin = req.headers.get("x-admin-pin");

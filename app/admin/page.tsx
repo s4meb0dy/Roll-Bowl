@@ -35,7 +35,7 @@ import type { Order, OrderStatus } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 
-const ADMIN_PIN = "1234";
+const ADMIN_PIN = "4355";
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
 

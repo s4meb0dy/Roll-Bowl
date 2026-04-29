@@ -27,7 +27,7 @@ import {
 import type { InventoryCategoryConfig, InventoryItemEntry } from "@/lib/inventory/config";
 import type { InventoryCategoryId } from "@/lib/inventory/types";
 
-const ADMIN_PIN = "1234";
+const ADMIN_PIN = "4355";
 
 function PinGate({ onUnlock }: { onUnlock: (pin: string) => void }) {
   const [pin, setPin] = useState("");

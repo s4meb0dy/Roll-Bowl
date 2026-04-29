@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * The PIN matches the one in `app/admin/page.tsx` so the existing kitchen
  * terminal unlock continues to work without new configuration.
  */
-const ADMIN_PIN = process.env.ADMIN_PIN ?? "1234";
+const ADMIN_PIN = process.env.ADMIN_PIN ?? "4355";
 
 export async function GET() {
   const state = await readInventory();
