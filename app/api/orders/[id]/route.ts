@@ -2,6 +2,7 @@ import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { OrderLightspeedMeta, OrderStatus } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
+import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
   getOrderById,
   patchOrderFields,
@@ -84,6 +85,12 @@ export async function GET(
     }
     return NextResponse.json({ order });
   } catch (e) {
+    if (isInboxUnreachableError(e)) {
+      return NextResponse.json(
+        { error: "inbox_unavailable" },
+        { status: 503 }
+      );
+    }
     console.error("[orders/:id] GET", e);
     return NextResponse.json({ error: "read_failed" }, { status: 500 });
   }
@@ -139,6 +146,14 @@ export async function PATCH(
       version: result.version,
     });
   } catch (e) {
+    if (isInboxUnreachableError(e)) {
+      // Local dev without Upstash, or transient outage — admin's optimistic
+      // UI already updated; nothing useful for us to do here.
+      return NextResponse.json(
+        { ok: false, error: "inbox_unavailable" },
+        { status: 503 }
+      );
+    }
     console.error("[orders/:id] PATCH", e);
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Update failed" },

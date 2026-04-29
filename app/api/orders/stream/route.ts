@@ -1,6 +1,7 @@
 import "@/lib/orders/ensureKvEnv";
 import type { NextRequest } from "next/server";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
+import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
   getRecentOrders,
   getVersion,
@@ -70,8 +71,12 @@ export async function GET(req: NextRequest) {
       // Initial snapshot. If the inbox isn't configured yet, return an empty
       // snapshot and a hint so the client doesn't sit on a busy retry loop.
       let lastVersion = 0;
+      // Track whether the inbox is *actually* talking to us this session. We
+      // start optimistic; the first failed fetch flips this off and the loop
+      // below will skip polling so we don't spam the dev console.
+      let inboxLive = inboxOn;
       try {
-        if (inboxOn) {
+        if (inboxLive) {
           const [orders, version] = await Promise.all([
             getRecentOrders(READ_LIMIT),
             getVersion(),
@@ -90,12 +95,25 @@ export async function GET(req: NextRequest) {
           );
         }
       } catch (e) {
-        console.error("[orders/stream] initial snapshot", e);
-        safeEnqueue(
-          sseEvent("error", {
-            message: e instanceof Error ? e.message : "snapshot_failed",
-          })
-        );
+        if (isInboxUnreachableError(e)) {
+          // Treat unreachable Upstash exactly like "not configured" — the
+          // kitchen UI keeps working off localStorage in offline mode.
+          inboxLive = false;
+          safeEnqueue(
+            sseEvent("snapshot", {
+              orders: [],
+              version: 0,
+              inboxEnabled: false,
+            })
+          );
+        } else {
+          console.error("[orders/stream] initial snapshot", e);
+          safeEnqueue(
+            sseEvent("error", {
+              message: e instanceof Error ? e.message : "snapshot_failed",
+            })
+          );
+        }
       }
 
       let lastKeepalive = Date.now();
@@ -105,7 +123,7 @@ export async function GET(req: NextRequest) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         if (closed) break;
 
-        if (inboxOn) {
+        if (inboxLive) {
           try {
             const v = await getVersion();
             if (v !== lastVersion) {
@@ -118,12 +136,18 @@ export async function GET(req: NextRequest) {
               continue;
             }
           } catch (e) {
-            console.error("[orders/stream] poll", e);
-            safeEnqueue(
-              sseEvent("error", {
-                message: e instanceof Error ? e.message : "poll_failed",
-              })
-            );
+            if (isInboxUnreachableError(e)) {
+              // Lost the link to Upstash mid-stream. Stop polling; the SSE
+              // socket will close at MAX_LIFETIME and the client reconnects.
+              inboxLive = false;
+            } else {
+              console.error("[orders/stream] poll", e);
+              safeEnqueue(
+                sseEvent("error", {
+                  message: e instanceof Error ? e.message : "poll_failed",
+                })
+              );
+            }
           }
         }
 

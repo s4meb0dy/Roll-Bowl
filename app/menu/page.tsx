@@ -20,7 +20,6 @@ import SimpleItemSection from "@/components/SimpleItemSection";
 import { SIGNATURE_ROLLS, SMOOTHIE_BOWLS, EXTRAS, DESSERTEN, DRANKEN } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
-import UpsellPanel from "@/components/UpsellPanel";
 import MenuCategoryScrubber from "@/components/MenuCategoryScrubber";
 import CafeClosedNotice from "@/components/CafeClosedNotice";
 import { useInventory, useInventorySync } from "@/lib/inventory/client";
@@ -366,7 +365,6 @@ export default function MenuPage() {
       <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6 sm:pt-3">
         <CafeClosedNotice />
       </div>
-      <UpsellPanel />
 
       <div className="sticky top-16 z-40 border-b border-ink-200/60 bg-white/85 backdrop-blur-md">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">

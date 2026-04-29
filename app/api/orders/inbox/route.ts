@@ -2,6 +2,7 @@ import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
+import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
   getRecentOrders,
   getVersion,
@@ -54,6 +55,16 @@ export async function GET() {
     ]);
     return NextResponse.json({ orders, version, inboxEnabled: true });
   } catch (e) {
+    if (isInboxUnreachableError(e)) {
+      // Local dev / transient outage — quietly degrade so the kitchen UI
+      // simply shows "no orders yet" instead of an error toast.
+      return NextResponse.json({
+        orders: [] as Order[],
+        version: 0,
+        inboxEnabled: false,
+        error: "inbox_unavailable",
+      });
+    }
     console.error("[orders/inbox] GET", e);
     const debug = process.env.ORDER_INBOX_DEBUG === "1";
     const errMsg = e instanceof Error ? e.message : String(e);
@@ -104,6 +115,18 @@ export async function POST(req: Request) {
       version,
     });
   } catch (e) {
+    if (isInboxUnreachableError(e)) {
+      // Local dev or transient outage. Cart.tsx falls back to sendBeacon and
+      // the order is still saved in localStorage on the customer's device.
+      return NextResponse.json(
+        {
+          ok: false,
+          stored: false,
+          reason: "inbox_unavailable",
+        },
+        { status: 503 }
+      );
+    }
     console.error("[orders/inbox] POST", e);
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Store failed" },

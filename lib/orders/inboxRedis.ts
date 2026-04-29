@@ -16,10 +16,35 @@ export function getInboxRedis(): VercelKV {
   return createClient({ url, token });
 }
 
-export function isWrongTypeError(e: unknown): boolean {
-  const m = (e && typeof e === "object" && "message" in e
+function errorMessage(e: unknown): string {
+  return (e && typeof e === "object" && "message" in e
     ? String((e as Error).message)
     : String(e)
   ).toLowerCase();
+}
+
+export function isWrongTypeError(e: unknown): boolean {
+  const m = errorMessage(e);
   return m.includes("wrongtype") || m.includes("wrong kind of value");
+}
+
+/**
+ * True for "Upstash REST is currently unreachable" — typical when running
+ * `next dev` on a laptop without the env vars filled in, or when offline.
+ *
+ * Callers should map these to HTTP 503 ("inbox_unavailable") instead of 500
+ * so the kitchen client treats them as transient and keeps the optimistic
+ * UI quiet.
+ */
+export function isInboxUnreachableError(e: unknown): boolean {
+  const m = errorMessage(e);
+  return (
+    m.includes("fetch failed") ||
+    m.includes("kv_rest_api_url") ||
+    m.includes("econnrefused") ||
+    m.includes("enotfound") ||
+    m.includes("etimedout") ||
+    m.includes("getaddrinfo") ||
+    m.includes("network request failed")
+  );
 }

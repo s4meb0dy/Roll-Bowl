@@ -51,8 +51,14 @@ export const SLOT_INTERVAL_MINUTES = 15;
 /** Minimum minutes between "now" and the first selectable slot. */
 export const PREP_LEAD_MINUTES = 30;
 
-/** Maximum days ahead a customer may schedule an order. */
-export const MAX_SCHEDULE_DAYS = 2;
+/**
+ * Maximum days ahead a customer may schedule an order.
+ *
+ * `0` = same-day only (no scheduling for tomorrow / day-after). The kitchen
+ * prefers to handle each day's mise en place fresh, so we don't take orders
+ * for future days from the storefront.
+ */
+export const MAX_SCHEDULE_DAYS = 0;
 
 export interface TimeSlot {
   /** ISO datetime of the slot. */

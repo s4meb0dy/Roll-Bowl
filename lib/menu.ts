@@ -1219,3 +1219,39 @@ export const DRANKEN: ReadyMadeItem[] = [
   { id: "mocktail-ginger-mule",   name: "Mocktail Ginger Mule",            emoji: "🫚", price: 4.50, image: "/drinks/mocktail-ginger-mule.png", description: "", ingredients: "", tags: [] },
   { id: "grannys-secret",         name: "Granny's Secret",                 emoji: "🍷", price: 3.00, description: "Huisgemaakte drank van rood fruit.", ingredients: "", tags: [] },
 ];
+
+// ─── Lookup helpers ───────────────────────────────────────────────────────────
+
+/**
+ * All ready-made / fixed-recipe items in one flat list. Builders are excluded
+ * since their composition lives on the cart-item itself.
+ */
+const ALL_READY_MADE_ITEMS: ReadyMadeItem[] = [
+  ...READY_MADE,
+  ...BURRITOS,
+  ...SIGNATURE_ROLLS,
+  ...SMOOTHIES,
+  ...SMOOTHIE_BOWLS,
+  ...EXTRAS,
+  ...DESSERTEN,
+  ...DRANKEN,
+];
+
+let _readyMadeIndex: Map<string, ReadyMadeItem> | null = null;
+
+/**
+ * O(1) lookup of a ready-made menu item by id (used by the kitchen receipt
+ * + admin order card to print ingredient lists for fixed-recipe positions).
+ *
+ * Lazy: builds the index on first call so module load stays cheap.
+ */
+export function findReadyMadeById(id: string | undefined | null): ReadyMadeItem | null {
+  if (!id) return null;
+  if (!_readyMadeIndex) {
+    _readyMadeIndex = new Map();
+    for (const item of ALL_READY_MADE_ITEMS) {
+      _readyMadeIndex.set(item.id, item);
+    }
+  }
+  return _readyMadeIndex.get(id) ?? null;
+}

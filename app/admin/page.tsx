@@ -33,6 +33,7 @@ import {
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
+import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 
 const ADMIN_PIN = "1234";
 const STORAGE_KEY = "roll-bowl-store";
@@ -75,14 +76,6 @@ function OrderCard({
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString("nl-BE", { day: "2-digit", month: "short", year: "numeric" });
-  };
-
-  const formatComponents = (item: Order["items"][0]): string => {
-    if (item.type !== "custom" || !item.components) return "";
-    const { base, protein, toppings, sauce } = item.components;
-    return [base?.name, protein?.name, toppings.map((t) => t.name).join(", "), sauce?.name]
-      .filter(Boolean)
-      .join(" · ");
   };
 
   return (
@@ -171,17 +164,15 @@ function OrderCard({
         </div>
 
         <div className="flex flex-col items-end gap-2 text-right">
-          {order.status !== "pending" && (
-            <button
-              type="button"
-              onClick={() => onPrintReceipt(order.id)}
-              className="no-print flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
-              title="Bon afdrukken"
-            >
-              <Printer size={14} />
-              Print
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => onPrintReceipt(order.id)}
+            className="no-print flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+            title="Keukenbon (her)afdrukken"
+          >
+            <Printer size={14} />
+            Print
+          </button>
           <div>
             <div className="font-bold text-neutral-800">€{order.total.toFixed(2)}</div>
             <div className="text-xs text-neutral-400">
@@ -228,35 +219,48 @@ function OrderCard({
       </div>
 
       <div className="divide-y divide-neutral-50 px-5">
-        {order.items.map((item) => (
-          <div key={item.cartId} className="py-3">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-neutral-800">
-                    {item.quantity}× {item.name}
-                  </span>
-                  <span className="text-xs text-neutral-400 capitalize">
-                    ({item.type})
-                  </span>
+        {order.items.map((item) => {
+          const lines = describeCartItemForKitchen(item);
+          return (
+            <div key={item.cartId} className="py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-neutral-800">
+                      {item.quantity}× {item.name}
+                    </span>
+                    <span className="text-xs text-neutral-400 capitalize">
+                      ({item.type})
+                    </span>
+                  </div>
+                  {lines.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 rounded-lg bg-neutral-50 px-3 py-2 text-xs leading-snug text-neutral-700">
+                      {lines.map((l, idx) => (
+                        <li
+                          key={idx}
+                          className={l.accent ? "font-semibold text-amber-800" : ""}
+                        >
+                          <span className="font-semibold text-neutral-500">
+                            {l.label}:
+                          </span>{" "}
+                          {l.value}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {item.note && (
+                    <p className="mt-1 flex items-start gap-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-900">
+                      📝 {item.note}
+                    </p>
+                  )}
                 </div>
-                {item.type === "custom" && item.components && (
-                  <p className="mt-0.5 text-xs text-neutral-500">
-                    {formatComponents(item)}
-                  </p>
-                )}
-                {item.note && (
-                  <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-wood-500">
-                    📝 {item.note}
-                  </p>
-                )}
+                <span className="shrink-0 text-sm font-semibold text-neutral-700">
+                  €{(item.price * item.quantity).toFixed(2)}
+                </span>
               </div>
-              <span className="text-sm font-semibold text-neutral-700">
-                €{(item.price * item.quantity).toFixed(2)}
-              </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className={`border-t px-5 py-3 ${order.paymentMethod === "cash" ? "border-amber-100 bg-amber-50" : "border-neutral-100 bg-neutral-50"}`}>

@@ -106,12 +106,6 @@ function ConfirmedContent() {
           </span>
         </p>
       )}
-      {orderId && order?.lightspeed?.state === "success" && (
-        <p className="mb-5 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm font-medium text-emerald-900 sm:mb-6 sm:text-center">
-          ✓ Doorgegeven aan de keuken (POS{order.lightspeed.saleId && order.lightspeed.saleId !== "dry-run" ? ` · ${order.lightspeed.saleId}` : ""}
-          {order.lightspeed.dryRun && " — testmodus"}).
-        </p>
-      )}
       {orderId && order?.lightspeed?.state === "failed" && (
         <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-950 sm:mb-6 sm:text-center">
           Je bestelling is binnen. Konden we niet bevestigen bij het kassasysteem — bel de zaak indien nodig.{" "}

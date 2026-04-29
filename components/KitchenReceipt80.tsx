@@ -1,6 +1,7 @@
 "use client";
 
 import type { Order } from "@/lib/types";
+import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 
 /**
  * 80mm thermal receipt (labels in Dutch) for kitchen / kiosk printing.
@@ -87,14 +88,33 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
 
       <div className="font-mono text-[11px] leading-snug">
         <div className="mb-1 font-bold uppercase">Artikelen</div>
-        {order.items.map((item) => (
-          <div key={item.cartId} className="mb-1.5 flex justify-between gap-2">
-            <span className="max-w-[48mm] flex-1">
-              {item.quantity}× {item.name}
-            </span>
-            <span className="shrink-0">€{(item.price * item.quantity).toFixed(2)}</span>
-          </div>
-        ))}
+        {order.items.map((item) => {
+          const lines = describeCartItemForKitchen(item);
+          return (
+            <div key={item.cartId} className="mb-2">
+              <div className="flex justify-between gap-2">
+                <span className="max-w-[48mm] flex-1 font-bold">
+                  {item.quantity}× {item.name}
+                </span>
+                <span className="shrink-0">€{(item.price * item.quantity).toFixed(2)}</span>
+              </div>
+              {lines.length > 0 && (
+                <div className="mt-0.5 pl-3 text-[10px] leading-tight">
+                  {lines.map((l, idx) => (
+                    <div key={idx} className={l.accent ? "font-bold" : ""}>
+                      {l.label}: {l.value}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {item.note && (
+                <div className="mt-0.5 pl-3 text-[10px] font-bold uppercase">
+                  ★ {item.note}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="my-2 border-t border-dashed border-neutral-400" />

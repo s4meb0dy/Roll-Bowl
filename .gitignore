@@ -26,3 +26,6 @@ next-env.d.ts
 # Runtime-generated inventory overrides (persisted at /data/inventory.json)
 /data/*.json
 
+# Vercel CLI link (project + deployment metadata)
+.vercel/
+
