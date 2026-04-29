@@ -2,10 +2,13 @@ import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
-import { getInboxRedis, isWrongTypeError } from "@/lib/orders/inboxRedis";
+import {
+  getRecentOrders,
+  getVersion,
+  storeNewOrder,
+} from "@/lib/orders/inboxStore";
 
-const LIST_KEY = "order:inbox";
-const MAX_LEN = 200;
+const READ_LIMIT = 200;
 
 function validateOrderInboxPayload(
   o: unknown
@@ -30,44 +33,26 @@ function validateOrderInboxPayload(
 }
 
 /**
- * GET — recent orders for the kitchen / admin to merge (cross-device).
- * POST — append a new order after checkout (so PC kitchen sees phone orders).
+ * GET — recent orders + global write version. The kitchen pulls this on
+ * mount and after losing the SSE connection.
+ *
+ * POST — idempotent create: storing the same id twice (e.g. cart retry)
+ * leaves the existing server-side record untouched.
  */
 export async function GET() {
   if (!isOrderInboxConfigured()) {
-    return NextResponse.json({ orders: [] as Order[], inboxEnabled: false });
+    return NextResponse.json({
+      orders: [] as Order[],
+      version: 0,
+      inboxEnabled: false,
+    });
   }
-  const redis = getInboxRedis();
-  const read = async () => {
-    return (await redis.lrange(LIST_KEY, 0, MAX_LEN - 1)) as string[];
-  };
-
   try {
-    let raw: string[];
-    try {
-      raw = await read();
-    } catch (e) {
-      if (isWrongTypeError(e)) {
-        // Key was e.g. a string from a bug or manual set — make it a list again.
-        await redis.del(LIST_KEY);
-        raw = [];
-      } else {
-        throw e;
-      }
-    }
-    const byId = new Map<string, Order>();
-    for (const j of raw) {
-      try {
-        const o = JSON.parse(j) as Order;
-        if (o?.id) byId.set(o.id, o);
-      } catch {
-        /* skip */
-      }
-    }
-    const orders = [...byId.values()].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    return NextResponse.json({ orders, inboxEnabled: true });
+    const [orders, version] = await Promise.all([
+      getRecentOrders(READ_LIMIT),
+      getVersion(),
+    ]);
+    return NextResponse.json({ orders, version, inboxEnabled: true });
   } catch (e) {
     console.error("[orders/inbox] GET", e);
     const debug = process.env.ORDER_INBOX_DEBUG === "1";
@@ -75,6 +60,7 @@ export async function GET() {
     return NextResponse.json(
       {
         orders: [] as Order[],
+        version: 0,
         inboxEnabled: true,
         error: "read_failed",
         ...(debug ? { read_error: errMsg } : {}),
@@ -86,7 +72,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   if (!isOrderInboxConfigured()) {
-    return NextResponse.json({ ok: true, stored: false, reason: "inbox_not_configured" });
+    return NextResponse.json({
+      ok: true,
+      stored: false,
+      reason: "inbox_not_configured",
+    });
   }
   let body: unknown;
   try {
@@ -105,24 +95,15 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const order = checked.order;
   try {
-    const redis = getInboxRedis();
-    await redis.lpush(LIST_KEY, JSON.stringify(order));
-    await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
-    return NextResponse.json({ ok: true, stored: true });
+    const { created, version } = await storeNewOrder(checked.order);
+    return NextResponse.json({
+      ok: true,
+      stored: true,
+      duplicate: !created,
+      version,
+    });
   } catch (e) {
-    if (isWrongTypeError(e)) {
-      const redis = getInboxRedis();
-      try {
-        await redis.del(LIST_KEY);
-        await redis.lpush(LIST_KEY, JSON.stringify(order));
-        await redis.ltrim(LIST_KEY, 0, MAX_LEN - 1);
-        return NextResponse.json({ ok: true, stored: true, recovered: "wrongtype" });
-      } catch (e2) {
-        console.error("[orders/inbox] POST after wrongtype del", e2);
-      }
-    }
     console.error("[orders/inbox] POST", e);
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Store failed" },

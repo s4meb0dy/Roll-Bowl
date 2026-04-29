@@ -151,6 +151,7 @@ const nl: Dict = {
   "step.protein": "Keuze proteïne",
   "step.extra_protein": "Keuze extra proteïne",
   "step.topping": "Keuze topping {n}",
+  "step.extra_topping": "Keuze extra topping",
   "step.protein_scoop": "Keuze proteïne scoop",
 
   // bowl builder
@@ -376,6 +377,7 @@ const en: Dict = {
   "step.protein": "Choose protein",
   "step.extra_protein": "Choose extra protein",
   "step.topping": "Choose topping {n}",
+  "step.extra_topping": "Choose extra topping",
   "step.protein_scoop": "Choose protein scoop",
 
   "bowl.added_sub": "Your poke bowl is in your basket.",
@@ -594,6 +596,7 @@ const fr: Dict = {
   "step.protein": "Choix de la protéine",
   "step.extra_protein": "Choix de la protéine supplémentaire",
   "step.topping": "Choix du topping {n}",
+  "step.extra_topping": "Choix du topping supplémentaire",
   "step.protein_scoop": "Choix du scoop de protéine",
 
   "bowl.added_sub": "Votre poke bowl est dans votre panier.",

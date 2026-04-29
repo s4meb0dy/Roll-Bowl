@@ -312,7 +312,9 @@ export default function CartPage() {
     if (s.protein && s.protein.name !== "Geen proteine") parts.push(s.protein.name);
     if (s.saus && s.saus.name !== "Geen saus") parts.push(s.saus.name);
     [s.mixin1, s.mixin2, s.mixin3].forEach((m) => { if (m) parts.push(m.name); });
+    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
     [s.topping1, s.topping2].forEach((t) => { if (t && t.name !== "Geen toppings") parts.push(t.name); });
+    if (s.extraTopping) parts.push(`+ ${s.extraTopping.name}`);
     return parts.join(" · ");
   };
 
@@ -321,9 +323,7 @@ export default function CartPage() {
     if (!s) return "";
     const parts: string[] = [];
     if (s.protein) parts.push(s.protein.name);
-    if (s.extraProtein) parts.push(`+ ${s.extraProtein.name}`);
     [s.mixin1, s.mixin2].forEach((m) => { if (m) parts.push(m.name); });
-    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
     if (s.sauce && s.sauce.name !== "Geen saus") parts.push(s.sauce.name);
     return parts.join(" · ");
   };
@@ -333,9 +333,7 @@ export default function CartPage() {
     if (!s) return "";
     const parts: string[] = [];
     if (s.protein) parts.push(s.protein.name);
-    if (s.extraProtein) parts.push(`+ ${s.extraProtein.name}`);
     [s.mixin1, s.mixin2].forEach((m) => { if (m) parts.push(m.name); });
-    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
     if (s.sauce && s.sauce.name !== "Geen saus") parts.push(s.sauce.name);
     if (s.topping && s.topping.name !== "Geen topping") parts.push(s.topping.name);
     return parts.join(" · ");
@@ -349,14 +347,15 @@ export default function CartPage() {
     if (s.saus1 && s.saus1.name !== "Geen saus") parts.push(s.saus1.name);
     if (s.saus2 && s.saus2.name !== "Geen saus") parts.push(s.saus2.name);
     if (s.protein && s.protein.name !== "Geen proteine") parts.push(s.protein.name);
-    if (s.extraProtein) parts.push(s.extraProtein.name);
+    if (s.extraProtein) parts.push(`+ ${s.extraProtein.name}`);
     [s.mixin1, s.mixin2, s.mixin3, s.mixin4, s.mixin5].forEach((m) => {
       if (m) parts.push(m.name);
     });
-    if (s.extraMixin) parts.push(s.extraMixin.name);
+    if (s.extraMixin) parts.push(`+ ${s.extraMixin.name}`);
     [s.topping1, s.topping2, s.topping3].forEach((t) => {
       if (t && t.name !== "Geen toppings") parts.push(t.name);
     });
+    if (s.extraTopping) parts.push(`+ ${s.extraTopping.name}`);
     return parts.join(" · ");
   };
 

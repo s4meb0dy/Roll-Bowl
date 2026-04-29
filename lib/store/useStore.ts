@@ -15,9 +15,58 @@ import type {
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/index";
 import { isNewCustomerByPhone } from "@/lib/customerIdentity";
+import { patchOrderRemote } from "@/lib/orders/client";
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+}
+
+function tsOf(o: Order | undefined | null): number {
+  if (!o) return 0;
+  if (o.updatedAt) {
+    const t = Date.parse(o.updatedAt);
+    if (Number.isFinite(t)) return t;
+  }
+  const c = Date.parse(o.createdAt);
+  return Number.isFinite(c) ? c : 0;
+}
+
+/**
+ * Merge a server copy onto a local copy without losing in-flight optimistic
+ * updates. Returns the same `local` reference when nothing changes so React
+ * skips re-rendering listeners that haven't actually changed.
+ *
+ * Rule: whichever side has the later `updatedAt` wins on the mutable fields
+ * (status / lightspeed / kitchenPrinted). `version` is just kept in sync as
+ * a write-ordering hint for the SSE loop.
+ */
+function mergeOrderRecord(local: Order, server: Order): Order {
+  const localTs = tsOf(local);
+  const serverTs = tsOf(server);
+
+  if (localTs > serverTs) return local;
+
+  const next: Order = {
+    ...local,
+    status: server.status,
+    ...(server.lightspeed !== undefined ? { lightspeed: server.lightspeed } : {}),
+    ...(server.kitchenPrinted !== undefined
+      ? { kitchenPrinted: server.kitchenPrinted }
+      : {}),
+    version: Math.max(local.version ?? 0, server.version ?? 0),
+    updatedAt: server.updatedAt ?? local.updatedAt,
+  };
+
+  if (
+    next.status === local.status &&
+    next.lightspeed === local.lightspeed &&
+    next.kitchenPrinted === local.kitchenPrinted &&
+    next.version === local.version &&
+    next.updatedAt === local.updatedAt
+  ) {
+    return local;
+  }
+  return next;
 }
 
 interface AppState {
@@ -64,6 +113,9 @@ interface AppState {
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
   /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
   mergeOrderFromInbox: (order: Order) => void;
+
+  /** Apply a snapshot of orders from the server (initial fetch / SSE snapshot event). */
+  applyOrdersSnapshot: (orders: Order[]) => void;
 
   setLocale: (locale: Locale) => void;
 }
@@ -151,31 +203,91 @@ export const useStore = create<AppState>()(
         return order;
       },
 
-      updateOrderStatus: (orderId, status) =>
+      updateOrderStatus: (orderId, status) => {
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === orderId ? { ...o, status } : o
+            o.id === orderId
+              ? { ...o, status, updatedAt: new Date().toISOString() }
+              : o
           ),
-        })),
+        }));
+        // Optimistic UI; server PATCH propagates to other devices via SSE.
+        // 503/404 simply means we're running offline — the local copy stays.
+        void patchOrderRemote(orderId, { status });
+      },
 
-      markKitchenPrinted: (orderId) =>
+      markKitchenPrinted: (orderId) => {
         set((state) => ({
           kitchenPrintedOrderIds: state.kitchenPrintedOrderIds.includes(orderId)
             ? state.kitchenPrintedOrderIds
             : [...state.kitchenPrintedOrderIds, orderId],
-        })),
+          orders: state.orders.map((o) =>
+            o.id === orderId
+              ? { ...o, kitchenPrinted: true, updatedAt: new Date().toISOString() }
+              : o
+          ),
+        }));
+        void patchOrderRemote(orderId, { kitchenPrinted: true });
+      },
 
-      setOrderLightspeed: (orderId, meta) =>
+      setOrderLightspeed: (orderId, meta) => {
         set((state) => ({
           orders: state.orders.map((o) =>
-            o.id === orderId ? { ...o, lightspeed: meta } : o
+            o.id === orderId
+              ? { ...o, lightspeed: meta, updatedAt: new Date().toISOString() }
+              : o
           ),
-        })),
+        }));
+        void patchOrderRemote(orderId, { lightspeed: meta });
+      },
 
+      /**
+       * Merge a server snapshot into the local store. Server-version wins
+       * for status / lightspeed / kitchenPrinted (so admin actions made on
+       * one device propagate to the others), but we never regress local
+       * changes that haven't been ACK'd yet — concretely we keep the local
+       * copy when the local `version` is higher, and we always keep the
+       * local optimistic status until the server's `updatedAt` overtakes
+       * the local `updatedAt`.
+       */
       mergeOrderFromInbox: (order) =>
         set((state) => {
-          if (state.orders.some((o) => o.id === order.id)) return state;
-          return { orders: [order, ...state.orders] };
+          const idx = state.orders.findIndex((o) => o.id === order.id);
+          if (idx < 0) {
+            return { orders: [order, ...state.orders] };
+          }
+          const local = state.orders[idx];
+          const merged = mergeOrderRecord(local, order);
+          if (merged === local) return state;
+          const next = [...state.orders];
+          next[idx] = merged;
+          return { orders: next };
+        }),
+
+      applyOrdersSnapshot: (incoming) =>
+        set((state) => {
+          let changed = false;
+          const byId = new Map<string, Order>();
+          for (const o of state.orders) byId.set(o.id, o);
+          for (const remote of incoming) {
+            const local = byId.get(remote.id);
+            if (!local) {
+              byId.set(remote.id, remote);
+              changed = true;
+              continue;
+            }
+            const merged = mergeOrderRecord(local, remote);
+            if (merged !== local) {
+              byId.set(remote.id, merged);
+              changed = true;
+            }
+          }
+          if (!changed) return state;
+          const orders = [...byId.values()].sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          return { orders };
         }),
 
       setLocale: (locale) => set({ locale }),

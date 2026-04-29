@@ -5,9 +5,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 import {
   CLASSIC_ROLL_BASE_PRICE,
   CLASSIC_ROLL_PROTEINS,
-  CLASSIC_ROLL_EXTRA_PROTEINS,
   CLASSIC_ROLL_MIXINS,
-  CLASSIC_ROLL_EXTRA_MIXINS,
   CLASSIC_ROLL_SAUCES,
 } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
@@ -23,10 +21,8 @@ import WizardShell from "@/components/builder/WizardShell";
 
 type SelectionKey =
   | "protein"
-  | "extraProtein"
   | "mixin1"
   | "mixin2"
-  | "extraMixin"
   | "sauce";
 
 interface StepConfig {
@@ -42,38 +38,32 @@ type BuilderState = Record<SelectionKey, BuilderOption | null>;
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
 const STEPS: StepConfig[] = [
-  { key: "protein",      labelKey: "step.protein",       options: CLASSIC_ROLL_PROTEINS },
-  { key: "extraProtein", labelKey: "step.extra_protein", options: CLASSIC_ROLL_EXTRA_PROTEINS, isOptional: true },
-  { key: "mixin1",       labelKey: "step.mixin",         labelVars: { n: 1 }, options: CLASSIC_ROLL_MIXINS },
-  { key: "mixin2",       labelKey: "step.mixin",         labelVars: { n: 2 }, options: CLASSIC_ROLL_MIXINS },
-  { key: "extraMixin",   labelKey: "step.extra_mixin",   options: CLASSIC_ROLL_EXTRA_MIXINS, isOptional: true },
-  { key: "sauce",        labelKey: "step.saus",          options: CLASSIC_ROLL_SAUCES },
+  { key: "protein", labelKey: "step.protein", options: CLASSIC_ROLL_PROTEINS },
+  { key: "mixin1",  labelKey: "step.mixin",   labelVars: { n: 1 }, options: CLASSIC_ROLL_MIXINS },
+  { key: "mixin2",  labelKey: "step.mixin",   labelVars: { n: 2 }, options: CLASSIC_ROLL_MIXINS },
+  { key: "sauce",   labelKey: "step.saus",    options: CLASSIC_ROLL_SAUCES },
 ];
 
-const TOTAL_STEPS = STEPS.length; // 6
+const TOTAL_STEPS = STEPS.length; // 4
 
 const INITIAL_STATE: BuilderState = {
   protein: null,
-  extraProtein: null,
   mixin1: null,
   mixin2: null,
-  extraMixin: null,
   sauce: null,
 };
 
 const SELECTION_KEYS: SelectionKey[] = [
   "protein",
-  "extraProtein",
   "mixin1",
   "mixin2",
-  "extraMixin",
   "sauce",
 ];
 
 const CATEGORIES: StepCategory[] = [
-  { labelKey: "cat.protein", start: 0, end: 1 },
-  { labelKey: "cat.mixins",  start: 2, end: 4 },
-  { labelKey: "cat.saus",    start: 5, end: 5 },
+  { labelKey: "cat.protein", start: 0, end: 0 },
+  { labelKey: "cat.mixins",  start: 1, end: 2 },
+  { labelKey: "cat.saus",    start: 3, end: 3 },
 ];
 
 // ─── Price computation ────────────────────────────────────────────────────────
@@ -187,16 +177,10 @@ export default function ClassicRollBuilder() {
   // ── Review step ───────────────────────────────────────────────────────────
   if (step === TOTAL_STEPS) {
     const reviewRows: [string, string][] = [
-      ["Proteïne",        state.protein?.name      ?? ""],
-      ...(state.extraProtein
-        ? [["Extra proteïne", state.extraProtein.name] as [string, string]]
-        : []),
-      ["Mix-in 1",        state.mixin1?.name       ?? ""],
-      ["Mix-in 2",        state.mixin2?.name       ?? ""],
-      ...(state.extraMixin
-        ? [["Extra mix-in",   state.extraMixin.name]   as [string, string]]
-        : []),
-      ["Saus",            state.sauce?.name        ?? ""],
+      ["Proteïne", state.protein?.name ?? ""],
+      ["Mix-in 1", state.mixin1?.name  ?? ""],
+      ["Mix-in 2", state.mixin2?.name  ?? ""],
+      ["Saus",     state.sauce?.name   ?? ""],
     ];
 
     return (

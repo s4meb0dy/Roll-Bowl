@@ -11,6 +11,7 @@ import {
   BUILDER_PROTEINS,
   BUILDER_EXTRA_PROTEINS,
   BUILDER_TOPPINGS,
+  BUILDER_EXTRA_TOPPINGS,
 } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
@@ -35,7 +36,8 @@ type SelectionKey =
   | "extraProtein"
   | "topping1"
   | "topping2"
-  | "topping3";
+  | "topping3"
+  | "extraTopping";
 
 interface StepConfig {
   key: SelectionKey;
@@ -51,7 +53,7 @@ type BuilderState = { size: BowlSize | null } & Record<
 >;
 
 const STEPS: StepConfig[] = [
-  { key: "basis",        labelKey: "step.basis",        options: BUILDER_BASES },
+  { key: "basis",        labelKey: "step.basis",         options: BUILDER_BASES },
   { key: "saus1",        labelKey: "step.saus_1",        options: BUILDER_SAUCES },
   { key: "saus2",        labelKey: "step.saus_2",        options: BUILDER_SAUCES },
   { key: "mixin1",       labelKey: "step.mixin",         labelVars: { n: 1 }, options: BUILDER_MIXINS },
@@ -65,6 +67,7 @@ const STEPS: StepConfig[] = [
   { key: "topping1",     labelKey: "step.topping",       labelVars: { n: 1 }, options: BUILDER_TOPPINGS },
   { key: "topping2",     labelKey: "step.topping",       labelVars: { n: 2 }, options: BUILDER_TOPPINGS },
   { key: "topping3",     labelKey: "step.topping",       labelVars: { n: 3 }, options: BUILDER_TOPPINGS },
+  { key: "extraTopping", labelKey: "step.extra_topping", options: BUILDER_EXTRA_TOPPINGS, isOptional: true },
 ];
 
 const TOTAL_STEPS = STEPS.length;
@@ -85,6 +88,7 @@ const INITIAL_STATE: BuilderState = {
   topping1: null,
   topping2: null,
   topping3: null,
+  extraTopping: null,
 };
 
 const SELECTION_KEYS: SelectionKey[] = [
@@ -102,6 +106,7 @@ const SELECTION_KEYS: SelectionKey[] = [
   "topping1",
   "topping2",
   "topping3",
+  "extraTopping",
 ];
 
 const CATEGORIES: StepCategory[] = [
@@ -109,7 +114,7 @@ const CATEGORIES: StepCategory[] = [
   { labelKey: "cat.saus",     start: 1,  end: 2 },
   { labelKey: "cat.mixins",   start: 3,  end: 8 },
   { labelKey: "cat.protein",  start: 9,  end: 10 },
-  { labelKey: "cat.toppings", start: 11, end: 13 },
+  { labelKey: "cat.toppings", start: 11, end: 14 },
 ];
 
 function computePrice(state: BuilderState): number {
@@ -246,17 +251,18 @@ export default function BowlBuilder() {
       ["Mix-in 3",  state.mixin3?.name    ?? ""],
       ["Mix-in 4",  state.mixin4?.name    ?? ""],
       ["Mix-in 5",  state.mixin5?.name    ?? ""],
-      ...(state.extraMixin   ? [["Extra mix-in",  state.extraMixin.name]   as [string, string]] : []),
+      ...(state.extraMixin   ? [["Extra mix-in",   state.extraMixin.name]   as [string, string]] : []),
       ["Proteïne",  state.protein?.name   ?? ""],
       ...(state.extraProtein ? [["Extra proteïne", state.extraProtein.name] as [string, string]] : []),
       ["Topping 1", state.topping1?.name  ?? ""],
       ["Topping 2", state.topping2?.name  ?? ""],
       ["Topping 3", state.topping3?.name  ?? ""],
+      ...(state.extraTopping ? [["Extra topping",  state.extraTopping.name] as [string, string]] : []),
     ];
 
     return (
       <div className="animate-slide-up">
-        <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={15} />
+        <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={16} />
 
         <h2 className="font-display mb-1 text-xl font-bold text-ink-900">{t("bowl.review_title")}</h2>
         <p className="mb-5 text-sm text-ink-500">{t("builder.review_sub")}</p>
@@ -327,7 +333,7 @@ export default function BowlBuilder() {
 
   return (
     <div className="animate-slide-up">
-      <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={15} />
+      <StepIndicator step={step} totalSteps={TOTAL_STEPS} categories={CATEGORIES} progressDenominator={16} />
 
       <WizardShell
         stepKey={step}

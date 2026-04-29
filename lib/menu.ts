@@ -454,7 +454,8 @@ export const BUILDER_SAUCES: BuilderOption[] = [
   { id: "geen-saus", name: "Geen saus", priceExtra: 0 },
   { id: "spicy-sriracha", name: "Spicy sriracha", priceExtra: 0, isVegan: true, isGlutenFree: true },
   { id: "sriracha-mayo", name: "Sriracha mayo", priceExtra: 0 },
-  { id: "chili-mayo-sweet-chili", name: "Chili mayo, sweet chili", priceExtra: 0, isVegan: true },
+  { id: "chili-mayo", name: "Chili mayo", priceExtra: 0 },
+  { id: "sweet-chili", name: "Sweet chili", priceExtra: 0, isVegan: true, isGlutenFree: true },
   { id: "goma-dressing", name: "Goma dressing", priceExtra: 0, isVegan: true },
   { id: "yoghurt-dressing", name: "Yoghurt dressing", priceExtra: 0, isGlutenFree: true },
   { id: "cheesy-lemon-flavour", name: "Cheesy lemon flavour", priceExtra: 0 },
@@ -525,17 +526,21 @@ export const BUILDER_PROTEINS: BuilderOption[] = [
   { id: "vegan-kip", name: "Vegan kip", priceExtra: 2.0 },
 ];
 
-export const BUILDER_EXTRA_MIXINS: BuilderOption[] = [
-  { id: "extra-avocado", name: "Avocado", priceExtra: 0.5 },
-  { id: "extra-guacamole", name: "Huisgemaakte guacamole", priceExtra: 0.5 },
-  { id: "extra-edamame", name: "Edamame", priceExtra: 0.5 },
-];
+export const BUILDER_EXTRA_MIXIN_PRICE = 0.5;
+export const BUILDER_EXTRA_PROTEIN_PRICE = 3.0;
+export const BUILDER_EXTRA_TOPPING_PRICE = 0.3;
 
-export const BUILDER_EXTRA_PROTEINS: BuilderOption[] = [
-  { id: "extra-zalm", name: "Zalm", priceExtra: 3.0 },
-  { id: "extra-gemarineerde-zalm", name: "Gemarineerde zalm", priceExtra: 2.0 },
-  { id: "extra-gebakken-zalm", name: "Gebakken zalm", priceExtra: 2.0 },
-];
+export const BUILDER_EXTRA_MIXINS: BuilderOption[] = withFlatPrice(
+  BUILDER_MIXINS,
+  BUILDER_EXTRA_MIXIN_PRICE,
+  "extra",
+);
+
+export const BUILDER_EXTRA_PROTEINS: BuilderOption[] = withFlatPrice(
+  BUILDER_PROTEINS.filter((p) => p.id !== "geen-proteine"),
+  BUILDER_EXTRA_PROTEIN_PRICE,
+  "extra",
+);
 
 export const BUILDER_TOPPINGS: BuilderOption[] = [
   { id: "geen-toppings", name: "Geen toppings", priceExtra: 0 },
@@ -558,6 +563,12 @@ export const BUILDER_TOPPINGS: BuilderOption[] = [
   { id: "masago", name: "Masago", priceExtra: 0 },
   { id: "citroen", name: "Schijfje citroen", priceExtra: 0 },
 ];
+
+export const BUILDER_EXTRA_TOPPINGS: BuilderOption[] = withFlatPrice(
+  BUILDER_TOPPINGS.filter((t) => t.id !== "geen-toppings"),
+  BUILDER_EXTRA_TOPPING_PRICE,
+  "extra",
+);
 
 // ─── Poké Burrito's ──────────────────────────────────────────────────────────
 
@@ -743,26 +754,41 @@ export const BURRITO_MIXINS: BuilderOption[] = [
   { id: "b-surimi",                  name: "Surimi",                                         priceExtra: 0 },
 ];
 
+export const BURRITO_EXTRA_MIXIN_PRICE = 0.5;
+export const BURRITO_EXTRA_TOPPING_PRICE = 0.3;
+
+export const BURRITO_EXTRA_MIXINS: BuilderOption[] = withFlatPrice(
+  BURRITO_MIXINS,
+  BURRITO_EXTRA_MIXIN_PRICE,
+  "b-extra",
+);
+
+export const BURRITO_EXTRA_TOPPINGS: BuilderOption[] = withFlatPrice(
+  BUILDER_TOPPINGS.filter((t) => t.id !== "geen-toppings"),
+  BURRITO_EXTRA_TOPPING_PRICE,
+  "b-extra",
+);
+
 // ─── Builder helpers ─────────────────────────────────────────────────────────
 
 /**
- * Derive an "extra" variant of a list of builder options by layering a flat
- * per-slot surcharge on top of each option's own surcharge. Used to generate
- * the "Extra proteïne" / "Extra mix-in" lists for the roll builders so each
- * option shows its full surcharge (e.g. Zalm base +€1,00 → Extra zalm +€2,00
- * when the extra-slot fee is €1,00).
+ * Derive an "extra" variant of a list of builder options by overriding each
+ * option's individual surcharge with a single flat fee. Used to generate
+ * the "Extra proteïne" / "Extra mix-in" / "Extra topping" lists where the
+ * customer pays one flat price for any pick (e.g. €3,00 for any extra
+ * protein in the bowl, regardless of which protein).
  *
  * Ids are prefixed so extras don't collide with their base counterparts.
  */
-export function withExtraSurcharge(
+export function withFlatPrice(
   options: BuilderOption[],
-  extraSurcharge: number,
+  flatPrice: number,
   idPrefix: string,
 ): BuilderOption[] {
   return options.map((opt) => ({
     ...opt,
     id: `${idPrefix}-${opt.id}`,
-    priceExtra: Math.round((opt.priceExtra + extraSurcharge) * 100) / 100,
+    priceExtra: Math.round(flatPrice * 100) / 100,
   }));
 }
 
@@ -843,8 +869,6 @@ export const SIGNATURE_ROLLS: ReadyMadeItem[] = [
 // ─── Custom Classic Roll Builder ─────────────────────────────────────────────
 
 export const CLASSIC_ROLL_BASE_PRICE = 12.40;
-export const CLASSIC_ROLL_EXTRA_PROTEIN_SURCHARGE = 1.0;
-export const CLASSIC_ROLL_EXTRA_MIXIN_SURCHARGE = 0.5;
 
 export const CLASSIC_ROLL_PROTEINS: BuilderOption[] = [
   { id: "cr-zalm",               name: "Zalm",               priceExtra: 1.0, isGlutenFree: true },
@@ -887,24 +911,6 @@ export const CLASSIC_ROLL_SAUCES: BuilderOption[] = [
   { id: "cr-goma-dressing",  name: "Goma dressing",  priceExtra: 0, isVegan: true },
 ];
 
-/**
- * Derived "extra" option lists — each option's full surcharge is its own
- * priceExtra plus the flat +€1,00 (protein) / +€0,50 (mix-in) slot fee.
- * This way the UI can render them like any other option list without
- * additional bookkeeping.
- */
-export const CLASSIC_ROLL_EXTRA_PROTEINS: BuilderOption[] = withExtraSurcharge(
-  CLASSIC_ROLL_PROTEINS,
-  CLASSIC_ROLL_EXTRA_PROTEIN_SURCHARGE,
-  "cr-extra",
-);
-
-export const CLASSIC_ROLL_EXTRA_MIXINS: BuilderOption[] = withExtraSurcharge(
-  CLASSIC_ROLL_MIXINS,
-  CLASSIC_ROLL_EXTRA_MIXIN_SURCHARGE,
-  "cr-extra",
-);
-
 // ─── Custom Inside-Out Roll Builder ──────────────────────────────────────────
 //
 // Proteïne / mix-in / saus lists are identical to the classic roll, so we
@@ -912,14 +918,10 @@ export const CLASSIC_ROLL_EXTRA_MIXINS: BuilderOption[] = withExtraSurcharge(
 // without adding dead data. Only the base price and the topping list differ.
 
 export const INSIDE_OUT_ROLL_BASE_PRICE = 12.90;
-export const INSIDE_OUT_ROLL_EXTRA_PROTEIN_SURCHARGE = CLASSIC_ROLL_EXTRA_PROTEIN_SURCHARGE;
-export const INSIDE_OUT_ROLL_EXTRA_MIXIN_SURCHARGE = CLASSIC_ROLL_EXTRA_MIXIN_SURCHARGE;
 
 export const INSIDE_OUT_ROLL_PROTEINS = CLASSIC_ROLL_PROTEINS;
 export const INSIDE_OUT_ROLL_MIXINS = CLASSIC_ROLL_MIXINS;
 export const INSIDE_OUT_ROLL_SAUCES = CLASSIC_ROLL_SAUCES;
-export const INSIDE_OUT_ROLL_EXTRA_PROTEINS = CLASSIC_ROLL_EXTRA_PROTEINS;
-export const INSIDE_OUT_ROLL_EXTRA_MIXINS = CLASSIC_ROLL_EXTRA_MIXINS;
 
 export const INSIDE_OUT_ROLL_TOPPINGS: BuilderOption[] = [
   { id: "ior-geen-topping",   name: "Geen topping",        priceExtra: 0 },

@@ -32,6 +32,7 @@ import {
   playTestKitchenAlarm,
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus } from "@/lib/types";
+import { subscribeToOrderStream } from "@/lib/orders/client";
 
 const ADMIN_PIN = "1234";
 const STORAGE_KEY = "roll-bowl-store";
@@ -392,7 +393,7 @@ export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
-  const mergeOrderFromInbox = useStore((s) => s.mergeOrderFromInbox);
+  const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -405,6 +406,9 @@ export default function AdminPage() {
   const [soundMuted, setSoundMuted] = useState(false);
   /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
+  /** Connection state for the SSE stream → drives the live status pill. */
+  const [streamConnected, setStreamConnected] = useState(false);
+  const [usingPollingFallback, setUsingPollingFallback] = useState(false);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
@@ -526,33 +530,45 @@ export default function AdminPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  /** Pull orders from Redis even before PIN: kitchen tab can sit on the gate while phones order. */
+  /**
+   * Real-time link to the kitchen inbox.
+   *
+   * SSE pushes every new order or status change within ~1.5s of the server
+   * write. Polling fallback only kicks in when the EventSource transport
+   * keeps failing (some corporate proxies strip text/event-stream).
+   *
+   * Runs even before the PIN gate is unlocked: that way the kitchen tab can
+   * sit idle on the gate while phones place orders, and the moment the PIN
+   * is entered everything is already loaded.
+   */
   useEffect(() => {
     if (!storeHydrated) return;
-    let cancelled = false;
-    const pull = async () => {
-      try {
-        const res = await fetch("/api/orders/inbox", { cache: "no-store" });
-        const data = (await res.json()) as {
-          orders?: Order[];
-          inboxEnabled?: boolean;
-        };
-        if (cancelled) return;
-        setOrderInboxEnabled(data.inboxEnabled ?? false);
-        for (const o of data.orders ?? []) {
-          mergeOrderFromInbox(o);
-        }
-      } catch (e) {
-        console.error("[admin] order inbox pull", e);
-      }
-    };
-    void pull();
-    const id = window.setInterval(pull, 8_000);
+    const unsubscribe = subscribeToOrderStream({
+      onSnapshot: (snap) => {
+        setOrderInboxEnabled(snap.inboxEnabled);
+        applyOrdersSnapshot(snap.orders);
+        setStreamConnected(true);
+        setUsingPollingFallback(false);
+        setLastChecked(new Date());
+      },
+      onUpdate: (snap) => {
+        setOrderInboxEnabled(snap.inboxEnabled);
+        applyOrdersSnapshot(snap.orders);
+        setStreamConnected(true);
+        setLastChecked(new Date());
+      },
+      onDisconnect: () => {
+        setStreamConnected(false);
+      },
+      onFallbackToPolling: () => {
+        setUsingPollingFallback(true);
+        setStreamConnected(false);
+      },
+    });
     return () => {
-      cancelled = true;
-      window.clearInterval(id);
+      unsubscribe();
     };
-  }, [storeHydrated, mergeOrderFromInbox]);
+  }, [storeHydrated, applyOrdersSnapshot]);
 
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);
@@ -633,7 +649,11 @@ export default function AdminPage() {
             )}
             {orderInboxEnabled === true && (
               <p className="mt-1 text-xs font-medium text-emerald-800">
-                Order-inbox (Redis) actief — bestellingen van andere toestellen worden elke ~8s binnengehaald.
+                {streamConnected
+                  ? "Realtime kitchen-stream actief — bestellingen en statuswijzigingen verschijnen direct op alle toestellen."
+                  : usingPollingFallback
+                    ? "Stream niet beschikbaar — terugvallen op polling om de 4s. Bestellingen blijven binnenkomen."
+                    : "Verbinding met de keuken-stream wordt opgezet…"}
               </p>
             )}
           </div>
@@ -648,15 +668,60 @@ export default function AdminPage() {
               Voorraadbeheer
             </Link>
             <div
-              className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs shadow-sm"
-              title="Live: localStorage (deze browser) + cross-tab. Telefoonorders: Redis order-inbox (zie tekst erboven)"
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-sm ${
+                streamConnected
+                  ? "border-emerald-200 bg-white"
+                  : usingPollingFallback
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-neutral-200 bg-neutral-50"
+              }`}
+              title={
+                streamConnected
+                  ? "Realtime SSE-stream actief — wijzigingen komen direct binnen"
+                  : usingPollingFallback
+                    ? "Polling-fallback actief — vernieuwt om de 4s"
+                    : "Verbinding met de stream wordt opgezet…"
+              }
             >
               <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                {streamConnected && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                    streamConnected
+                      ? "bg-emerald-500"
+                      : usingPollingFallback
+                        ? "bg-amber-500"
+                        : "bg-neutral-400"
+                  }`}
+                />
               </span>
-              <Radio size={14} className="text-emerald-600" />
-              <span className="font-semibold text-emerald-800">Kitchen link active</span>
+              <Radio
+                size={14}
+                className={
+                  streamConnected
+                    ? "text-emerald-600"
+                    : usingPollingFallback
+                      ? "text-amber-600"
+                      : "text-neutral-500"
+                }
+              />
+              <span
+                className={`font-semibold ${
+                  streamConnected
+                    ? "text-emerald-800"
+                    : usingPollingFallback
+                      ? "text-amber-900"
+                      : "text-neutral-600"
+                }`}
+              >
+                {streamConnected
+                  ? "Kitchen link · live"
+                  : usingPollingFallback
+                    ? "Kitchen link · polling"
+                    : "Kitchen link · connecting…"}
+              </span>
             </div>
             <div className="text-xs text-neutral-500">
               Last checked:{" "}

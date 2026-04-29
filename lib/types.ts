@@ -81,6 +81,7 @@ export interface PokeBuilderSelections {
   topping1: BuilderOption | null;
   topping2: BuilderOption | null;
   topping3: BuilderOption | null;
+  extraTopping: BuilderOption | null;
 }
 
 export interface BurritoBuilderSelections {
@@ -89,8 +90,10 @@ export interface BurritoBuilderSelections {
   mixin1: BuilderOption | null;
   mixin2: BuilderOption | null;
   mixin3: BuilderOption | null;
+  extraMixin: BuilderOption | null;
   topping1: BuilderOption | null;
   topping2: BuilderOption | null;
+  extraTopping: BuilderOption | null;
 }
 
 export interface SmoothieBuilderSelections {
@@ -104,19 +107,15 @@ export interface SmoothieBuilderSelections {
 
 export interface ClassicRollBuilderSelections {
   protein: BuilderOption | null;
-  extraProtein: BuilderOption | null;
   mixin1: BuilderOption | null;
   mixin2: BuilderOption | null;
-  extraMixin: BuilderOption | null;
   sauce: BuilderOption | null;
 }
 
 export interface InsideOutRollBuilderSelections {
   protein: BuilderOption | null;
-  extraProtein: BuilderOption | null;
   mixin1: BuilderOption | null;
   mixin2: BuilderOption | null;
-  extraMixin: BuilderOption | null;
   sauce: BuilderOption | null;
   topping: BuilderOption | null;
 }
@@ -205,4 +204,14 @@ export interface Order {
    * in the device’s order history (see `isNewCustomerByPhone`).
    */
   isFirstTimeCustomer?: boolean;
+  /**
+   * Server bookkeeping: monotonically increasing per-order version, set when
+   * an order is upserted or PATCHed via /api/orders. Local-only orders
+   * (no Redis) leave this undefined.
+   */
+  version?: number;
+  /** ISO time of the most recent server-side update to this order. */
+  updatedAt?: string;
+  /** Marker that the order has been auto-printed on the kitchen terminal. */
+  kitchenPrinted?: boolean;
 }

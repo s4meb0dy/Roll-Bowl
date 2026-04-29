@@ -5,9 +5,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 import {
   INSIDE_OUT_ROLL_BASE_PRICE,
   INSIDE_OUT_ROLL_PROTEINS,
-  INSIDE_OUT_ROLL_EXTRA_PROTEINS,
   INSIDE_OUT_ROLL_MIXINS,
-  INSIDE_OUT_ROLL_EXTRA_MIXINS,
   INSIDE_OUT_ROLL_SAUCES,
   INSIDE_OUT_ROLL_TOPPINGS,
 } from "@/lib/menu";
@@ -22,10 +20,8 @@ import WizardShell from "@/components/builder/WizardShell";
 
 type SelectionKey =
   | "protein"
-  | "extraProtein"
   | "mixin1"
   | "mixin2"
-  | "extraMixin"
   | "sauce"
   | "topping";
 
@@ -40,42 +36,36 @@ interface StepConfig {
 type BuilderState = Record<SelectionKey, BuilderOption | null>;
 
 const STEPS: StepConfig[] = [
-  { key: "protein",      labelKey: "step.protein",       options: INSIDE_OUT_ROLL_PROTEINS },
-  { key: "extraProtein", labelKey: "step.extra_protein", options: INSIDE_OUT_ROLL_EXTRA_PROTEINS, isOptional: true },
-  { key: "mixin1",       labelKey: "step.mixin",         labelVars: { n: 1 }, options: INSIDE_OUT_ROLL_MIXINS },
-  { key: "mixin2",       labelKey: "step.mixin",         labelVars: { n: 2 }, options: INSIDE_OUT_ROLL_MIXINS },
-  { key: "extraMixin",   labelKey: "step.extra_mixin",   options: INSIDE_OUT_ROLL_EXTRA_MIXINS, isOptional: true },
-  { key: "sauce",        labelKey: "step.saus",          options: INSIDE_OUT_ROLL_SAUCES },
-  { key: "topping",      labelKey: "step.topping",       labelVars: { n: 1 }, options: INSIDE_OUT_ROLL_TOPPINGS },
+  { key: "protein", labelKey: "step.protein", options: INSIDE_OUT_ROLL_PROTEINS },
+  { key: "mixin1",  labelKey: "step.mixin",   labelVars: { n: 1 }, options: INSIDE_OUT_ROLL_MIXINS },
+  { key: "mixin2",  labelKey: "step.mixin",   labelVars: { n: 2 }, options: INSIDE_OUT_ROLL_MIXINS },
+  { key: "sauce",   labelKey: "step.saus",    options: INSIDE_OUT_ROLL_SAUCES },
+  { key: "topping", labelKey: "step.topping", labelVars: { n: 1 }, options: INSIDE_OUT_ROLL_TOPPINGS },
 ];
 
 const TOTAL_STEPS = STEPS.length;
 
 const INITIAL_STATE: BuilderState = {
   protein: null,
-  extraProtein: null,
   mixin1: null,
   mixin2: null,
-  extraMixin: null,
   sauce: null,
   topping: null,
 };
 
 const SELECTION_KEYS: SelectionKey[] = [
   "protein",
-  "extraProtein",
   "mixin1",
   "mixin2",
-  "extraMixin",
   "sauce",
   "topping",
 ];
 
 const CATEGORIES: StepCategory[] = [
-  { labelKey: "cat.protein",  start: 0, end: 1 },
-  { labelKey: "cat.mixins",   start: 2, end: 4 },
-  { labelKey: "cat.saus",     start: 5, end: 5 },
-  { labelKey: "cat.toppings", start: 6, end: 6 },
+  { labelKey: "cat.protein",  start: 0, end: 0 },
+  { labelKey: "cat.mixins",   start: 1, end: 2 },
+  { labelKey: "cat.saus",     start: 3, end: 3 },
+  { labelKey: "cat.toppings", start: 4, end: 4 },
 ];
 
 function computePrice(state: BuilderState): number {
@@ -179,17 +169,11 @@ export default function InsideOutRollBuilder() {
 
   if (step === TOTAL_STEPS) {
     const reviewRows: [string, string][] = [
-      ["Proteïne",        state.protein?.name      ?? ""],
-      ...(state.extraProtein
-        ? [["Extra proteïne", state.extraProtein.name] as [string, string]]
-        : []),
-      ["Mix-in 1",        state.mixin1?.name       ?? ""],
-      ["Mix-in 2",        state.mixin2?.name       ?? ""],
-      ...(state.extraMixin
-        ? [["Extra mix-in",   state.extraMixin.name]   as [string, string]]
-        : []),
-      ["Saus",            state.sauce?.name        ?? ""],
-      ["Topping",         state.topping?.name      ?? ""],
+      ["Proteïne", state.protein?.name ?? ""],
+      ["Mix-in 1", state.mixin1?.name  ?? ""],
+      ["Mix-in 2", state.mixin2?.name  ?? ""],
+      ["Saus",     state.sauce?.name   ?? ""],
+      ["Topping",  state.topping?.name ?? ""],
     ];
 
     return (
