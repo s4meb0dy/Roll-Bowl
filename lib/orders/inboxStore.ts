@@ -20,7 +20,20 @@ const KEY_RECENT = "order:recent";
 const KEY_VERSION = "order:version";
 const KEY_LEGACY_LIST = "order:inbox";
 
-const RECENT_KEEP = 500;
+/**
+ * How many recent ids the kitchen keeps in the `order:recent` ZSET. With ~200
+ * orders/day this gives ≈25 days of history in the index — enough that an
+ * operator can scroll back through last week/month if needed.
+ */
+const RECENT_KEEP = 5_000;
+
+/**
+ * Per-order body retention in Redis. After 90 days of no writes the JSON body
+ * is auto-expired by Upstash, preventing the storage from growing forever.
+ * Every `set(KEY_BY_ID, …)` site in this module re-applies this TTL so that
+ * any patch effectively "touches" the order and resets the clock.
+ */
+const ORDER_TTL_S = 90 * 24 * 60 * 60;
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v);
@@ -89,7 +102,7 @@ async function drainLegacyList(): Promise<void> {
     const ms = createdAtMs(order);
     try {
       // Don't clobber a server-updated copy with the original snapshot.
-      await redis.set(KEY_BY_ID(order.id), order, { nx: true });
+      await redis.set(KEY_BY_ID(order.id), order, { nx: true, ex: ORDER_TTL_S });
       await redis.zadd(KEY_RECENT, { score: ms, member: order.id });
     } catch (e) {
       console.error("[orders] drain legacy entry failed", order.id, e);
@@ -125,6 +138,7 @@ export async function storeNewOrder(
   };
   const setRes = (await redis.set(KEY_BY_ID(order.id), enriched, {
     nx: true,
+    ex: ORDER_TTL_S,
   })) as "OK" | null;
   const created = setRes === "OK";
   if (created) {
@@ -143,7 +157,9 @@ export async function storeNewOrder(
     const stored = await getOrderById(order.id);
     if (stored) {
       stored.version = version;
-      await redis.set(KEY_BY_ID(order.id), stored);
+      // Re-apply TTL — a plain SET without `ex` clears the expiry that the
+      // previous NX-SET established.
+      await redis.set(KEY_BY_ID(order.id), stored, { ex: ORDER_TTL_S });
     }
   }
   return { created, version };
@@ -182,7 +198,9 @@ export async function patchOrderFields(
   const version = await bumpVersion();
   next.version = version;
 
-  await redis.set(KEY_BY_ID(id), next);
+  // Re-apply TTL on every patch so an active order keeps its 90-day window
+  // measured from the most recent update, not from creation.
+  await redis.set(KEY_BY_ID(id), next, { ex: ORDER_TTL_S });
   return { order: next, version };
 }
 

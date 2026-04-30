@@ -7,7 +7,13 @@ import {
   getVersion,
 } from "@/lib/orders/inboxStore";
 
-const POLL_INTERVAL_MS = 1500;
+/**
+ * Cadence for the version-poll loop. 2.5 s keeps the kitchen response time
+ * well under the human-perceptible threshold for new-order notifications
+ * while ~halving the steady-state Redis-command load vs. the previous 1.5 s
+ * — important on Upstash plans with daily command quotas.
+ */
+const POLL_INTERVAL_MS = 2_500;
 const KEEPALIVE_INTERVAL_MS = 25_000;
 const MAX_LIFETIME_MS = 55_000;
 const READ_LIMIT = 200;
