@@ -134,12 +134,10 @@ export function ensureKitchenAudioUnlock(): void {
   window.addEventListener("click", handler, true);
 }
 
-function tryVibrate(pattern: number | number[]): void {
+function tryVibrate(pattern: number[]): void {
   if (typeof navigator === "undefined") return;
   try {
-    const vibrate = (navigator as Navigator & { vibrate?: (p: number | number[]) => boolean })
-      .vibrate;
-    if (typeof vibrate === "function") vibrate.call(navigator, pattern);
+    if (typeof navigator.vibrate === "function") navigator.vibrate(pattern);
   } catch {
     /* ignore */
   }
@@ -274,7 +272,7 @@ export function stopKitchenAlarmLoop(): void {
   } catch {
     /* ignore */
   }
-  tryVibrate(0);
+  tryVibrate([0]);
 }
 
 /**
@@ -384,7 +382,7 @@ export function playTestKitchenAlarm(): void {
   const ctx = getSharedCtx();
   if (!ctx) return;
 
-  tryVibrate(180);
+  tryVibrate([180]);
 
   const fire = () => {
     scheduleAlarm(ctx, BEEP_DUR_S * 2 + BEEP_GAP_S);
