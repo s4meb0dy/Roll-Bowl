@@ -30,6 +30,8 @@ import {
   startKitchenAlarmLoop,
   stopKitchenAlarmLoop,
   playTestKitchenAlarm,
+  unlockKitchenAudio,
+  ensureKitchenAudioUnlock,
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
@@ -341,6 +343,10 @@ function PinGate({ onUnlock }: { onUnlock: () => void }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin === ADMIN_PIN) {
+      // Unlock Web Audio synchronously inside this user gesture — required
+      // by iOS Safari / mobile Chrome before any later programmatic alarm
+      // can produce sound.
+      unlockKitchenAudio();
       onUnlock();
     } else {
       setError(true);
@@ -464,6 +470,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     setSoundMuted(isKitchenAlarmMuted());
+    // Defensive backup: unlock Web Audio on the first interaction with the
+    // page, in case the operator skipped the PIN gesture (e.g. PIN was
+    // already entered earlier in this tab session).
+    ensureKitchenAudioUnlock();
   }, []);
 
   useEffect(() => {
