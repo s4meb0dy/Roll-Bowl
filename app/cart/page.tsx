@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trash2,
-  ShoppingBag,
   ChevronRight,
   Loader2,
   MessageSquare,
@@ -21,7 +20,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
-import type { CustomerInfo, OrderLightspeedMeta, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
+import type { CustomerInfo, PaymentMethod, OrderType, FulfillmentTime } from "@/lib/types";
 import {
   getAvailableTimeSlots,
   isOpenNow,
@@ -31,6 +30,19 @@ import {
 } from "@/lib/deliveryConfig";
 import QuantityStepper from "@/components/QuantityStepper";
 import CafeClosedNotice from "@/components/CafeClosedNotice";
+import {
+  StripePaymentSection,
+  isStripePublishableConfigured,
+  type StripePaymentHandle,
+} from "@/components/StripePaymentForm";
+import { generateOrderId } from "@/lib/orderId";
+import { computeOrderAmounts } from "@/lib/stripe/orderTotal";
+import {
+  savePendingStripeCheckout,
+  clearPendingStripeCheckout,
+} from "@/lib/stripe/pendingOrder";
+import { postOrderToInbox } from "@/lib/orders/postInboxClient";
+import { pushOrderToPos } from "@/lib/orders/pushPosClient";
 
 export default function CartPage() {
   const router = useRouter();
@@ -56,7 +68,17 @@ export default function CartPage() {
     zipCode: "",
   });
   const [errors, setErrors] = useState<Partial<CustomerInfo>>({});
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("online");
+  const stripeEnabled = isStripePublishableConfigured();
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    stripeEnabled ? "online" : "cash"
+  );
+  const [stripeOrderId, setStripeOrderId] = useState<string | null>(null);
+  const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripeFormReady, setStripeFormReady] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const stripePaymentRef = useRef<StripePaymentHandle>(null);
   const [cashDenomination, setCashDenomination] = useState<number | null>(null);
   const [customCash, setCustomCash] = useState("");
   const [orderType, setOrderType] = useState<OrderType>("delivery");
@@ -111,6 +133,71 @@ export default function CartPage() {
     }
   }, [timeSlots, timeMode, scheduledSlot]);
 
+  useEffect(() => {
+    if (!mounted || !stripeEnabled || paymentMethod !== "online" || cart.length === 0) {
+      setStripeClientSecret(null);
+      return;
+    }
+
+    const orderId = stripeOrderId ?? generateOrderId();
+    if (!stripeOrderId) setStripeOrderId(orderId);
+
+    const ac = new AbortController();
+    setStripeLoading(true);
+    setStripeError(null);
+    setStripeFormReady(false);
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/stripe/create-payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId,
+            items: cart,
+            orderType,
+            zipCode:
+              orderType === "takeaway" ? "" : customerInfo.zipCode || zipCode,
+            customerName: customerInfo.name,
+            customerPhone: customerInfo.phone,
+          }),
+          signal: ac.signal,
+        });
+        const data = (await res.json()) as {
+          clientSecret?: string;
+          error?: string;
+        };
+        if (!res.ok || !data.clientSecret) {
+          throw new Error(data.error ?? "stripe_error");
+        }
+        setStripeClientSecret(data.clientSecret);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setStripeClientSecret(null);
+        setStripeError(t("payment.stripe_error"));
+      } finally {
+        if (!ac.signal.aborted) setStripeLoading(false);
+      }
+    })();
+
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mounted,
+    stripeEnabled,
+    paymentMethod,
+    cart,
+    orderType,
+    customerInfo.zipCode,
+    customerInfo.name,
+    customerInfo.phone,
+    zipCode,
+  ]);
+
+  useEffect(() => {
+    setStripeFormReady(false);
+  }, [stripeClientSecret]);
+
   if (!mounted) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -148,25 +235,91 @@ export default function CartPage() {
     return Object.keys(e).length === 0;
   };
 
+  const finishOrder = (order: ReturnType<typeof placeOrder>) => {
+    const id = order.id;
+    setPlacing(false);
+    router.push(`/order-confirmed?id=${id}`);
+    // Inbox/POS can fail locally (Redis 503) — never block the thank-you page.
+    void postOrderToInbox(order);
+    void pushOrderToPos(order, setOrderLightspeed);
+  };
+
   const handlePlaceOrder = async () => {
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
     if (timeMode === "scheduled" && !scheduledSlot) return;
     if (!isOpenNow(new Date()) && timeMode === "asap") return;
 
-    setPlacing(true);
-    await new Promise((r) => setTimeout(r, 900));
-
     const fulfillmentTime: FulfillmentTime =
       timeMode === "asap"
         ? { mode: "asap" }
         : { mode: "scheduled", scheduledFor: scheduledSlot };
 
-    // Takeaway doesn't need address fields — blank them on the order so the
-    // receipt doesn't print a stale delivery address from a previous session.
     const finalCustomerInfo: CustomerInfo = isTakeaway
       ? { ...customerInfo, address: "", zipCode: "" }
       : customerInfo;
+
+    const { amountCents } = computeOrderAmounts(
+      cart,
+      orderType,
+      isTakeaway ? "" : finalCustomerInfo.zipCode || zipCode
+    );
+
+    if (paymentMethod === "online" && stripeEnabled) {
+      if (!stripeClientSecret || !stripeOrderId) return;
+      setPaymentError(null);
+      setPlacing(true);
+
+      savePendingStripeCheckout({
+        orderId: stripeOrderId,
+        items: cart,
+        customerInfo: finalCustomerInfo,
+        generalNote,
+        orderType,
+        fulfillmentTime,
+        amountCents,
+      });
+
+      const returnUrl = `${window.location.origin}/order-confirmed?id=${stripeOrderId}&stripe_return=1`;
+      const result = await stripePaymentRef.current?.confirmPayment(returnUrl);
+      if (!result?.ok) {
+        setPaymentError(result?.error ?? t("payment.stripe_error"));
+        setPlacing(false);
+        return;
+      }
+
+      const verifyRes = await fetch("/api/stripe/verify-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentIntentId: result.paymentIntentId,
+          orderId: stripeOrderId,
+          amountCents,
+        }),
+      });
+      if (!verifyRes.ok) {
+        setPaymentError(t("payment.stripe_error"));
+        setPlacing(false);
+        return;
+      }
+
+      const order = placeOrder({
+        customerInfo: finalCustomerInfo,
+        generalNote,
+        paymentMethod: "online",
+        orderType,
+        fulfillmentTime,
+        orderId: stripeOrderId,
+        stripePaymentIntentId: result.paymentIntentId,
+        status: "paid",
+      });
+      clearPendingStripeCheckout(stripeOrderId);
+      finishOrder(order);
+      return;
+    }
+
+    setPlacing(true);
+    await new Promise((r) => setTimeout(r, 900));
 
     const order = placeOrder({
       customerInfo: finalCustomerInfo,
@@ -176,107 +329,7 @@ export default function CartPage() {
       orderType,
       fulfillmentTime,
     });
-    const id = order.id;
-
-    // Inbox to Redis: JSON round-trip drops non-JSON; absolute URL + retry + sendBeacon
-    // help some mobile / flaky networks. Must finish before client navigation.
-    const inboxUrl = `${window.location.origin}/api/orders/inbox`;
-    let serialized: { order: typeof order };
-    try {
-      serialized = JSON.parse(JSON.stringify({ order })) as { order: typeof order };
-    } catch {
-      serialized = { order };
-    }
-    const body = JSON.stringify(serialized);
-    {
-      const ac = new AbortController();
-      const t = window.setTimeout(() => ac.abort(), 12_000);
-      let ok = false;
-      try {
-        let inboxRes = await fetch(inboxUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          signal: ac.signal,
-          keepalive: true,
-        });
-        if (inboxRes.ok) {
-          ok = true;
-        } else {
-          const txt = await inboxRes.text().catch(() => "");
-          console.error("[orders/inbox] HTTP", inboxRes.status, txt);
-        }
-        if (!ok) {
-          inboxRes = await fetch(inboxUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body,
-            keepalive: true,
-          });
-          if (inboxRes.ok) ok = true;
-          else {
-            const txt2 = await inboxRes.text().catch(() => "");
-            console.error("[orders/inbox] retry", inboxRes.status, txt2);
-          }
-        }
-      } catch (e) {
-        const err = e as Error;
-        if (err.name !== "AbortError") {
-          console.error("[orders/inbox]", e);
-        } else {
-          console.error("[orders/inbox] timeout 12s");
-        }
-      } finally {
-        window.clearTimeout(t);
-      }
-      if (!ok && typeof navigator.sendBeacon === "function") {
-        navigator.sendBeacon(inboxUrl, new Blob([body], { type: "application/json" }));
-      }
-    }
-
-    // POS can stay async — kitchen inbox already has the order if POST succeeded.
-    setPlacing(false);
-    router.push(`/order-confirmed?id=${id}`);
-
-    if (order) {
-      void (async () => {
-        try {
-          const res = await fetch("/api/orders/push", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order }),
-          });
-          const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
-            error?: string;
-          };
-          if (data.state) {
-            setOrderLightspeed(id, {
-              state: data.state,
-              pushedAt: data.pushedAt ?? new Date().toISOString(),
-              saleId: data.saleId,
-              accountIdentifier: data.accountIdentifier,
-              errorMessage: data.errorMessage,
-              httpStatus: data.httpStatus ?? (res.ok ? undefined : res.status),
-              dryRun: data.dryRun,
-            });
-          } else {
-            setOrderLightspeed(id, {
-              state: "failed",
-              pushedAt: new Date().toISOString(),
-              errorMessage: data.errorMessage ?? data.error ?? res.statusText ?? "Onbekende POS-fout",
-              httpStatus: res.status,
-            });
-          }
-        } catch (e) {
-          console.error("[orders/push] network error", e);
-          setOrderLightspeed(id, {
-            state: "failed",
-            pushedAt: new Date().toISOString(),
-            errorMessage: "Geen verbinding met keuken/POS. Bestelling lokaal opgeslagen.",
-          });
-        }
-      })();
-    }
+    finishOrder(order);
   };
 
   // Preset euro bill denominations
@@ -801,10 +854,18 @@ export default function CartPage() {
                   {t("payment.title")}
                 </h2>
 
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div
+                  className={`grid gap-2 ${stripeEnabled ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}
+                >
+                  {stripeEnabled && (
                   <button
                     type="button"
-                    onClick={() => { setPaymentMethod("online"); setCashDenomination(null); setCustomCash(""); }}
+                    onClick={() => {
+                      setPaymentMethod("online");
+                      setCashDenomination(null);
+                      setCustomCash("");
+                      setPaymentError(null);
+                    }}
                     className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       paymentMethod === "online"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
@@ -814,6 +875,7 @@ export default function CartPage() {
                     <CreditCard size={16} className="flex-shrink-0" />
                     <span>{t("payment.online")}</span>
                   </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("cash")}
@@ -828,8 +890,24 @@ export default function CartPage() {
                   </button>
                 </div>
 
-                {paymentMethod === "online" && (
-                  <p className="mt-2 text-xs text-ink-500">{t("payment.online_sub")}</p>
+                {paymentMethod === "online" && stripeEnabled && (
+                  <div className="mt-3 space-y-3 animate-slide-up">
+                    <p className="text-xs text-ink-500">{t("payment.online_sub")}</p>
+                    <StripePaymentSection
+                      ref={stripePaymentRef}
+                      clientSecret={stripeClientSecret}
+                      loading={stripeLoading}
+                      errorMessage={stripeError}
+                      disabled={placing}
+                      onReady={() => setStripeFormReady(true)}
+                    />
+                    {paymentError && (
+                      <div className="flex items-start gap-2 rounded-xl2 bg-red-50 px-3 py-2.5 text-xs text-red-600">
+                        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                        {paymentError}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {paymentMethod === "cash" && (
@@ -915,6 +993,9 @@ export default function CartPage() {
                     placing ||
                     belowMinimum ||
                     (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) ||
+                    (paymentMethod === "online" &&
+                      stripeEnabled &&
+                      (!stripeClientSecret || stripeLoading || !stripeFormReady)) ||
                     (timeMode === "scheduled" && !scheduledSlot) ||
                     (!cafeOpen && timeMode === "asap")
                   }
@@ -924,8 +1005,14 @@ export default function CartPage() {
                     <Loader2 size={18} className="animate-spin" />
                   ) : (
                     <>
-                      {paymentMethod === "cash" ? <Banknote size={18} /> : <ShoppingBag size={18} />}
-                      {t("cart.place_order", { total: total.toFixed(2) })}
+                      {paymentMethod === "cash" ? (
+                        <Banknote size={18} />
+                      ) : (
+                        <CreditCard size={18} />
+                      )}
+                      {paymentMethod === "online" && stripeEnabled
+                        ? t("payment.stripe_pay", { total: total.toFixed(2) })
+                        : t("cart.place_order", { total: total.toFixed(2) })}
                     </>
                   )}
                 </button>

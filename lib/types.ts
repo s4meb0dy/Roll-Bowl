@@ -192,6 +192,8 @@ export interface Order {
   customerInfo: CustomerInfo;
   generalNote: string;
   paymentMethod: PaymentMethod;
+  /** Set when paid via Stripe Payment Intent. */
+  stripePaymentIntentId?: string;
   cashDenomination?: number;
   orderType: OrderType;
   fulfillmentTime: FulfillmentTime;

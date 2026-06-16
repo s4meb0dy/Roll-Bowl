@@ -8,19 +8,95 @@ import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
 import type { Order } from "@/lib/types";
+import {
+  loadPendingStripeCheckout,
+  clearPendingStripeCheckout,
+} from "@/lib/stripe/pendingOrder";
+import { postOrderToInbox } from "@/lib/orders/postInboxClient";
+import { pushOrderToPos } from "@/lib/orders/pushPosClient";
 
 function ConfirmedContent() {
   const params = useSearchParams();
   const orderId = params.get("id");
+  const stripeReturn = params.get("stripe_return");
+  const paymentIntentId = params.get("payment_intent");
   const [dots, setDots] = useState(".");
   const t = useT();
   const orders = useStore((s) => s.orders);
+  const placeOrder = useStore((s) => s.placeOrder);
+  const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
   const [mounted, setMounted] = useState(false);
+  const [stripeCompleting, setStripeCompleting] = useState(false);
+  const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
   const order = mounted ? orders.find((o) => o.id === orderId) : undefined;
+
+  /** Complete order after Bancontact / iDEAL redirect back from Stripe. */
+  useEffect(() => {
+    if (
+      !mounted ||
+      !orderId ||
+      stripeReturn !== "1" ||
+      !paymentIntentId ||
+      stripeReturnHandled.current
+    ) {
+      return;
+    }
+    const existing = useStore.getState().orders.find((o) => o.id === orderId);
+    if (existing) {
+      stripeReturnHandled.current = true;
+      clearPendingStripeCheckout(orderId);
+      return;
+    }
+
+    const pending = loadPendingStripeCheckout(orderId);
+    if (!pending) return;
+
+    stripeReturnHandled.current = true;
+    setStripeCompleting(true);
+
+    void (async () => {
+      try {
+        const verifyRes = await fetch("/api/stripe/verify-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentIntentId,
+            orderId,
+            amountCents: pending.amountCents,
+          }),
+        });
+        if (!verifyRes.ok) return;
+
+        const placed = placeOrder({
+          customerInfo: pending.customerInfo,
+          generalNote: pending.generalNote,
+          paymentMethod: "online",
+          orderType: pending.orderType,
+          fulfillmentTime: pending.fulfillmentTime,
+          orderId,
+          stripePaymentIntentId: paymentIntentId,
+          status: "paid",
+          items: pending.items,
+        });
+        clearPendingStripeCheckout(orderId);
+        await postOrderToInbox(placed);
+        void pushOrderToPos(placed, setOrderLightspeed);
+      } finally {
+        setStripeCompleting(false);
+      }
+    })();
+  }, [
+    mounted,
+    orderId,
+    stripeReturn,
+    paymentIntentId,
+    placeOrder,
+    setOrderLightspeed,
+  ]);
 
   /**
    * iOS Safari / some phones drop the first POST from /cart during soft navigation.
@@ -194,10 +270,17 @@ function ConfirmedContent() {
         </div>
       )}
 
-      {!order && (
+      {!order && !stripeCompleting && (
         <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-left text-sm text-amber-700">
           <Clock size={15} className="shrink-0" />
           <span>Estimated delivery: <strong>30–45 minutes</strong></span>
+        </div>
+      )}
+
+      {stripeCompleting && (
+        <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-sage-50 px-4 py-3 text-left text-sm text-sage-800">
+          <Clock size={15} className="shrink-0 animate-pulse" />
+          <span>Bevestigen van je betaling…</span>
         </div>
       )}
 
@@ -228,7 +311,11 @@ function ConfirmedContent() {
             ) : (
               <>
                 <p className="font-semibold">Online / Kaart</p>
-                <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">Betaal bij levering via kaart of app.</p>
+                <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">
+                  {order.stripePaymentIntentId
+                    ? t("payment.paid_online")
+                    : t("payment.online_sub")}
+                </p>
               </>
             )}
           </div>

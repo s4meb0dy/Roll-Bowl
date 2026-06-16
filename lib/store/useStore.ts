@@ -16,10 +16,7 @@ import type {
 import type { Locale } from "@/lib/i18n/index";
 import { isNewCustomerByPhone } from "@/lib/customerIdentity";
 import { patchOrderRemote } from "@/lib/orders/client";
-
-function generateId(): string {
-  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-}
+import { generateOrderId } from "@/lib/orderId";
 
 function tsOf(o: Order | undefined | null): number {
   if (!o) return 0;
@@ -107,6 +104,11 @@ interface AppState {
     cashDenomination?: number;
     orderType: OrderType;
     fulfillmentTime: FulfillmentTime;
+    orderId?: string;
+    stripePaymentIntentId?: string;
+    status?: OrderStatus;
+    /** Use when cart was cleared before placing (e.g. Stripe redirect return). */
+    items?: CartItem[];
   }) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   markKitchenPrinted: (orderId: string) => void;
@@ -140,7 +142,7 @@ export const useStore = create<AppState>()(
 
       addToCart: (item) =>
         set((state) => ({
-          cart: [...state.cart, { ...item, cartId: generateId() }],
+          cart: [...state.cart, { ...item, cartId: generateOrderId() }],
           lastAddedAt: Date.now(),
         })),
 
@@ -168,9 +170,21 @@ export const useStore = create<AppState>()(
 
       clearCart: () => set({ cart: [] }),
 
-      placeOrder: ({ customerInfo, generalNote, paymentMethod, cashDenomination, orderType, fulfillmentTime }) => {
+      placeOrder: ({
+        customerInfo,
+        generalNote,
+        paymentMethod,
+        cashDenomination,
+        orderType,
+        fulfillmentTime,
+        orderId: orderIdArg,
+        stripePaymentIntentId,
+        status: statusArg,
+        items: itemsArg,
+      }) => {
         const state = get();
-        const subtotal = state.cart.reduce(
+        const lineItems = itemsArg ?? state.cart;
+        const subtotal = lineItems.reduce(
           (sum, item) => sum + item.price * item.quantity,
           0
         );
@@ -182,8 +196,8 @@ export const useStore = create<AppState>()(
           customerInfo.phone,
         );
         const order: Order = {
-          id: generateId(),
-          items: state.cart,
+          id: orderIdArg ?? generateOrderId(),
+          items: lineItems,
           subtotal,
           deliveryFee,
           total: subtotal + deliveryFee,
@@ -193,9 +207,10 @@ export const useStore = create<AppState>()(
           ...(paymentMethod === "cash" && cashDenomination !== undefined
             ? { cashDenomination }
             : {}),
+          ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
           orderType,
           fulfillmentTime,
-          status: "pending",
+          status: statusArg ?? "pending",
           createdAt: new Date().toISOString(),
           isFirstTimeCustomer,
         };

@@ -230,6 +230,9 @@ const nl: Dict = {
   "payment.denomination_required": "Kies een biljet om door te gaan.",
   "payment.custom": "Ander bedrag",
   "payment.cash_banner": "Zorg voor €{denomination} — de koerier geeft €{change} terug.",
+  "payment.stripe_pay": "Betaal €{total}",
+  "payment.stripe_error": "Online betalen is mislukt. Probeer opnieuw of kies contant.",
+  "payment.paid_online": "Betaald online via Stripe. Bedankt!",
 
   // misc
   "age.notice": "Alleen voor 18 jaar en ouder. Je bezorger zal je om een geldig ID vragen.",
@@ -450,6 +453,9 @@ const en: Dict = {
   "payment.denomination_required": "Choose a bill to continue.",
   "payment.custom": "Other amount",
   "payment.cash_banner": "Have €{denomination} ready — the courier gives back €{change}.",
+  "payment.stripe_pay": "Pay €{total}",
+  "payment.stripe_error": "Online payment failed. Try again or pay in cash.",
+  "payment.paid_online": "Paid online via Stripe. Thank you!",
 
   "age.notice": "Only for ages 18 and above. Your delivery person will ask for a valid ID.",
   "type.poke_bowl": "Poke Bowl",
