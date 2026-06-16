@@ -200,14 +200,14 @@ function ConfirmedContent() {
       </div>
 
       <h1 className="font-display mb-2 text-2xl font-bold text-neutral-800 sm:text-3xl">
-        Order confirmed!
+        {t("order.confirmed.title")}
       </h1>
       <p className="mb-3 max-w-sm text-[15px] leading-relaxed text-neutral-600 sm:text-base">
-        We&apos;ve received your order and the kitchen is on it{dots}
+        {t("order.confirmed.subtitle")}{dots}
       </p>
       {orderId && (
         <p className="mb-3 text-sm text-neutral-500">
-          Order ID:{" "}
+          {t("order.confirmed.order_id")}:{" "}
           <span className="break-all font-mono font-semibold text-neutral-700">
             #{orderId.toUpperCase()}
           </span>
@@ -215,7 +215,7 @@ function ConfirmedContent() {
       )}
       {orderId && order?.lightspeed?.state === "failed" && (
         <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-950 sm:mb-6 sm:text-center">
-          Je bestelling is binnen. Konden we niet bevestigen bij het kassasysteem — bel de zaak indien nodig.{" "}
+          {t("order.confirmed.pos_failed")}{" "}
           {order.lightspeed.errorMessage && <span className="mt-1 block text-xs opacity-90 sm:mt-0 sm:inline">({order.lightspeed.errorMessage.slice(0, 120)})</span>}
         </p>
       )}
@@ -229,12 +229,12 @@ function ConfirmedContent() {
       <div className="mb-6 w-full rounded-2xl border border-sage-100 bg-white p-4 shadow-card sm:mb-8 sm:p-6">
         <div className="flex items-start justify-between gap-1.5 sm:gap-2">
           {[
-            { icon: "📝", label: "Confirmed" },
-            { icon: "👨‍🍳", label: "Preparing" },
-            { icon: "🛵", label: "On the way" },
-            { icon: "🏠", label: "Delivered" },
+            { icon: "📝", labelKey: "order.confirmed.status.confirmed" },
+            { icon: "👨‍🍳", labelKey: "order.confirmed.status.preparing" },
+            { icon: "🛵", labelKey: "order.confirmed.status.on_the_way" },
+            { icon: "🏠", labelKey: "order.confirmed.status.delivered" },
           ].map((s, i) => (
-            <div key={s.label} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+            <div key={s.labelKey} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full text-base sm:h-10 sm:w-10 sm:text-lg ${
                   i === 0
@@ -249,7 +249,7 @@ function ConfirmedContent() {
                   i === 0 ? "text-sage-600" : "text-neutral-400"
                 }`}
               >
-                {s.label}
+                {t(s.labelKey)}
               </span>
             </div>
           ))}
@@ -267,10 +267,10 @@ function ConfirmedContent() {
             )}
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-                {order.orderType === "takeaway" ? "Afhalen" : "Bezorging"}
+                {order.orderType === "takeaway" ? t("order.confirmed.takeaway") : t("order.confirmed.delivery")}
               </div>
               <div className="font-medium">
-                {order.orderType === "takeaway" ? "Takeaway" : "Delivery"}
+                {order.orderType === "takeaway" ? t("order_type.takeaway") : t("order_type.delivery")}
               </div>
             </div>
           </div>
@@ -282,7 +282,7 @@ function ConfirmedContent() {
             )}
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-                {order.fulfillmentTime.mode === "scheduled" ? "Gepland" : "Zo snel mogelijk"}
+                {order.fulfillmentTime.mode === "scheduled" ? t("order.confirmed.scheduled") : t("order.confirmed.asap")}
               </div>
               <div className="font-medium">
                 {order.fulfillmentTime.mode === "scheduled"
@@ -293,8 +293,8 @@ function ConfirmedContent() {
                       minute: "2-digit",
                     })
                   : order.orderType === "takeaway"
-                  ? "15–25 min"
-                  : "30–45 min"}
+                  ? t("order.confirmed.eta_takeaway")
+                  : t("order.confirmed.eta_delivery")}
               </div>
             </div>
           </div>
@@ -304,14 +304,14 @@ function ConfirmedContent() {
       {!order && !stripeCompleting && (
         <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-left text-sm text-amber-700">
           <Clock size={15} className="shrink-0" />
-          <span>Estimated delivery: <strong>30–45 minutes</strong></span>
+          <span>{t("order.confirmed.eta_fallback")}</span>
         </div>
       )}
 
       {stripeCompleting && (
         <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-sage-50 px-4 py-3 text-left text-sm text-sage-800">
           <Clock size={15} className="shrink-0 animate-pulse" />
-          <span>Bevestigen van je betaling…</span>
+          <span>{t("order.confirmed.stripe_completing")}</span>
         </div>
       )}
 
@@ -330,18 +330,21 @@ function ConfirmedContent() {
           <div className="min-w-0 flex-1 text-left text-sm sm:text-sm">
             {order.paymentMethod === "cash" ? (
               <>
-                <p className="font-semibold">Contant betalen</p>
+                <p className="font-semibold">{t("payment.cash")}</p>
                 {order.cashDenomination !== undefined && (
                   <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">
                     {order.cashDenomination === order.total
-                      ? "Exact bedrag — geen wisselgeld nodig."
-                      : `Zorg voor €${order.cashDenomination.toFixed(2)} — de koerier geeft €${(order.cashDenomination - order.total).toFixed(2)} wisselgeld terug.`}
+                      ? t("payment.no_change")
+                      : t("payment.cash_banner", {
+                          denomination: order.cashDenomination.toFixed(2),
+                          change: (order.cashDenomination - order.total).toFixed(2),
+                        })}
                   </p>
                 )}
               </>
             ) : (
               <>
-                <p className="font-semibold">Online / Kaart</p>
+                <p className="font-semibold">{t("payment.online")}</p>
                 <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">
                   {order.stripePaymentIntentId
                     ? t("payment.paid_online")
@@ -359,7 +362,7 @@ function ConfirmedContent() {
           className="btn-secondary flex w-full min-h-[48px] items-center justify-center gap-2 sm:w-auto sm:min-w-[200px] sm:px-8"
         >
           <ArrowLeft size={16} className="shrink-0" />
-          Order again
+          {t("order.confirmed.order_again")}
         </Link>
       </div>
       </div>

@@ -57,7 +57,7 @@ const nl: Dict = {
   "landing.reviews": "van {count}+ tevreden klanten",
   "landing.how_title": "Hoe werkt het?",
   "landing.footer_copy": "Gemaakt met 💚 voor gezond eten.",
-  "landing.hours": "Ma, za, zo: 16:00–23:00 · di–do: 11:00–13:15 & 16:00–23:00 · vr: 11:00–14:15 & 16:00–23:00",
+  "landing.hours": "Ma, za, zo: 16:00–22:00 · di–do: 11:00–13:15 & 16:00–22:00 · vr: 11:00–14:15 & 16:00–22:00",
   "landing.kitchen_link": "Keukenbeheer",
   "landing.hero_custom": "Stel zelf samen",
   "landing.hero_custom_sub": "Jij bepaalt alles",
@@ -106,6 +106,25 @@ const nl: Dict = {
 
   "order.first_order_welcome":
     "Welkom! Volgens onze gegevens is dit je eerste bestelling bij ons — de keuken ziet het mee op de bon.",
+
+  "order.confirmed.title": "Bestelling bevestigd!",
+  "order.confirmed.subtitle": "We hebben je bestelling ontvangen en de keuken is ermee bezig",
+  "order.confirmed.order_id": "Bestelnummer",
+  "order.confirmed.pos_failed":
+    "Je bestelling is binnen. Konden we niet bevestigen bij het kassasysteem — bel de zaak indien nodig.",
+  "order.confirmed.status.confirmed": "Bevestigd",
+  "order.confirmed.status.preparing": "In bereiding",
+  "order.confirmed.status.on_the_way": "Onderweg",
+  "order.confirmed.status.delivered": "Bezorgd",
+  "order.confirmed.takeaway": "Afhalen",
+  "order.confirmed.delivery": "Bezorging",
+  "order.confirmed.scheduled": "Gepland",
+  "order.confirmed.asap": "Zo snel mogelijk",
+  "order.confirmed.eta_fallback": "Geschatte levertijd: 30–45 minuten",
+  "order.confirmed.eta_takeaway": "15–25 min",
+  "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.stripe_completing": "Bevestigen van je betaling…",
+  "order.confirmed.order_again": "Opnieuw bestellen",
 
   // order type + fulfillment time
   "order_type.title": "Bestelwijze",
@@ -299,7 +318,7 @@ const en: Dict = {
   "landing.reviews": "from {count}+ happy customers",
   "landing.how_title": "How it works",
   "landing.footer_copy": "Made with 💚 for healthy eating.",
-  "landing.hours": "Mon, Sat, Sun: 4–11pm · Tue–Thu: 11am–1:15pm & 4–11pm · Fri: 11am–2:15pm & 4–11pm",
+  "landing.hours": "Mon, Sat, Sun: 4–10pm · Tue–Thu: 11am–1:15pm & 4–10pm · Fri: 11am–2:15pm & 4–10pm",
   "landing.kitchen_link": "Kitchen view",
   "landing.hero_custom": "Build your own",
   "landing.hero_custom_sub": "You decide everything",
@@ -345,6 +364,25 @@ const en: Dict = {
 
   "order.first_order_welcome":
     "Welcome! This looks like your first order with us — the kitchen will see it on the ticket too.",
+
+  "order.confirmed.title": "Order confirmed!",
+  "order.confirmed.subtitle": "We've received your order and the kitchen is on it",
+  "order.confirmed.order_id": "Order number",
+  "order.confirmed.pos_failed":
+    "Your order was received. We couldn't confirm it with the POS — call the restaurant if needed.",
+  "order.confirmed.status.confirmed": "Confirmed",
+  "order.confirmed.status.preparing": "Preparing",
+  "order.confirmed.status.on_the_way": "On the way",
+  "order.confirmed.status.delivered": "Delivered",
+  "order.confirmed.takeaway": "Takeaway",
+  "order.confirmed.delivery": "Delivery",
+  "order.confirmed.scheduled": "Scheduled",
+  "order.confirmed.asap": "ASAP",
+  "order.confirmed.eta_fallback": "Estimated delivery: 30–45 minutes",
+  "order.confirmed.eta_takeaway": "15–25 min",
+  "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.stripe_completing": "Confirming your payment…",
+  "order.confirmed.order_again": "Order again",
 
   // order type + fulfillment time
   "order_type.title": "How would you like your order?",
@@ -528,7 +566,7 @@ const fr: Dict = {
   "landing.reviews": "de {count}+ clients satisfaits",
   "landing.how_title": "Comment ça marche?",
   "landing.footer_copy": "Fait avec 💚 pour une alimentation saine.",
-  "landing.hours": "Lun, sam, dim: 16h–23h · mar–jeu: 11h–13h15 & 16h–23h · ven: 11h–14h15 & 16h–23h",
+  "landing.hours": "Lun, sam, dim: 16h–22h · mar–jeu: 11h–13h15 & 16h–22h · ven: 11h–14h15 & 16h–22h",
   "landing.kitchen_link": "Vue cuisine",
   "landing.hero_custom": "Composez vous-même",
   "landing.hero_custom_sub": "Vous décidez tout",
@@ -574,6 +612,25 @@ const fr: Dict = {
 
   "order.first_order_welcome":
     "Bienvenue ! C’est apparemment votre première commande chez nous — la cuisine le verra aussi sur le ticket.",
+
+  "order.confirmed.title": "Commande confirmée !",
+  "order.confirmed.subtitle": "Nous avons reçu votre commande, la cuisine s’en occupe",
+  "order.confirmed.order_id": "Numéro de commande",
+  "order.confirmed.pos_failed":
+    "Votre commande est bien reçue. Impossible de confirmer auprès de la caisse — appelez le restaurant si besoin.",
+  "order.confirmed.status.confirmed": "Confirmée",
+  "order.confirmed.status.preparing": "En préparation",
+  "order.confirmed.status.on_the_way": "En route",
+  "order.confirmed.status.delivered": "Livrée",
+  "order.confirmed.takeaway": "À emporter",
+  "order.confirmed.delivery": "Livraison",
+  "order.confirmed.scheduled": "Planifiée",
+  "order.confirmed.asap": "Dès que possible",
+  "order.confirmed.eta_fallback": "Livraison estimée : 30–45 minutes",
+  "order.confirmed.eta_takeaway": "15–25 min",
+  "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.stripe_completing": "Confirmation de votre paiement…",
+  "order.confirmed.order_again": "Commander à nouveau",
 
   // order type + fulfillment time
   "order_type.title": "Comment voulez-vous votre commande ?",

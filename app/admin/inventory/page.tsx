@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ChefHat,
-  Lock,
   Radio,
   RefreshCw,
   ShieldCheck,
@@ -26,63 +25,8 @@ import {
 } from "@/lib/inventory/config";
 import type { InventoryCategoryConfig, InventoryItemEntry } from "@/lib/inventory/config";
 import type { InventoryCategoryId } from "@/lib/inventory/types";
-
-const ADMIN_PIN = "4355";
-
-function PinGate({ onUnlock }: { onUnlock: (pin: string) => void }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === ADMIN_PIN) {
-      onUnlock(pin);
-    } else {
-      setError(true);
-      setPin("");
-      setTimeout(() => setError(false), 1500);
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4">
-      <div className="card w-full max-w-sm p-8 text-center">
-        <div className="mb-5 flex justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sage-500">
-            <ChefHat size={28} className="text-white" />
-          </div>
-        </div>
-        <h1 className="font-display mb-1 text-xl font-bold text-neutral-800">
-          Voorraadbeheer
-        </h1>
-        <p className="mb-6 text-sm text-neutral-400">Voer de PIN in om verder te gaan</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-            <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="••••"
-              autoFocus
-              className={`input-field pl-9 text-center text-2xl tracking-[0.5em] ${
-                error ? "border-red-300 bg-red-50" : ""
-              }`}
-            />
-          </div>
-          {error && (
-            <p className="text-xs text-red-500 animate-fade-in">Incorrect PIN. Try again.</p>
-          )}
-          <button type="submit" className="btn-primary w-full justify-center">
-            Unlock
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
+import AdminPinGate from "@/components/AdminPinGate";
+import { getStoredAdminPin, isAdminSessionUnlocked } from "@/lib/admin/pinClient";
 
 function ToggleSwitch({
   enabled,
@@ -309,7 +253,13 @@ export default function InventoryAdminPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    if (isAdminSessionUnlocked()) {
+      const stored = getStoredAdminPin();
+      if (stored) setPin(stored);
+    }
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -366,7 +316,16 @@ export default function InventoryAdminPage() {
     return (
       <>
         <Header />
-        <PinGate onUnlock={setPin} />
+        <AdminPinGate
+          title="Voorraadbeheer"
+          subtitle="Voer je PIN in om verder te gaan"
+          icon={
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sage-500">
+              <ShieldCheck size={28} className="text-white" />
+            </div>
+          }
+          onUnlock={setPin}
+        />
       </>
     );
   }

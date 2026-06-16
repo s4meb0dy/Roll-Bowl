@@ -5,13 +5,7 @@ import type { InventoryUpdateRequest } from "@/lib/inventory/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Admin PIN used to gate mutating requests. In a real deployment, replace with
- * a proper auth header (e.g. NextAuth session, Lightspeed OAuth token, etc.).
- * The PIN matches the one in `app/admin/page.tsx` so the existing kitchen
- * terminal unlock continues to work without new configuration.
- */
-const ADMIN_PIN = process.env.ADMIN_PIN ?? "4355";
+import { verifyAdminPin } from "@/lib/admin/pinServer";
 
 export async function GET() {
   const state = await readInventory();
@@ -22,7 +16,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const pin = req.headers.get("x-admin-pin");
-  if (pin !== ADMIN_PIN) {
+  if (!verifyAdminPin(pin ?? "")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

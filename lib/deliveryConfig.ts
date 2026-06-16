@@ -24,25 +24,25 @@ export type OpenInterval = {
  * Keys: JS `Date.getDay()`: 0 = Sunday … 6 = Saturday. `null` = closed.
  */
 export const OPENING_HOURS: Record<number, OpenInterval[] | null> = {
-  0: [{ openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 }], // Sunday
-  1: [{ openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 }], // Monday
+  0: [{ openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 }], // Sunday
+  1: [{ openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 }], // Monday
   2: [
     { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
-    { openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 },
+    { openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 },
   ], // Tuesday
   3: [
     { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
-    { openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 },
+    { openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 },
   ], // Wednesday
   4: [
     { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
-    { openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 },
+    { openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 },
   ], // Thursday
   5: [
     { openHour: 11, openMinute: 0, closeHour: 14, closeMinute: 15 },
-    { openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 },
+    { openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 },
   ], // Friday
-  6: [{ openHour: 16, openMinute: 0, closeHour: 23, closeMinute: 0 }], // Saturday
+  6: [{ openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 }], // Saturday
 };
 
 /** Time-slot granularity when scheduling for later. */

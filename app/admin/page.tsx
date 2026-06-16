@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Clock,
   ChefHat,
-  Lock,
   Radio,
   UtensilsCrossed,
   Truck,
@@ -20,6 +19,8 @@ import {
   Volume2,
   CheckCircle2,
   Sparkles,
+  ListChecks,
+  X,
 } from "lucide-react";
 import Header from "@/components/Header";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
@@ -36,10 +37,12 @@ import {
 import type { Order, OrderStatus } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
+import AdminPinGate from "@/components/AdminPinGate";
+import { isAdminSessionUnlocked } from "@/lib/admin/pinClient";
 
-const ADMIN_PIN = "4355";
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
+const KITCHEN_SETUP_DISMISSED_KEY = "roll-bowl-kitchen-setup-dismissed";
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -336,69 +339,6 @@ function OrderCard({
   );
 }
 
-function PinGate({ onUnlock }: { onUnlock: () => void }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === ADMIN_PIN) {
-      // Unlock Web Audio synchronously inside this user gesture — required
-      // by iOS Safari / mobile Chrome before any later programmatic alarm
-      // can produce sound.
-      unlockKitchenAudio();
-      onUnlock();
-    } else {
-      setError(true);
-      setPin("");
-      setTimeout(() => setError(false), 1500);
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4">
-      <div className="card w-full max-w-sm p-8 text-center">
-        <div className="mb-5 flex justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sage-500">
-            <ChefHat size={28} className="text-white" />
-          </div>
-        </div>
-        <h1 className="font-display mb-1 text-xl font-bold text-neutral-800">
-          Kitchen View
-        </h1>
-        <p className="mb-6 text-sm text-neutral-400">Enter your PIN to continue</p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-            <Lock
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-            />
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="••••"
-              autoFocus
-              className={`input-field pl-9 text-center text-2xl tracking-[0.5em] ${
-                error ? "border-red-300 bg-red-50" : ""
-              }`}
-            />
-          </div>
-          {error && (
-            <p className="text-xs text-red-500 animate-fade-in">Incorrect PIN. Try again.</p>
-          )}
-          <button type="submit" className="btn-primary w-full justify-center">
-            Unlock
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
@@ -409,6 +349,7 @@ export default function AdminPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [kitchenMode, setKitchenMode] = useState(false);
+  const [setupVisible, setSetupVisible] = useState(true);
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(() => new Date());
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
@@ -513,6 +454,13 @@ export default function AdminPage() {
     if (typeof window === "undefined") return;
     const v = localStorage.getItem(KITCHEN_MODE_KEY);
     if (v === "1") setKitchenMode(true);
+    if (localStorage.getItem(KITCHEN_SETUP_DISMISSED_KEY) === "1") {
+      setSetupVisible(false);
+    }
+    if (isAdminSessionUnlocked()) {
+      setUnlocked(true);
+      ensureKitchenAudioUnlock();
+    }
   }, []);
 
   useEffect(() => {
@@ -595,7 +543,17 @@ export default function AdminPage() {
     return (
       <>
         <Header />
-        <PinGate onUnlock={() => setUnlocked(true)} />
+        <AdminPinGate
+          title="Keukenbeheer"
+          subtitle="Voer je PIN in om door te gaan"
+          icon={
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sage-500">
+              <ChefHat size={28} className="text-white" />
+            </div>
+          }
+          onUnlock={() => setUnlocked(true)}
+          onUnlockGesture={unlockKitchenAudio}
+        />
       </>
     );
   }
@@ -745,6 +703,48 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
+
+        {setupVisible && (
+          <div className="no-print mb-6 rounded-2xl border border-sage-200 bg-sage-50/80 p-4 shadow-sm sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ListChecks size={20} className="shrink-0 text-sage-700" />
+                <h2 className="text-sm font-bold text-neutral-800">Keuken-setup (eenmalig)</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSetupVisible(false);
+                  localStorage.setItem(KITCHEN_SETUP_DISMISSED_KEY, "1");
+                }}
+                className="rounded-lg p-1 text-neutral-400 hover:bg-white hover:text-neutral-600"
+                title="Sluiten"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <ol className="list-decimal space-y-2 pl-5 text-xs leading-relaxed text-neutral-700 sm:text-sm">
+              <li>
+                Open <strong>www.rollnbowl.be/admin</strong> op de keuken-tablet — laat dit tabblad open staan.
+              </li>
+              <li>
+                Voer de PIN in (staat in Vercel → <strong>Environment Variables → ADMIN_PIN</strong>).
+              </li>
+              <li>
+                Controleer de groene badge <strong>«Kitchen link · live»</strong> hierboven.
+              </li>
+              <li>
+                Klik <strong>Test geluid</strong> — zorg dat <strong>Dempen</strong> uit staat.
+              </li>
+              <li>
+                Printer (optioneel): Chrome met <code className="rounded bg-white px-1">--kiosk-printing</code>, 80mm bon.
+              </li>
+              <li>
+                Bij elk nieuw order: <strong>Accepteren &amp; afdrukken</strong> (of alleen <strong>Bevestig gehoord</strong>).
+              </li>
+            </ol>
+          </div>
+        )}
 
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">

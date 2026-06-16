@@ -8,11 +8,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ADMIN_PIN = process.env.ADMIN_PIN ?? "4355";
+import { verifyAdminPin } from "@/lib/admin/pinServer";
 
 export async function POST(req: Request) {
   const pin = req.headers.get("x-admin-pin");
-  if (pin !== ADMIN_PIN) {
+  if (!verifyAdminPin(pin ?? "")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
