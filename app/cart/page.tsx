@@ -145,6 +145,18 @@ export default function CartPage() {
       return;
     }
 
+    const subtotalNow = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const isTakeawayNow = orderType === "takeaway";
+    const minNow = isTakeawayNow
+      ? TAKEAWAY_MIN_ORDER
+      : zipCodeConfig?.minOrder ?? 0;
+    if (subtotalNow < minNow) {
+      setStripeClientSecret(null);
+      setStripeFormReady(false);
+      setStripeLoading(false);
+      return;
+    }
+
     const orderId = stripeOrderId ?? generateOrderId();
     if (!stripeOrderId) setStripeOrderId(orderId);
 
@@ -198,6 +210,7 @@ export default function CartPage() {
     customerInfo.name,
     customerInfo.phone,
     zipCode,
+    zipCodeConfig?.minOrder,
   ]);
 
   useEffect(() => {
@@ -938,7 +951,7 @@ export default function CartPage() {
                   </button>
                 </div>
 
-                {paymentMethod === "online" && stripeEnabled && (
+                {paymentMethod === "online" && stripeEnabled && !belowMinimum && (
                   <div className="mt-3 space-y-3 animate-slide-up">
                     <p className="text-xs text-ink-500">{t("payment.online_sub")}</p>
                     <StripePaymentSection
@@ -946,7 +959,12 @@ export default function CartPage() {
                       clientSecret={stripeClientSecret}
                       loading={stripeLoading}
                       errorMessage={stripeError}
-                      disabled={placing}
+                      disabled={
+                        placing ||
+                        timeSlots.length === 0 ||
+                        (timeMode === "scheduled" && !scheduledSlot) ||
+                        (!cafeOpen && timeMode === "asap")
+                      }
                       onReady={() => setStripeFormReady(true)}
                     />
                     {paymentError && (

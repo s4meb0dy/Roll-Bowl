@@ -71,7 +71,7 @@ const PaymentFields = forwardRef<
   return (
     <div className={disabled ? "pointer-events-none opacity-60" : ""}>
       <PaymentElement
-        options={{ layout: "tabs" }}
+        options={{ layout: "tabs", readOnly: Boolean(disabled) }}
         onReady={() => {
           setReady(true);
           onReady?.();

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe/server";
 import { isStripeConfigured } from "@/lib/stripe/config";
-import { computeOrderAmounts } from "@/lib/stripe/orderTotal";
+import { computeOrderAmounts, getMinOrderAmount } from "@/lib/stripe/orderTotal";
 import type { CartItem, OrderType } from "@/lib/types";
 
 interface CreatePaymentIntentBody {
@@ -36,11 +36,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const { total, amountCents } = computeOrderAmounts(
+  const { subtotal, total, amountCents } = computeOrderAmounts(
     items,
     orderType,
     body.zipCode
   );
+
+  const minOrder = getMinOrderAmount(orderType, body.zipCode);
+  if (subtotal < minOrder) {
+    return NextResponse.json(
+      { error: "below_minimum_order", minOrder, subtotal },
+      { status: 400 }
+    );
+  }
 
   if (amountCents < 50) {
     return NextResponse.json({ error: "amount_too_low" }, { status: 400 });

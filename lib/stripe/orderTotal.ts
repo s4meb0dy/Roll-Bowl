@@ -1,4 +1,4 @@
-import { ZIP_CODES, TAKEAWAY_DELIVERY_FEE } from "@/lib/deliveryConfig";
+import { ZIP_CODES, TAKEAWAY_DELIVERY_FEE, TAKEAWAY_MIN_ORDER } from "@/lib/deliveryConfig";
 import type { CartItem, OrderType } from "@/lib/types";
 
 export interface OrderAmounts {
@@ -26,4 +26,13 @@ export function computeOrderAmounts(
   const total = subtotal + deliveryFee;
   const amountCents = Math.round(total * 100);
   return { subtotal, deliveryFee, total, amountCents };
+}
+
+export function getMinOrderAmount(
+  orderType: OrderType,
+  zipCode: string | null | undefined
+): number {
+  if (orderType === "takeaway") return TAKEAWAY_MIN_ORDER;
+  if (zipCode && ZIP_CODES[zipCode]) return ZIP_CODES[zipCode].minOrder;
+  return 0;
 }
