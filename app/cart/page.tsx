@@ -44,7 +44,6 @@ import {
   clearPendingStripeCheckout,
 } from "@/lib/stripe/pendingOrder";
 import { postOrderToInbox } from "@/lib/orders/postInboxClient";
-import { pushOrderToPos } from "@/lib/orders/pushPosClient";
 
 export default function CartPage() {
   const router = useRouter();
@@ -57,7 +56,6 @@ export default function CartPage() {
   const updateQuantity = useStore((s) => s.updateQuantity);
   const updateNote = useStore((s) => s.updateNote);
   const placeOrder = useStore((s) => s.placeOrder);
-  const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
 
   const [mounted, setMounted] = useState(false);
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
@@ -247,9 +245,8 @@ export default function CartPage() {
     const id = order.id;
     setPlacing(false);
     router.push(`/order-confirmed?id=${id}`);
-    // Inbox/POS can fail locally (Redis 503) — never block the thank-you page.
+    // Inbox/POS retry from order-confirmed — navigation can abort fetches from /cart.
     void postOrderToInbox(order);
-    void pushOrderToPos(order, setOrderLightspeed);
   };
 
   const handlePlaceOrder = async () => {

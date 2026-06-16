@@ -13,7 +13,7 @@ import {
   clearPendingStripeCheckout,
 } from "@/lib/stripe/pendingOrder";
 import { postOrderToInbox } from "@/lib/orders/postInboxClient";
-import { pushOrderToPos } from "@/lib/orders/pushPosClient";
+import { pushOrderToPos, shouldRetryPosPush } from "@/lib/orders/pushPosClient";
 
 function ConfirmedContent() {
   const params = useSearchParams();
@@ -29,6 +29,7 @@ function ConfirmedContent() {
   const [stripeCompleting, setStripeCompleting] = useState(false);
   const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
+  const posPushDone = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -151,6 +152,36 @@ function ConfirmedContent() {
       clearTimeout(t2);
     };
   }, [orderId, orders]);
+
+  /**
+   * POS push from /cart is often aborted during navigation (same as inbox).
+   * Retry from this page; skip when POS is not configured or already accepted.
+   */
+  useEffect(() => {
+    if (!orderId || typeof window === "undefined") return;
+
+    const tryPush = () => {
+      if (posPushDone.current) return;
+      const o = useStore.getState().orders.find((x) => x.id === orderId);
+      if (!o) return;
+      if (!shouldRetryPosPush(o.lightspeed)) {
+        posPushDone.current = true;
+        return;
+      }
+      void pushOrderToPos(o, setOrderLightspeed).then(() => {
+        const latest = useStore.getState().orders.find((x) => x.id === orderId);
+        if (!shouldRetryPosPush(latest?.lightspeed)) posPushDone.current = true;
+      });
+    };
+
+    tryPush();
+    const t1 = setTimeout(tryPush, 400);
+    const t2 = setTimeout(tryPush, 2_000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [orderId, orders, setOrderLightspeed]);
 
   useEffect(() => {
     const t = setInterval(

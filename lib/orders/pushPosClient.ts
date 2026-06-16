@@ -1,5 +1,13 @@
 import type { Order, OrderLightspeedMeta } from "@/lib/types";
 
+export function shouldRetryPosPush(lightspeed?: OrderLightspeedMeta): boolean {
+  if (!lightspeed) return true;
+  if (lightspeed.state === "success" || lightspeed.state === "skipped") return false;
+  // Retry client/network failures; do not retry when POS returned an HTTP error.
+  if (lightspeed.state === "failed" && lightspeed.httpStatus == null) return true;
+  return false;
+}
+
 export async function pushOrderToPos(
   order: Order,
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void
@@ -10,6 +18,7 @@ export async function pushOrderToPos(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order }),
+      keepalive: true,
     });
     const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
       error?: string;
