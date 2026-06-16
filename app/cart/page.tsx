@@ -120,7 +120,7 @@ export default function CartPage() {
 
   const closeTimeLabel = useMemo(() => {
     const last = getTodayLastClose(new Date());
-    return last ? formatClosingTime(last.hour, last.minute) : "22:00";
+    return last ? formatClosingTime(last.hour, last.minute) : "23:00";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, nowTick]);
 
