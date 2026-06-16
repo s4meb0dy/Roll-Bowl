@@ -148,3 +148,18 @@ export function isOpenNow(now: Date = new Date()): boolean {
   }
   return false;
 }
+
+/** Format kitchen close time for display (e.g. 22:00). */
+export function formatClosingTime(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** Last closing time today (final shift), or null if the kitchen is closed all day. */
+export function getTodayLastClose(
+  now: Date = new Date()
+): { hour: number; minute: number } | null {
+  const windows = OPENING_HOURS[now.getDay()];
+  if (!windows?.length) return null;
+  const last = windows[windows.length - 1];
+  return { hour: last.closeHour, minute: last.closeMinute };
+}

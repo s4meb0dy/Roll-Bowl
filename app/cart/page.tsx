@@ -24,6 +24,8 @@ import type { CustomerInfo, PaymentMethod, OrderType, FulfillmentTime } from "@/
 import {
   getAvailableTimeSlots,
   isOpenNow,
+  getTodayLastClose,
+  formatClosingTime,
   TAKEAWAY_DELIVERY_FEE,
   TAKEAWAY_MIN_ORDER,
   type TimeSlot,
@@ -115,6 +117,12 @@ export default function CartPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mounted, nowTick],
   );
+
+  const closeTimeLabel = useMemo(() => {
+    const last = getTodayLastClose(new Date());
+    return last ? formatClosingTime(last.hour, last.minute) : "22:00";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, nowTick]);
 
   const cafeOpen = useMemo(
     () => (mounted ? isOpenNow(new Date()) : true),
@@ -334,6 +342,49 @@ export default function CartPage() {
 
   // Preset euro bill denominations
   const DENOMINATIONS = [10, 20, 50, 100, 200];
+
+  const placeOrderBlockReason = (() => {
+    if (placing) return null;
+    if (belowMinimum) {
+      return t("cart.min_warning", {
+        amount: minOrder.toFixed(2),
+        diff: (minOrder - subtotal).toFixed(2),
+      });
+    }
+    const noSlotsToday = timeSlots.length === 0;
+    if (noSlotsToday) {
+      return t("time.closed_after_hours", { closeTime: closeTimeLabel });
+    }
+    if (!cafeOpen && timeMode === "asap") {
+      return t("time.closed_asap_pick_later", { closeTime: closeTimeLabel });
+    }
+    if (timeMode === "scheduled" && !scheduledSlot) {
+      return t("time.slot_required");
+    }
+    if (paymentMethod === "cash") {
+      if (cashDenomination === null) return t("payment.denomination_required");
+      if (cashDenomination < total) {
+        return t("payment.denomination_low", { total: total.toFixed(2) });
+      }
+    }
+    if (paymentMethod === "online" && stripeEnabled) {
+      if (stripeLoading) return t("payment.stripe_loading");
+      if (!stripeClientSecret || !stripeFormReady) return t("payment.stripe_wait");
+    }
+    return null;
+  })();
+
+  const placeOrderDisabled =
+    placing ||
+    belowMinimum ||
+    timeSlots.length === 0 ||
+    (paymentMethod === "cash" &&
+      (cashDenomination === null || cashDenomination < total)) ||
+    (paymentMethod === "online" &&
+      stripeEnabled &&
+      (!stripeClientSecret || stripeLoading || !stripeFormReady)) ||
+    (timeMode === "scheduled" && !scheduledSlot) ||
+    (!cafeOpen && timeMode === "asap");
 
   const formatComponents = (item: (typeof cart)[0]): string => {
     if (item.type !== "custom" || !item.components) return "";
@@ -730,7 +781,7 @@ export default function CartPage() {
                       ) : (
                         <div className="flex items-center gap-2 rounded-xl2 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
                           <AlertCircle size={13} />
-                          {t("time.no_slots")}
+                          {t("time.no_slots", { closeTime: closeTimeLabel })}
                         </div>
                       )}
                       {timeMode === "scheduled" && !scheduledSlot && timeSlots.length > 0 && (
@@ -987,18 +1038,15 @@ export default function CartPage() {
 
               {/* Place order */}
               <section className="p-5">
+                {placeOrderDisabled && placeOrderBlockReason && (
+                  <div className="mb-3 flex items-start gap-2 rounded-xl2 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                    <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                    {placeOrderBlockReason}
+                  </div>
+                )}
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={
-                    placing ||
-                    belowMinimum ||
-                    (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) ||
-                    (paymentMethod === "online" &&
-                      stripeEnabled &&
-                      (!stripeClientSecret || stripeLoading || !stripeFormReady)) ||
-                    (timeMode === "scheduled" && !scheduledSlot) ||
-                    (!cafeOpen && timeMode === "asap")
-                  }
+                  disabled={placeOrderDisabled}
                   className="btn-gold w-full justify-center py-3.5 text-base"
                 >
                   {placing ? (

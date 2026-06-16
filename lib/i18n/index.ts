@@ -122,8 +122,13 @@ const nl: Dict = {
   "time.asap_sub_takeaway": "Klaar voor afhaling in ongeveer 15–25 minuten.",
   "time.pick_slot": "Kies een tijdslot",
   "time.slot_required": "Kies een tijdslot om door te gaan.",
-  "time.no_slots": "Geen tijdslots beschikbaar. Probeer zo snel mogelijk te bestellen.",
+  "time.no_slots":
+    "Geen tijdslots meer vandaag. De keuken sluit om {closeTime} — bestellen kan vandaag niet meer.",
   "time.tomorrow": "Morgen",
+  "time.closed_after_hours":
+    "We zijn gesloten (keuken tot {closeTime}). Bestellen is vandaag niet meer mogelijk.",
+  "time.closed_asap_pick_later":
+    "We zijn nu gesloten. Kies ‘Plan voor later’ en een tijdslot (keuken open tot {closeTime}).",
   "time.closed_banner":
     "We zijn nu even gesloten. Je kunt wél al bestellen en in je winkelmand een tijd kiezen voor afhalen of levering wanneer we open zijn.",
   "time.closed_pick_scheduled":
@@ -356,8 +361,13 @@ const en: Dict = {
   "time.asap_sub_takeaway": "Ready for pickup in about 15–25 minutes.",
   "time.pick_slot": "Pick a time slot",
   "time.slot_required": "Choose a time slot to continue.",
-  "time.no_slots": "No time slots available. Try ordering as soon as possible.",
+  "time.no_slots":
+    "No time slots left today. The kitchen closes at {closeTime} — ordering is no longer possible today.",
   "time.tomorrow": "Tomorrow",
+  "time.closed_after_hours":
+    "We're closed (kitchen until {closeTime}). Ordering is no longer possible today.",
+  "time.closed_asap_pick_later":
+    "We're closed right now. Choose “Schedule for later” and pick a time slot (kitchen open until {closeTime}).",
   "time.closed_banner":
     "We're closed right now. You can still add items to your cart and pick a pickup or delivery time for when we're open — at checkout, choose “Schedule for later”.",
   "time.closed_pick_scheduled":
@@ -580,8 +590,13 @@ const fr: Dict = {
   "time.asap_sub_takeaway": "Prêt à être récupéré dans environ 15–25 minutes.",
   "time.pick_slot": "Choisissez un créneau horaire",
   "time.slot_required": "Choisissez un créneau pour continuer.",
-  "time.no_slots": "Aucun créneau disponible. Essayez de commander dès que possible.",
+  "time.no_slots":
+    "Plus de créneaux aujourd’hui. La cuisine ferme à {closeTime} — commande impossible pour aujourd’hui.",
   "time.tomorrow": "Demain",
+  "time.closed_after_hours":
+    "Nous sommes fermés (cuisine jusqu’à {closeTime}). Commande impossible pour aujourd’hui.",
+  "time.closed_asap_pick_later":
+    "Nous sommes fermés pour le moment. Choisissez « Planifier plus tard » et un créneau (cuisine ouverte jusqu’à {closeTime}).",
   "time.closed_banner":
     "Nous sommes fermés pour l’instant. Vous pouvez quand même commander et choisir un créneau d’enlèvement ou de livraison quand nous sommes ouverts — au panier, choisissez « Planifier plus tard ».",
   "time.closed_pick_scheduled":
