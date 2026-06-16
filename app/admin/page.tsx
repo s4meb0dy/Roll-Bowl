@@ -752,7 +752,7 @@ export default function AdminPage() {
             <div>
               <p className="text-sm font-bold text-neutral-800">Kitchen mode</p>
               <p className="text-xs text-neutral-500">
-                <strong>Pieptonen</strong> ca. 5s (stopt vanzelf). Dempen,{" "}
+                <strong>Meldingsgeluid</strong> (3× chime, ca. 7s). Dempen,{" "}
                 <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>. 80mm bon. Chrome:{" "}
                 <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> voor stille print.
               </p>

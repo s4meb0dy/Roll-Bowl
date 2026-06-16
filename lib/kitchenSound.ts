@@ -1,30 +1,29 @@
 /**
- * @file Kitchen alarm: cross-device, loud two-tone siren.
+ * @file Kitchen new-order notification — delivery-app style chime.
  *
- * Why this file exists in this shape:
- * - Mobile browsers (iOS Safari, Android Chrome) refuse to play audio until
- *   the user has interacted with the page at least once. The previous
- *   implementation created a fresh `AudioContext` per beep — that silently
- *   stayed `suspended` on phones/tablets and never produced sound.
- * - This module now keeps **one shared** `AudioContext` for the whole
- *   session, exposes `unlockKitchenAudio()` to be called inside a user
- *   gesture handler (the PIN unlock), and registers a global one-shot
- *   gesture listener as a defensive fallback.
- * - The alarm itself is rebuilt as a two-tone (hi/lo) square+sine layer
- *   pushed through a bandpass (peaks ear-sensitive ~1.8 kHz) and a
- *   dynamics compressor with high ratio + makeup gain, giving the maximum
- *   perceived loudness Web Audio can deliver without clipping.
- * - `navigator.vibrate` is fired in parallel so silenced phones still buzz.
+ * - Mobile browsers need a user gesture before audio; call
+ *   `unlockKitchenAudio()` from the PIN unlock (or any click).
+ * - One shared AudioContext for the session; visibility hook re-resumes
+ *   after the tab was backgrounded.
+ * - Three-note ascending chime, repeated a few times (Uber/Deliveroo feel),
+ *   not a piercing siren.
+ * - `navigator.vibrate` runs in parallel on supported phones.
  */
 
 const MUTE_KEY = "roll-bowl-kitchen-mute";
 
-const ALARM_WALL_MS = 5_000;
-const ALARM_MAX_AUDIO_S = 5;
-const BEEP_DUR_S = 0.18;
-const BEEP_GAP_S = 0.06;
-const FREQ_HI = 1320;
-const FREQ_LO = 990;
+const ALARM_WALL_MS = 7_000;
+/** One 3-note chime cycle length (seconds). */
+const CHIME_CYCLE_S = 0.52;
+const CHIME_CYCLE_GAP_S = 1.15;
+const CHIME_CYCLES = 3;
+
+/** Ascending major triad — short, friendly notification. */
+const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
+  [587.33, 0, 0.1], // D5
+  [739.99, 0.12, 0.1], // F#5
+  [880, 0.24, 0.18], // A5
+];
 
 type Session = { stop: () => void };
 let activeSession: Session | null = null;
@@ -67,12 +66,6 @@ function getSharedCtx(): AudioContext | null {
   }
 }
 
-/**
- * Re-resume the shared context whenever the tab becomes visible again.
- * iOS / mobile browsers often suspend long-idle AudioContexts; without this,
- * the first new order after the kitchen tab has been backgrounded would be
- * silent until someone taps the screen.
- */
 function installVisibilityResumeHook(): void {
   if (visibilityHookInstalled) return;
   if (typeof document === "undefined") return;
@@ -87,12 +80,6 @@ function installVisibilityResumeHook(): void {
   });
 }
 
-/**
- * Unlock audio for the current session. Must be called from inside a user
- * gesture handler (click / pointerdown / keydown / touchstart) on iOS Safari
- * — that's the only window in which `resume()` and the silent-buffer trick
- * are honoured. Subsequent calls are cheap no-ops.
- */
 export function unlockKitchenAudio(): void {
   if (typeof window === "undefined") return;
   if (unlocked) return;
@@ -111,11 +98,6 @@ export function unlockKitchenAudio(): void {
   }
 }
 
-/**
- * Defensive backup: install a one-shot global listener that unlocks audio
- * on the very first user interaction with the page. Idempotent — call this
- * on mount of any page that may need to ring the kitchen alarm.
- */
 export function ensureKitchenAudioUnlock(): void {
   if (typeof window === "undefined") return;
   if (unlocked) return;
@@ -143,44 +125,25 @@ function tryVibrate(pattern: number[]): void {
   }
 }
 
-/**
- * Build the loud-but-clean output graph: bandpass → compressor → makeup gain.
- * Bandpass focuses energy in the 1–3 kHz band where the human ear is most
- * sensitive; compressor + 0.95 makeup gain pushes the perceived loudness to
- * the ceiling without hard-clipping the speaker.
- */
-function buildOutputGraph(ctx: AudioContext): {
+function buildSoftOutputGraph(ctx: AudioContext): {
   input: AudioNode;
   master: GainNode;
   cleanup: () => void;
 } {
-  const compressor = ctx.createDynamicsCompressor();
-  compressor.threshold.value = -8;
-  compressor.knee.value = 0;
-  compressor.ratio.value = 18;
-  compressor.attack.value = 0.001;
-  compressor.release.value = 0.05;
-
   const master = ctx.createGain();
-  master.gain.value = 0.95;
+  master.gain.value = 0.5;
 
-  const bandpass = ctx.createBiquadFilter();
-  bandpass.type = "bandpass";
-  bandpass.frequency.value = 1800;
-  bandpass.Q.value = 0.6;
+  const lowpass = ctx.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = 4200;
+  lowpass.Q.value = 0.7;
 
-  bandpass.connect(compressor);
-  compressor.connect(master);
+  lowpass.connect(master);
   master.connect(ctx.destination);
 
   const cleanup = () => {
     try {
-      bandpass.disconnect();
-    } catch {
-      /* ignore */
-    }
-    try {
-      compressor.disconnect();
+      lowpass.disconnect();
     } catch {
       /* ignore */
     }
@@ -191,56 +154,67 @@ function buildOutputGraph(ctx: AudioContext): {
     }
   };
 
-  return { input: bandpass, master, cleanup };
+  return { input: lowpass, master, cleanup };
+}
+
+function scheduleNote(
+  ctx: AudioContext,
+  input: AudioNode,
+  t0: number,
+  freq: number,
+  durS: number,
+  peakGain: number
+): OscillatorNode[] {
+  const sine = ctx.createOscillator();
+  sine.type = "sine";
+  sine.frequency.value = freq;
+
+  const triangle = ctx.createOscillator();
+  triangle.type = "triangle";
+  triangle.frequency.value = freq;
+
+  const mix = ctx.createGain();
+  mix.gain.value = 0.72;
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.012);
+  env.gain.setValueAtTime(peakGain * 0.85, t0 + durS - 0.04);
+  env.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+
+  sine.connect(mix);
+  triangle.connect(mix);
+  mix.connect(env);
+  env.connect(input);
+
+  sine.start(t0);
+  sine.stop(t0 + durS + 0.03);
+  triangle.start(t0);
+  triangle.stop(t0 + durS + 0.03);
+
+  return [sine, triangle];
 }
 
 /**
- * Pre-schedule a two-tone siren on the audio timeline. Each beep stacks a
- * square wave (rich harmonics → piercing) with a sine an octave above
- * (adds body), shaped by a fast attack / hold / release envelope.
- *
- * Returns a stop() that immediately ducks the master gain to zero and
- * tears down the graph — used by `stopKitchenAlarmLoop()` so that
- * "Bevestig gehoord" / "Accepteren & afdrukken" cuts the noise instantly.
+ * Schedule one or more delivery-style chime cycles. Returns stop() for instant mute.
  */
-function scheduleAlarm(ctx: AudioContext, durationS: number): { stop: () => void } {
+function scheduleDeliveryChime(
+  ctx: AudioContext,
+  options: { cycles?: number; cycleGapS?: number } = {}
+): { stop: () => void } {
+  const cycles = options.cycles ?? CHIME_CYCLES;
+  const cycleGapS = options.cycleGapS ?? CHIME_CYCLE_GAP_S;
   const t0 = ctx.currentTime;
-  const { input, master, cleanup } = buildOutputGraph(ctx);
+  const { input, master, cleanup } = buildSoftOutputGraph(ctx);
   const oscs: OscillatorNode[] = [];
 
-  let off = 0;
-  let i = 0;
-  while (off + BEEP_DUR_S <= durationS + 0.001) {
-    const at = t0 + off;
-    const freq = i % 2 === 0 ? FREQ_HI : FREQ_LO;
-
-    const square = ctx.createOscillator();
-    square.type = "square";
-    square.frequency.value = freq;
-
-    const sine = ctx.createOscillator();
-    sine.type = "sine";
-    sine.frequency.value = freq * 2;
-
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, at);
-    env.gain.exponentialRampToValueAtTime(0.7, at + 0.006);
-    env.gain.setValueAtTime(0.7, at + BEEP_DUR_S - 0.03);
-    env.gain.exponentialRampToValueAtTime(0.0001, at + BEEP_DUR_S);
-
-    square.connect(env);
-    sine.connect(env);
-    env.connect(input);
-
-    square.start(at);
-    square.stop(at + BEEP_DUR_S + 0.02);
-    sine.start(at);
-    sine.stop(at + BEEP_DUR_S + 0.02);
-
-    oscs.push(square, sine);
-
-    off += BEEP_DUR_S + BEEP_GAP_S;
-    i++;
+  for (let c = 0; c < cycles; c++) {
+    const cycleStart = t0 + c * (CHIME_CYCLE_S + cycleGapS);
+    for (const [freq, offsetS, durS] of CHIME_NOTES) {
+      oscs.push(
+        ...scheduleNote(ctx, input, cycleStart + offsetS, freq, durS, 0.38)
+      );
+    }
   }
 
   return {
@@ -248,7 +222,7 @@ function scheduleAlarm(ctx: AudioContext, durationS: number): { stop: () => void
       const now = ctx.currentTime;
       try {
         master.gain.cancelScheduledValues(now);
-        master.gain.setTargetAtTime(0, now, 0.01);
+        master.gain.setTargetAtTime(0, now, 0.02);
       } catch {
         /* ignore */
       }
@@ -272,12 +246,13 @@ export function stopKitchenAlarmLoop(): void {
   } catch {
     /* ignore */
   }
+  activeSession = null;
   tryVibrate([0]);
 }
 
 /**
- * Fire the alarm: 5s of two-tone siren + matching vibration pattern.
- * Falls back to `playNewOrderChime()` if Web Audio is unavailable.
+ * New order: 3× delivery chime + gentle vibration. Falls back to a single chime
+ * if Web Audio is unavailable.
  */
 export function startKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
@@ -290,14 +265,13 @@ export function startKitchenAlarmLoop(): void {
     return;
   }
 
-  // Vibration: alternating 380ms buzz / 120ms gap, ~5s total.
-  tryVibrate([380, 120, 380, 120, 380, 120, 380, 120, 380, 120, 380]);
+  tryVibrate([120, 60, 120, 900, 120, 60, 120, 900, 120]);
 
   let endTimer: number | null = null;
   let scheduled: { stop: () => void } | null = null;
 
   const run = () => {
-    scheduled = scheduleAlarm(ctx, ALARM_MAX_AUDIO_S);
+    scheduled = scheduleDeliveryChime(ctx);
     endTimer = window.setTimeout(() => {
       endTimer = null;
       activeSession = null;
@@ -305,10 +279,7 @@ export function startKitchenAlarmLoop(): void {
   };
 
   if (ctx.state === "suspended") {
-    void ctx
-      .resume()
-      .then(run)
-      .catch(run);
+    void ctx.resume().then(run).catch(run);
   } else {
     run();
   }
@@ -332,49 +303,24 @@ export function startKitchenAlarmLoop(): void {
   };
 }
 
-/**
- * Short two-note chime — used as a fallback when the Web Audio graph can't
- * be constructed (very old browsers). Kept intentionally simple.
- */
+/** Single chime — fallback when the full graph cannot be built. */
 export function playNewOrderChime(): void {
   if (typeof window === "undefined" || isKitchenAlarmMuted()) return;
   const ctx = getSharedCtx();
   if (!ctx) return;
 
-  const playTones = () => {
-    const tones: Array<[number, number, number]> = [
-      [880, 0, 0.16],
-      [1174.66, 0.18, 0.18],
-    ];
-    const { input, cleanup } = buildOutputGraph(ctx);
-    for (const [freq, tOff, dur] of tones) {
-      const t0 = ctx.currentTime + tOff;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.6, t0 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      o.connect(g);
-      g.connect(input);
-      o.start(t0);
-      o.stop(t0 + dur + 0.05);
-    }
-    window.setTimeout(cleanup, 800);
+  const fire = () => {
+    scheduleDeliveryChime(ctx, { cycles: 1, cycleGapS: 0 });
   };
 
   if (ctx.state === "suspended") {
-    void ctx.resume().then(playTones).catch(playTones);
+    void ctx.resume().then(fire).catch(fire);
   } else {
-    playTones();
+    fire();
   }
 }
 
-/**
- * "Test geluid" button — one short two-tone burst + a quick vibration.
- * Doubles as a manual unlock for mobile (the click itself is a gesture).
- */
+/** "Test geluid" — one chime cycle; the click also unlocks mobile audio. */
 export function playTestKitchenAlarm(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
@@ -382,10 +328,10 @@ export function playTestKitchenAlarm(): void {
   const ctx = getSharedCtx();
   if (!ctx) return;
 
-  tryVibrate([180]);
+  tryVibrate([100]);
 
   const fire = () => {
-    scheduleAlarm(ctx, BEEP_DUR_S * 2 + BEEP_GAP_S);
+    scheduleDeliveryChime(ctx, { cycles: 1, cycleGapS: 0 });
   };
 
   if (ctx.state === "suspended") {
