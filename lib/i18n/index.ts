@@ -61,6 +61,8 @@ const nl: Dict = {
   "landing.kitchen_link": "Keukenbeheer",
   "landing.hero_custom": "Stel zelf samen",
   "landing.hero_custom_sub": "Jij bepaalt alles",
+  "landing.popular_title": "Populair bij ons",
+  "landing.from_price": "Vanaf €{price}",
 
   // features
   "feat.1.title": "Stel je bowl samen",
@@ -322,6 +324,8 @@ const en: Dict = {
   "landing.kitchen_link": "Kitchen view",
   "landing.hero_custom": "Build your own",
   "landing.hero_custom_sub": "You decide everything",
+  "landing.popular_title": "Customer favourites",
+  "landing.from_price": "From €{price}",
 
   "feat.1.title": "Build your bowl",
   "feat.1.desc": "Choose your base, protein, mix-ins and sauce — exactly how you want it.",
@@ -570,6 +574,8 @@ const fr: Dict = {
   "landing.kitchen_link": "Vue cuisine",
   "landing.hero_custom": "Composez vous-même",
   "landing.hero_custom_sub": "Vous décidez tout",
+  "landing.popular_title": "Les favoris",
+  "landing.from_price": "À partir de €{price}",
 
   "feat.1.title": "Composez votre bowl",
   "feat.1.desc": "Choisissez votre base, protéine, mix-ins et sauce — exactement comme vous le souhaitez.",

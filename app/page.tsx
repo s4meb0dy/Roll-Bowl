@@ -18,6 +18,83 @@ const menuById = Object.fromEntries(READY_MADE.map((item) => [item.id, item]));
 
 const HERO_BOWL_IDS = ["hawaiian-style", "hot-tuna", "tasty-tofu"] as const;
 
+type HeroShowcaseItem =
+  | { kind: "bowl"; id: (typeof HERO_BOWL_IDS)[number] }
+  | { kind: "custom" };
+
+const HERO_SHOWCASE: HeroShowcaseItem[] = [
+  { kind: "bowl", id: "hawaiian-style" },
+  { kind: "bowl", id: "hot-tuna" },
+  { kind: "bowl", id: "tasty-tofu" },
+  { kind: "custom" },
+];
+
+function HeroShowcaseCard({
+  item,
+  t,
+  className = "",
+}: {
+  item: HeroShowcaseItem;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  className?: string;
+}) {
+  if (item.kind === "bowl") {
+    const bowl = menuById[item.id];
+    if (!bowl?.image) return null;
+    const tag = bowl.tags[0] ?? "Popular";
+    return (
+      <div
+        className={`group overflow-hidden rounded-xl3 border border-ink-200/60 bg-white shadow-soft ${className}`}
+      >
+        <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
+          <Image
+            src={bowl.image}
+            alt={bowl.name}
+            fill
+            sizes="(max-width: 1024px) 72vw, 280px"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+          <span className="absolute bottom-2 left-2 rounded-full bg-white/95 px-2.5 py-0.5 text-[11px] font-semibold text-ink-800 shadow-sm">
+            {tag}
+          </span>
+          <span className="absolute bottom-2 right-2 rounded-full bg-ink-900/80 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+            {t("landing.from_price", { price: bowl.price.toFixed(2) })}
+          </span>
+        </div>
+        <div className="p-3.5 sm:p-4">
+          <div className="font-semibold text-ink-900">{bowl.name}</div>
+          <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-500">
+            {bowl.description}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`group overflow-hidden rounded-xl3 border border-gold-200 bg-white shadow-soft ${className}`}
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
+        <Image
+          src="/bowls/delicious-chicken.png"
+          alt={t("landing.hero_custom")}
+          fill
+          sizes="(max-width: 1024px) 72vw, 280px"
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+        <span className="absolute bottom-2 left-2 rounded-full bg-gold-50 px-2.5 py-0.5 text-[11px] font-semibold text-gold-800 shadow-sm">
+          Custom
+        </span>
+      </div>
+      <div className="p-3.5 sm:p-4">
+        <div className="font-semibold text-ink-900">{t("landing.hero_custom")}</div>
+        <div className="mt-1 text-xs text-ink-500">{t("landing.hero_custom_sub")}</div>
+      </div>
+    </div>
+  );
+}
+
 const zipCodes = zipCodesData as Record<string, ZipCodeConfig>;
 
 type CheckState = "idle" | "loading" | "valid" | "invalid";
@@ -221,57 +298,34 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Right: visual cards */}
+          {/* Mobile: horizontal food gallery */}
+          <div className="lg:hidden">
+            <h2 className="mb-3 font-display text-lg font-bold text-ink-900">
+              {t("landing.popular_title")}
+            </h2>
+            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory scrollbar-hide sm:-mx-6 sm:px-6">
+              {HERO_SHOWCASE.map((item) => (
+                <HeroShowcaseCard
+                  key={item.kind === "bowl" ? item.id : "custom"}
+                  item={item}
+                  t={t}
+                  className="w-[72vw] max-w-[280px] shrink-0 snap-start transition active:scale-[0.98] sm:w-[240px]"
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Desktop: 2×2 grid */}
           <div className="relative hidden lg:block">
             <div className="grid grid-cols-2 gap-4">
-              {HERO_BOWL_IDS.map((id) => {
-                const bowl = menuById[id];
-                if (!bowl?.image) return null;
-                const tag = bowl.tags[0] ?? "Popular";
-                return (
-                  <div
-                    key={id}
-                    className="group overflow-hidden rounded-xl3 border border-ink-200/60 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-soft-hover"
-                  >
-                    <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
-                      <Image
-                        src={bowl.image}
-                        alt={bowl.name}
-                        fill
-                        sizes="(max-width: 1024px) 50vw, 280px"
-                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <span className="absolute bottom-2 left-2 rounded-full bg-white/95 px-2.5 py-0.5 text-[11px] font-semibold text-ink-800 shadow-sm">
-                        {tag}
-                      </span>
-                    </div>
-                    <div className="p-4">
-                      <div className="font-semibold text-ink-900">{bowl.name}</div>
-                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-500">
-                        {bowl.description}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="group overflow-hidden rounded-xl3 border border-gold-200 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-soft-hover">
-                <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
-                  <Image
-                    src="/bowls/delicious-chicken.png"
-                    alt={t("landing.hero_custom")}
-                    fill
-                    sizes="(max-width: 1024px) 50vw, 280px"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <span className="absolute bottom-2 left-2 rounded-full bg-gold-50 px-2.5 py-0.5 text-[11px] font-semibold text-gold-800 shadow-sm">
-                    Custom
-                  </span>
-                </div>
-                <div className="p-4">
-                  <div className="font-semibold text-ink-900">{t("landing.hero_custom")}</div>
-                  <div className="mt-1 text-xs text-ink-500">{t("landing.hero_custom_sub")}</div>
-                </div>
-              </div>
+              {HERO_SHOWCASE.map((item) => (
+                <HeroShowcaseCard
+                  key={item.kind === "bowl" ? item.id : "custom"}
+                  item={item}
+                  t={t}
+                  className="transition hover:-translate-y-0.5 hover:shadow-soft-hover"
+                />
+              ))}
             </div>
             <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-48 rounded-full bg-sage-100 opacity-40 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-8 -left-8 h-40 w-40 rounded-full bg-gold-100 opacity-40 blur-3xl" />
