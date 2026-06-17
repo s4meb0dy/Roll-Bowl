@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  MapPin, Leaf, Clock, Star,
+  MapPin, Leaf, Clock,
   ArrowRight, CheckCircle2, XCircle, Loader2, Home,
 } from "lucide-react";
 import { useStore } from "@/lib/store/useStore";
@@ -361,23 +361,6 @@ export default function LandingPage() {
             </div>
 
             {mobileShowcase}
-
-            <div className="mt-6 flex items-center gap-4">
-              <div className="flex -space-x-2">
-                {["🧑‍🍳", "👩", "🧑", "👨"].map((e, i) => (
-                  <span key={i} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-cream-200 text-sm shadow-sm">
-                    {e}
-                  </span>
-                ))}
-              </div>
-              <div className="text-sm text-ink-500">
-                <span className="flex items-center gap-1 font-semibold text-ink-800">
-                  <Star size={13} fill="currentColor" className="text-gold-500" />
-                  4,9 / 5
-                </span>
-                {t("landing.reviews", { count: "2.400" })}
-              </div>
-            </div>
           </div>
 
           {/* Desktop: 2×2 grid */}
