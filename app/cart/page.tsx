@@ -128,6 +128,38 @@ export default function CartPage() {
     [mounted, nowTick],
   );
 
+  const isTakeaway = orderType === "takeaway";
+
+  const buildFulfillmentTime = (): FulfillmentTime =>
+    timeMode === "asap" || !scheduledSlot
+      ? { mode: "asap" }
+      : { mode: "scheduled", scheduledFor: scheduledSlot };
+
+  const stripeCustomerInfo = useMemo((): CustomerInfo => {
+    if (isTakeaway) {
+      return {
+        name: customerInfo.name,
+        phone: customerInfo.phone,
+        address: "",
+        zipCode: "",
+      };
+    }
+    return {
+      name: customerInfo.name,
+      phone: customerInfo.phone,
+      address: customerInfo.address || deliveryAddress || "",
+      zipCode: customerInfo.zipCode || zipCode || "",
+    };
+  }, [
+    isTakeaway,
+    customerInfo.name,
+    customerInfo.phone,
+    customerInfo.address,
+    customerInfo.zipCode,
+    deliveryAddress,
+    zipCode,
+  ]);
+
   // Drop stale selection if the slot has rolled out of the available window.
   useEffect(() => {
     if (
@@ -174,10 +206,10 @@ export default function CartPage() {
             orderId,
             items: cart,
             orderType,
-            zipCode:
-              orderType === "takeaway" ? "" : customerInfo.zipCode || zipCode,
-            customerName: customerInfo.name,
-            customerPhone: customerInfo.phone,
+            zipCode: isTakeaway ? "" : stripeCustomerInfo.zipCode,
+            customerInfo: stripeCustomerInfo,
+            generalNote,
+            fulfillmentTime: buildFulfillmentTime(),
           }),
           signal: ac.signal,
         });
@@ -206,10 +238,11 @@ export default function CartPage() {
     paymentMethod,
     cart,
     orderType,
-    customerInfo.zipCode,
-    customerInfo.name,
-    customerInfo.phone,
-    zipCode,
+    isTakeaway,
+    stripeCustomerInfo,
+    generalNote,
+    timeMode,
+    scheduledSlot,
     zipCodeConfig?.minOrder,
   ]);
 
@@ -226,7 +259,6 @@ export default function CartPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const isTakeaway = orderType === "takeaway";
   const deliveryFee = isTakeaway ? TAKEAWAY_DELIVERY_FEE : zipCodeConfig?.deliveryFee ?? 0;
   const minOrder = isTakeaway ? TAKEAWAY_MIN_ORDER : zipCodeConfig?.minOrder ?? 0;
   const total = subtotal + deliveryFee;
@@ -297,6 +329,25 @@ export default function CartPage() {
         fulfillmentTime,
         amountCents,
       });
+
+      const savePendingRes = await fetch("/api/stripe/save-pending-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: stripeOrderId,
+          items: cart,
+          customerInfo: finalCustomerInfo,
+          generalNote,
+          orderType,
+          fulfillmentTime,
+          zipCode: isTakeaway ? "" : finalCustomerInfo.zipCode || zipCode,
+        }),
+      });
+      if (!savePendingRes.ok) {
+        setPaymentError(t("payment.stripe_error"));
+        setPlacing(false);
+        return;
+      }
 
       const returnUrl = `${window.location.origin}/order-confirmed?id=${stripeOrderId}&stripe_return=1`;
       const result = await stripePaymentRef.current?.confirmPayment(returnUrl);

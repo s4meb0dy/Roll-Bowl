@@ -61,6 +61,23 @@ function ConfirmedContent() {
 
     void (async () => {
       try {
+        await fetch("/api/stripe/save-pending-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId,
+            items: pending.items,
+            customerInfo: pending.customerInfo,
+            generalNote: pending.generalNote,
+            orderType: pending.orderType,
+            fulfillmentTime: pending.fulfillmentTime,
+            zipCode:
+              pending.orderType === "takeaway"
+                ? ""
+                : pending.customerInfo.zipCode,
+          }),
+        });
+
         const verifyRes = await fetch("/api/stripe/verify-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

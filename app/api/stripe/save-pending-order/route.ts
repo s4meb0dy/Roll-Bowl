@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getStripe } from "@/lib/stripe/server";
 import { isStripeConfigured } from "@/lib/stripe/config";
 import {
   buildPendingStripeOrder,
@@ -10,10 +9,7 @@ import {
 
 export async function POST(req: Request) {
   if (!isStripeConfigured()) {
-    return NextResponse.json(
-      { error: "stripe_not_configured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "stripe_not_configured" }, { status: 503 });
   }
 
   let body: unknown;
@@ -23,7 +19,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const parsed = parsePendingStripeOrderInput(body);
+  const parsed = parsePendingStripeOrderInput(body, { strict: true });
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.reason }, { status: 400 });
   }
@@ -41,31 +37,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const stripe = getStripe();
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: built.amountCents,
-    currency: "eur",
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      orderId: built.orderId,
-      orderType: built.orderType,
-      total: built.total.toFixed(2),
-      customerName: built.customerInfo.name.slice(0, 120),
-      customerPhone: built.customerInfo.phone.slice(0, 40),
-    },
-  });
-
-  built.paymentIntentId = paymentIntent.id;
   const saved = await savePendingStripeOrder(built);
   if (!saved) {
-    console.warn("[stripe/create-payment-intent] pending save failed", built.orderId);
+    return NextResponse.json({ error: "pending_store_unavailable" }, { status: 503 });
   }
 
-  return NextResponse.json({
-    clientSecret: paymentIntent.client_secret,
-    paymentIntentId: paymentIntent.id,
-    amountCents: built.amountCents,
-  });
+  return NextResponse.json({ ok: true, orderId: built.orderId, amountCents: built.amountCents });
 }
 
 export const runtime = "nodejs";
