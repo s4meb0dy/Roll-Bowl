@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyAdminPin } from "@/lib/admin/pinServer";
+import { adminSessionSetCookieHeader } from "@/lib/admin/adminSession";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -14,5 +15,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    { ok: true },
+    { headers: { "Set-Cookie": adminSessionSetCookieHeader() } }
+  );
 }

@@ -1,6 +1,14 @@
 "use client";
 
 import type { Order, OrderLightspeedMeta, OrderStatus } from "@/lib/types";
+import { getStoredAdminPin } from "@/lib/admin/pinClient";
+
+function adminOrderHeaders(): HeadersInit {
+  const headers: Record<string, string> = {};
+  const pin = getStoredAdminPin();
+  if (pin) headers["x-admin-pin"] = pin;
+  return headers;
+}
 
 export interface OrderInboxSnapshot {
   orders: Order[];
@@ -25,7 +33,11 @@ export async function patchOrderRemote(
       `${typeof window !== "undefined" ? window.location.origin : ""}/api/orders/${encodeURIComponent(id)}`,
       {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...adminOrderHeaders(),
+        },
+        credentials: "same-origin",
         body: JSON.stringify(patch),
         signal: opts?.signal,
       }
@@ -98,6 +110,8 @@ export function subscribeToOrderStream(
       try {
         const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
           cache: "no-store",
+          credentials: "same-origin",
+          headers: adminOrderHeaders(),
         });
         if (!res.ok) return;
         const data = (await res.json()) as OrderInboxSnapshot;
@@ -116,7 +130,7 @@ export function subscribeToOrderStream(
   const connect = () => {
     if (cancelled) return;
     try {
-      es = new EventSource("/api/orders/stream");
+      es = new EventSource("/api/orders/stream", { withCredentials: true });
     } catch (e) {
       console.error("[orders/stream] cannot open EventSource", e);
       startPollingFallback();

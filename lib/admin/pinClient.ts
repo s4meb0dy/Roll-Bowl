@@ -44,6 +44,7 @@ export async function verifyAdminPinRemote(pin: string): Promise<boolean> {
     const res = await fetch("/api/admin/verify-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ pin }),
     });
     if (!res.ok) return false;

@@ -1,6 +1,7 @@
 import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { Order } from "@/lib/types";
+import { requireAdminAuth } from "@/lib/admin/requireAdminAuth";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
 import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
@@ -8,6 +9,7 @@ import {
   getVersion,
   storeNewOrder,
 } from "@/lib/orders/inboxStore";
+import { validateOrderSubmission } from "@/lib/orders/validateOrderSubmission";
 
 const READ_LIMIT = 200;
 
@@ -40,7 +42,10 @@ function validateOrderInboxPayload(
  * POST — idempotent create: storing the same id twice (e.g. cart retry)
  * leaves the existing server-side record untouched.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = requireAdminAuth(req);
+  if (auth) return auth;
+
   if (!isOrderInboxConfigured()) {
     return NextResponse.json({
       orders: [] as Order[],
@@ -106,6 +111,18 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+
+  const submission = await validateOrderSubmission(checked.order);
+  if (!submission.ok) {
+    console.warn("[orders/inbox] submission rejected", submission.reason, {
+      orderId: checked.order.id,
+    });
+    return NextResponse.json(
+      { error: "unauthorized", reason: submission.reason },
+      { status: 403 }
+    );
+  }
+
   try {
     const { created, version } = await storeNewOrder(checked.order);
     return NextResponse.json({

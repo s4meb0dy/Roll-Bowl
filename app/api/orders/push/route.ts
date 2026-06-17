@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { pushOrderToLightspeed } from "@/lib/lightspeed/pushOrder";
 import type { Order } from "@/lib/types";
+import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
+import { getOrderById, patchOrderFields } from "@/lib/orders/inboxStore";
+import { validateOrderSubmission } from "@/lib/orders/validateOrderSubmission";
 
 /**
  * Pushes a completed web order to Lightspeed (or compatible POS) for kitchen / printing.
@@ -19,8 +22,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing or invalid order" }, { status: 400 });
   }
 
+  const submission = await validateOrderSubmission(order);
+  if (!submission.ok) {
+    return NextResponse.json(
+      { error: "unauthorized", reason: submission.reason },
+      { status: 403 }
+    );
+  }
+
+  if (isOrderInboxConfigured()) {
+    const existing = await getOrderById(order.id);
+    if (!existing && order.paymentMethod === "cash") {
+      return NextResponse.json({ error: "order_not_in_inbox" }, { status: 404 });
+    }
+  }
+
   try {
     const result = await pushOrderToLightspeed(order);
+
+    if (isOrderInboxConfigured() && result.state !== "skipped") {
+      try {
+        await patchOrderFields(order.id, {
+          lightspeed: {
+            state: result.state,
+            pushedAt: result.pushedAt,
+            saleId: result.saleId,
+            accountIdentifier: result.accountIdentifier,
+            errorMessage: result.errorMessage,
+            httpStatus: result.httpStatus,
+            dryRun: result.dryRun,
+          },
+        });
+      } catch (e) {
+        console.error("[orders/push] inbox patch failed", order.id, e);
+      }
+    }
+
     return NextResponse.json(result);
   } catch (e) {
     console.error("[Lightspeed] pushOrder exception", e);

@@ -1,6 +1,7 @@
 import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import type { OrderLightspeedMeta, OrderStatus } from "@/lib/types";
+import { requireAdminAuth } from "@/lib/admin/requireAdminAuth";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
 import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
@@ -65,9 +66,12 @@ function buildPatch(body: unknown): { ok: true; patch: OrderPatch } | { ok: fals
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const auth = requireAdminAuth(req);
+  if (auth) return auth;
+
   if (!isOrderInboxConfigured()) {
     return NextResponse.json(
       { error: "inbox_not_configured" },
@@ -109,6 +113,9 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const auth = requireAdminAuth(req);
+  if (auth) return auth;
+
   if (!isOrderInboxConfigured()) {
     return NextResponse.json(
       { ok: false, error: "inbox_not_configured" },

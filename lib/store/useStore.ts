@@ -253,7 +253,6 @@ export const useStore = create<AppState>()(
               : o
           ),
         }));
-        void patchOrderRemote(orderId, { lightspeed: meta });
       },
 
       /**

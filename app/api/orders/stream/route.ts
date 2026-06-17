@@ -1,5 +1,6 @@
 import "@/lib/orders/ensureKvEnv";
 import type { NextRequest } from "next/server";
+import { requireAdminAuth } from "@/lib/admin/requireAdminAuth";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
 import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
@@ -36,6 +37,9 @@ function sseEvent(event: string, data: unknown): string {
  * gateway timeout.
  */
 export async function GET(req: NextRequest) {
+  const auth = requireAdminAuth(req);
+  if (auth) return auth;
+
   const encoder = new TextEncoder();
 
   const inboxOn = isOrderInboxConfigured();
