@@ -27,7 +27,7 @@ const siteUrl =
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Roll & Bowl — Fresh Bowls Delivered",
+  title: "Roll&Bowl",
   description:
     "Build your perfect bowl or choose from our chef-curated ready-made selections. Healthy, delicious, delivered fast.",
   keywords: ["healthy food", "bowls", "delivery", "fresh", "vegan", "gluten-free"],
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     shortcut: ["/logo.png"],
   },
   openGraph: {
-    title: "Roll & Bowl",
+    title: "Roll&Bowl",
     description: "Fresh poké bowls, burritos and sushi delivered in Antwerp.",
     images: ["/logo.png"],
     type: "website",
