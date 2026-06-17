@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Home, UtensilsCrossed, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -42,8 +42,10 @@ const ITEMS: NavItem[] = [
 
 export default function MobileBottomNav() {
   const pathname = usePathname() ?? "/";
+  const router = useRouter();
   const t = useT();
   const cart = useStore((s) => s.cart);
+  const zipCode = useStore((s) => s.zipCode);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -51,6 +53,23 @@ export default function MobileBottomNav() {
   if (pathname.startsWith("/admin")) return null;
 
   const count = mounted ? cart.reduce((sum, item) => sum + item.quantity, 0) : 0;
+
+  const scrollToDeliveryForm = () => {
+    const el = document.getElementById("delivery-form");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      router.push("/");
+    }
+  };
+
+  const handleNavClick = (item: NavItem, e: React.MouseEvent) => {
+    if (item.href === "/menu" && !zipCode) {
+      e.preventDefault();
+      if (pathname === "/") scrollToDeliveryForm();
+      else router.push("/#delivery-form");
+    }
+  };
 
   return (
     <nav
@@ -69,9 +88,10 @@ export default function MobileBottomNav() {
             <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
+                onClick={(e) => handleNavClick(item, e)}
                 aria-current={active ? "page" : undefined}
                 className={`tap-target relative flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold transition-transform motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 ${
-                  active ? "text-ink-900" : "text-ink-500"
+                  active ? "text-ink-900" : item.href === "/menu" && !zipCode ? "text-ink-400" : "text-ink-500"
                 }`}
               >
                 <span className="relative">
