@@ -424,20 +424,37 @@ export default function LandingPage() {
           <h2 className="font-display mb-8 text-center text-2xl font-bold tracking-tight text-ink-900 sm:mb-10 sm:text-3xl">
             {t("landing.how_title")}
           </h2>
-          <div className="mx-auto grid max-w-3xl grid-cols-2 gap-x-4 gap-y-8 sm:max-w-4xl lg:max-w-4xl lg:grid-cols-4 lg:gap-6 lg:justify-items-center lg:text-center">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div
-                key={step.num}
-                className="relative flex flex-col items-center text-center"
-              >
-                {i < HOW_IT_WORKS.length - 1 && (
-                  <div className="absolute right-0 top-5 hidden h-0.5 w-1/2 bg-gold-100 lg:block" />
-                )}
+
+          {/* Mobile & tablet */}
+          <div className="mx-auto grid max-w-md grid-cols-2 gap-x-4 gap-y-8 sm:max-w-lg lg:hidden">
+            {HOW_IT_WORKS.map((step) => (
+              <div key={step.num} className="flex flex-col items-center text-center">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft">
                   {step.num}
                 </div>
                 <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
                 <p className="mt-1 text-sm leading-relaxed text-ink-500">{t(step.descKey)}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop — centered cluster */}
+          <div className="mx-auto hidden w-fit max-w-full items-start lg:flex">
+            {HOW_IT_WORKS.map((step, i) => (
+              <div key={step.num} className="flex items-start">
+                {i > 0 && (
+                  <div
+                    className="mt-5 h-0.5 w-12 shrink-0 self-start bg-gold-100 xl:w-16"
+                    aria-hidden
+                  />
+                )}
+                <div className="flex w-[8.5rem] shrink-0 flex-col items-center text-center xl:w-36">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft">
+                    {step.num}
+                  </div>
+                  <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-500">{t(step.descKey)}</p>
+                </div>
               </div>
             ))}
           </div>
