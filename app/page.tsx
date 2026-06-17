@@ -95,6 +95,46 @@ function HeroShowcaseCard({
   );
 }
 
+function HeroShowcaseRotator({
+  t,
+  className = "",
+}: {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  className?: string;
+}) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setIndex((i) => (i + 1) % HERO_SHOWCASE.length);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const item = HERO_SHOWCASE[index];
+
+  return (
+    <div className={className}>
+      <div key={index} className="animate-fade-in">
+        <HeroShowcaseCard item={item} t={t} className="mx-auto w-full max-w-sm" />
+      </div>
+      <div className="mt-3 flex justify-center gap-1.5">
+        {HERO_SHOWCASE.map((entry, i) => (
+          <button
+            key={entry.kind === "bowl" ? entry.id : "custom"}
+            type="button"
+            aria-label={`Slide ${i + 1}`}
+            onClick={() => setIndex(i)}
+            className={`h-1.5 rounded-full transition-all ${
+              i === index ? "w-5 bg-gold-500" : "w-1.5 bg-ink-200"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const zipCodes = zipCodesData as Record<string, ZipCodeConfig>;
 
 type CheckState = "idle" | "loading" | "valid" | "invalid";
@@ -148,6 +188,15 @@ export default function LandingPage() {
 
   const resetCheck = () => { setCheckState("idle"); setFoundConfig(null); };
 
+  const canProceed = checkState === "valid" && !!foundConfig;
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      if (canProceed) handleProceed();
+      else handleCheck();
+    }
+  };
+
   const FEATURES = [
     { icon: "🥗", titleKey: "feat.1.title", descKey: "feat.1.desc" },
     { icon: "🚀", titleKey: "feat.2.title", descKey: "feat.2.desc" },
@@ -161,31 +210,15 @@ export default function LandingPage() {
     { num: "04", labelKey: "how.4.label", descKey: "how.4.desc" },
   ];
 
-  const mobileShowcase = checkState === "valid" && foundConfig ? (
-    <div className="mt-8 lg:hidden">
-      <div className="mb-1 flex items-end justify-between gap-2">
-        <h2 className="font-display text-lg font-bold text-ink-900">
+  const mobileShowcase =
+    checkState === "valid" && foundConfig ? (
+      <div className="mt-8 lg:hidden">
+        <h2 className="mb-3 font-display text-lg font-bold text-ink-900">
           {t("landing.popular_title")}
         </h2>
-        <span className="pb-0.5 text-[11px] font-medium text-ink-400">
-          {t("landing.swipe_hint")}
-        </span>
+        <HeroShowcaseRotator t={t} />
       </div>
-      <div className="relative -mx-4 sm:-mx-6">
-        <div className="flex gap-4 overflow-x-auto overscroll-x-contain px-4 pb-2 snap-x snap-mandatory scrollbar-hide sm:px-6 touch-pan-x">
-          {HERO_SHOWCASE.map((item) => (
-            <HeroShowcaseCard
-              key={item.kind === "bowl" ? item.id : "custom"}
-              item={item}
-              t={t}
-              className="w-[min(85vw,320px)] min-w-[min(85vw,320px)] shrink-0 snap-center"
-            />
-          ))}
-        </div>
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-cream-100 to-transparent" />
-      </div>
-    </div>
-  ) : null;
+    ) : null;
 
   return (
     <div className="min-h-screen bg-cream-100 pb-28 md:pb-0">
@@ -211,7 +244,7 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6 sm:pb-16 sm:pt-12 lg:pt-20">
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-12">
           <div className="animate-slide-up min-w-0">
             <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-gold-200 bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">
               <Leaf size={12} />
@@ -228,16 +261,37 @@ export default function LandingPage() {
               {t("landing.subtitle")}
             </p>
 
-            {/* Postcode → address form */}
+            {/* Address + postal code form */}
             <div id="delivery-form" className="card scroll-mt-24 p-4 sm:p-5">
-              <label className="mb-4 flex items-center gap-2 text-sm font-semibold text-ink-800">
+              <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-800">
                 <MapPin size={15} className="text-gold-600" />
                 {t("landing.address_label")}
               </label>
 
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-                {t("landing.step_postcode")}
-              </p>
+              <div className="mb-3">
+                <div className="relative">
+                  <Home
+                    size={15}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
+                  />
+                  <input
+                    type="text"
+                    autoComplete="street-address"
+                    value={address}
+                    onChange={(e) => {
+                      setAddress(e.target.value);
+                      setAddressError(false);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder={t("landing.address_placeholder")}
+                    className={`input-field pl-9 ${addressError ? "border-red-300 focus:ring-red-200" : ""}`}
+                  />
+                </div>
+                {addressError && (
+                  <p className="mt-1 text-xs text-red-500">{t("landing.address_error")}</p>
+                )}
+              </div>
+
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   type="text"
@@ -248,27 +302,28 @@ export default function LandingPage() {
                     setPostalInput(e.target.value.replace(/\D/g, "").slice(0, 4));
                     resetCheck();
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && checkState !== "valid") handleCheck();
-                  }}
+                  onKeyDown={handleKeyDown}
                   placeholder={t("landing.postal_placeholder")}
                   maxLength={4}
                   className="input-field flex-1 tabular-nums"
                 />
-                {checkState !== "valid" && (
-                  <button
-                    type="button"
-                    onClick={handleCheck}
-                    disabled={!postalInput.trim() || checkState === "loading"}
-                    className="btn-primary w-full shrink-0 sm:w-auto"
-                  >
-                    {checkState === "loading" ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      t("landing.check")
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={canProceed ? handleProceed : handleCheck}
+                  disabled={!postalInput.trim() || checkState === "loading"}
+                  className={`${canProceed ? "btn-gold" : "btn-primary"} w-full shrink-0 sm:w-auto`}
+                >
+                  {checkState === "loading" ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : canProceed ? (
+                    <>
+                      {t("landing.order_now")}
+                      <ArrowRight size={15} />
+                    </>
+                  ) : (
+                    t("landing.check")
+                  )}
+                </button>
               </div>
 
               {checkState === "valid" && foundConfig && (
@@ -299,56 +354,11 @@ export default function LandingPage() {
                   {t("landing.invalid", { code: postalInput })}
                 </div>
               )}
-
-              {checkState === "valid" && foundConfig && (
-                <div className="mt-5 border-t border-ink-100 pt-5 animate-fade-in">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-                    {t("landing.step_address")}
-                  </p>
-                  <div className="relative">
-                    <Home
-                      size={15}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
-                    />
-                    <input
-                      type="text"
-                      autoComplete="street-address"
-                      value={address}
-                      onChange={(e) => {
-                        setAddress(e.target.value);
-                        setAddressError(false);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleProceed();
-                      }}
-                      placeholder={t("landing.address_placeholder")}
-                      className={`input-field pl-9 ${addressError ? "border-red-300 focus:ring-red-200" : ""}`}
-                    />
-                  </div>
-                  {addressError && (
-                    <p className="mt-1 text-xs text-red-500">{t("landing.address_error")}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleProceed}
-                    disabled={!address.trim()}
-                    className="btn-gold mt-3 w-full justify-center py-3.5 text-base"
-                  >
-                    {t("landing.order_now")}
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              )}
             </div>
 
             {mobileShowcase}
 
-            {/* Social proof — desktop, or mobile after postcode OK */}
-            <div
-              className={`mt-6 items-center gap-4 ${
-                checkState === "valid" ? "flex" : "hidden sm:flex"
-              }`}
-            >
+            <div className="mt-6 flex items-center gap-4">
               <div className="flex -space-x-2">
                 {["🧑‍🍳", "👩", "🧑", "👨"].map((e, i) => (
                   <span key={i} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-cream-200 text-sm shadow-sm">
@@ -366,18 +376,9 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Desktop: 2×2 grid */}
-          <div className="relative hidden lg:block">
-            <div className="grid grid-cols-2 gap-4">
-              {HERO_SHOWCASE.map((item) => (
-                <HeroShowcaseCard
-                  key={item.kind === "bowl" ? item.id : "custom"}
-                  item={item}
-                  t={t}
-                  className="transition hover:-translate-y-0.5 hover:shadow-soft-hover"
-                />
-              ))}
-            </div>
+          {/* Desktop: rotating bowl showcase */}
+          <div className="relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center">
+            <HeroShowcaseRotator t={t} className="w-full max-w-md" />
             <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-48 rounded-full bg-sage-100 opacity-40 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-8 -left-8 h-40 w-40 rounded-full bg-gold-100 opacity-40 blur-3xl" />
           </div>
@@ -387,11 +388,11 @@ export default function LandingPage() {
       {/* Features */}
       <section className="border-t border-ink-200/60 bg-white py-10 sm:py-16">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="grid gap-3 sm:grid-cols-3 sm:gap-8">
+          <div className="mx-auto grid max-w-3xl gap-3 sm:max-w-4xl sm:grid-cols-3 sm:gap-8 sm:justify-items-center sm:text-center">
             {FEATURES.map((f) => (
               <div
                 key={f.titleKey}
-                className="flex items-start gap-3 rounded-xl2 border border-ink-100 bg-cream-50 p-4 sm:flex-col sm:items-center sm:border-0 sm:bg-transparent sm:p-0 sm:text-center"
+                className="flex items-start gap-3 rounded-xl2 border border-ink-100 bg-cream-50 p-4 sm:flex-col sm:items-center sm:border-0 sm:bg-transparent sm:p-0"
               >
                 <div className="shrink-0 text-3xl sm:mb-4 sm:text-4xl">{f.icon}</div>
                 <div className="min-w-0">
@@ -410,11 +411,11 @@ export default function LandingPage() {
           <h2 className="font-display mb-8 text-center text-2xl font-bold tracking-tight text-ink-900 sm:mb-10 sm:text-3xl">
             {t("landing.how_title")}
           </h2>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+          <div className="mx-auto grid max-w-3xl grid-cols-2 gap-x-4 gap-y-8 sm:max-w-4xl lg:max-w-4xl lg:grid-cols-4 lg:gap-6 lg:justify-items-center lg:text-center">
             {HOW_IT_WORKS.map((step, i) => (
               <div
                 key={step.num}
-                className="relative flex flex-col items-center text-center lg:items-start lg:text-left"
+                className="relative flex flex-col items-center text-center"
               >
                 {i < HOW_IT_WORKS.length - 1 && (
                   <div className="absolute right-0 top-5 hidden h-0.5 w-1/2 bg-gold-100 lg:block" />
