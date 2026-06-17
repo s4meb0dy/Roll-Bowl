@@ -11,7 +11,12 @@ import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import zipCodesData from "@/lib/zipCodes.json";
+import { READY_MADE } from "@/lib/menu";
 import type { ZipCodeConfig } from "@/lib/types";
+
+const menuById = Object.fromEntries(READY_MADE.map((item) => [item.id, item]));
+
+const HERO_BOWL_IDS = ["hawaiian-style", "hot-tuna", "tasty-tofu"] as const;
 
 const zipCodes = zipCodesData as Record<string, ZipCodeConfig>;
 
@@ -219,21 +224,54 @@ export default function LandingPage() {
           {/* Right: visual cards */}
           <div className="relative hidden lg:block">
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: "Hawaiian Style",            emoji: "🌺", sub: "Verse zalm · Avocado",  tag: "Popular", color: "bg-amber-50 border-amber-100" },
-                { label: "Hot Tuna",                  emoji: "🌶️", sub: "Verse tonijn · Edamame", tag: "GF",      color: "bg-red-50 border-red-100" },
-                { label: "Tasty Tofu",                emoji: "🫘", sub: "Tofu · Zeewiersalade",  tag: "Vegan",   color: "bg-sage-50 border-sage-200" },
-                { label: t("landing.hero_custom"),    emoji: "✨", sub: t("landing.hero_custom_sub"), tag: "Custom", color: "bg-gold-50 border-gold-200" },
-              ].map((item) => (
-                <div key={item.label} className={`rounded-xl3 border p-5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-soft-hover ${item.color}`}>
-                  <div className="mb-3 text-4xl">{item.emoji}</div>
-                  <div className="font-semibold text-ink-900">{item.label}</div>
-                  <div className="mt-1 text-xs text-ink-500">{item.sub}</div>
-                  <span className="mt-3 inline-block rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-ink-700 shadow-sm">
-                    {item.tag}
+              {HERO_BOWL_IDS.map((id) => {
+                const bowl = menuById[id];
+                if (!bowl?.image) return null;
+                const tag = bowl.tags[0] ?? "Popular";
+                return (
+                  <div
+                    key={id}
+                    className="group overflow-hidden rounded-xl3 border border-ink-200/60 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-soft-hover"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
+                      <Image
+                        src={bowl.image}
+                        alt={bowl.name}
+                        fill
+                        sizes="(max-width: 1024px) 50vw, 280px"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <span className="absolute bottom-2 left-2 rounded-full bg-white/95 px-2.5 py-0.5 text-[11px] font-semibold text-ink-800 shadow-sm">
+                        {tag}
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <div className="font-semibold text-ink-900">{bowl.name}</div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-500">
+                        {bowl.description}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="group overflow-hidden rounded-xl3 border border-gold-200 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-soft-hover">
+                <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
+                  <Image
+                    src="/bowls/delicious-chicken.png"
+                    alt={t("landing.hero_custom")}
+                    fill
+                    sizes="(max-width: 1024px) 50vw, 280px"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <span className="absolute bottom-2 left-2 rounded-full bg-gold-50 px-2.5 py-0.5 text-[11px] font-semibold text-gold-800 shadow-sm">
+                    Custom
                   </span>
                 </div>
-              ))}
+                <div className="p-4">
+                  <div className="font-semibold text-ink-900">{t("landing.hero_custom")}</div>
+                  <div className="mt-1 text-xs text-ink-500">{t("landing.hero_custom_sub")}</div>
+                </div>
+              </div>
             </div>
             <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-48 rounded-full bg-sage-100 opacity-40 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-8 -left-8 h-40 w-40 rounded-full bg-gold-100 opacity-40 blur-3xl" />
