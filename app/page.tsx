@@ -95,21 +95,25 @@ function HeroShowcaseCard({
   );
 }
 
+const HERO_ROTATE_MS = 7000;
+
 function HeroShowcaseRotator({
   t,
   className = "",
+  intervalMs = HERO_ROTATE_MS,
 }: {
   t: (key: string, vars?: Record<string, string | number>) => string;
   className?: string;
+  intervalMs?: number;
 }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setIndex((i) => (i + 1) % HERO_SHOWCASE.length);
-    }, 4000);
+    }, intervalMs);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [intervalMs]);
 
   const item = HERO_SHOWCASE[index];
 
@@ -244,7 +248,7 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6 sm:pb-16 sm:pt-12 lg:pt-20">
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-12">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
           <div className="animate-slide-up min-w-0">
             <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-gold-200 bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">
               <Leaf size={12} />
@@ -376,9 +380,18 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Desktop: rotating bowl showcase */}
-          <div className="relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center">
-            <HeroShowcaseRotator t={t} className="w-full max-w-md" />
+          {/* Desktop: 2×2 grid */}
+          <div className="relative hidden lg:block">
+            <div className="grid grid-cols-2 gap-4">
+              {HERO_SHOWCASE.map((item) => (
+                <HeroShowcaseCard
+                  key={item.kind === "bowl" ? item.id : "custom"}
+                  item={item}
+                  t={t}
+                  className="transition hover:-translate-y-0.5 hover:shadow-soft-hover"
+                />
+              ))}
+            </div>
             <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-48 rounded-full bg-sage-100 opacity-40 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-8 -left-8 h-40 w-40 rounded-full bg-gold-100 opacity-40 blur-3xl" />
           </div>
