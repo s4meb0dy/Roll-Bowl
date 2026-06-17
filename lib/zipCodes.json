@@ -7,7 +7,7 @@
   "2050": { "area": "Antwerpen Linkeroever",          "minOrder": 40, "deliveryFee": 0 },
   "2060": { "area": "Antwerpen (Seefhoek / Dam)",     "minOrder": 15, "deliveryFee": 0 },
   "2070": { "area": "Zwijndrecht",                    "minOrder": 45, "deliveryFee": 0 },
-  "2100": { "area": "Deurne",                         "minOrder": 1, "deliveryFee": 0 },
+  "2100": { "area": "Deurne",                         "minOrder": 15, "deliveryFee": 0 },
   "2110": { "area": "Wijnegem",                       "minOrder": 15, "deliveryFee": 0 },
   "2140": { "area": "Borgerhout",                     "minOrder": 15, "deliveryFee": 0 },
   "2150": { "area": "Borsbeek",                       "minOrder": 15, "deliveryFee": 0 },

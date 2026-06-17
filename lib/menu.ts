@@ -1098,15 +1098,6 @@ export const SMOOTHIE_BOWLS: ReadyMadeItem[] = [
 
 export const EXTRAS: ReadyMadeItem[] = [
   {
-    id: "stripe-test-1eur",
-    name: "Test bestelling €1",
-    emoji: "🧪",
-    price: 1.0,
-    description: "Alleen voor het testen van online betaling — tijdelijk item.",
-    ingredients: "",
-    tags: ["Test"],
-  },
-  {
     id: "nachos-supreme",
     name: "Nacho's Supreme",
     emoji: "🌮",
