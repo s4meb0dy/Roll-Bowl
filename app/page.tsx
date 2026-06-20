@@ -382,18 +382,22 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="border-t border-ink-200/60 bg-white py-10 sm:py-16">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="mx-auto grid max-w-3xl gap-3 sm:max-w-4xl sm:grid-cols-3 sm:gap-8 sm:justify-items-center sm:text-center">
+      <section className="relative overflow-hidden border-t border-ink-200/40 bg-gradient-to-b from-white via-cream-50 to-cream-100 py-12 sm:py-20">
+        <div className="pointer-events-none absolute -left-24 top-8 h-56 w-56 rounded-full bg-sage-200/40 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -right-16 bottom-0 h-48 w-48 rounded-full bg-gold-100/50 blur-3xl" aria-hidden />
+        <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="mx-auto grid max-w-3xl gap-4 sm:max-w-4xl sm:grid-cols-3 sm:gap-6 sm:justify-items-center sm:text-center">
             {FEATURES.map((f) => (
               <div
                 key={f.titleKey}
-                className="flex items-start gap-3 rounded-xl2 border border-ink-100 bg-cream-50 p-4 sm:flex-col sm:items-center sm:border-0 sm:bg-transparent sm:p-0"
+                className="group flex items-start gap-3 rounded-xl3 border border-ink-100/80 bg-white/80 p-5 shadow-soft backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-gold-200/80 hover:shadow-soft-hover sm:flex-col sm:items-center sm:p-6"
               >
-                <div className="shrink-0 text-3xl sm:mb-4 sm:text-4xl">{f.icon}</div>
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-cream-100 to-gold-50 text-2xl shadow-inner ring-1 ring-gold-100/80 transition group-hover:scale-105 sm:mb-1 sm:h-14 sm:w-14 sm:text-3xl">
+                  {f.icon}
+                </div>
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-ink-900">{t(f.titleKey)}</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-ink-500">{t(f.descKey)}</p>
+                  <h3 className="font-display font-semibold text-ink-900">{t(f.titleKey)}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink-500">{t(f.descKey)}</p>
                 </div>
               </div>
             ))}
@@ -402,17 +406,25 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section className="py-10 sm:py-16">
+      <section className="relative bg-cream-100 py-12 sm:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <h2 className="font-display mb-8 text-center text-2xl font-bold tracking-tight text-ink-900 sm:mb-10 sm:text-3xl">
-            {t("landing.how_title")}
-          </h2>
+          <div className="mb-10 text-center sm:mb-12">
+            <span className="mb-3 inline-block rounded-full border border-gold-200/80 bg-gold-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gold-700">
+              {t("footer.how_badge")}
+            </span>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">
+              {t("landing.how_title")}
+            </h2>
+          </div>
 
           {/* Mobile & tablet */}
           <div className="mx-auto grid max-w-md grid-cols-2 gap-x-4 gap-y-8 sm:max-w-lg lg:hidden">
             {HOW_IT_WORKS.map((step) => (
-              <div key={step.num} className="flex flex-col items-center text-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft">
+              <div
+                key={step.num}
+                className="flex flex-col items-center rounded-xl3 border border-ink-100/60 bg-white/70 p-4 text-center shadow-soft"
+              >
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft ring-4 ring-gold-100/80">
                   {step.num}
                 </div>
                 <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
@@ -427,12 +439,12 @@ export default function LandingPage() {
               <div key={step.num} className="flex items-start">
                 {i > 0 && (
                   <div
-                    className="mt-5 h-0.5 w-12 shrink-0 self-start bg-gold-100 xl:w-16"
+                    className="mt-6 h-0.5 w-12 shrink-0 self-start bg-gradient-to-r from-gold-200 to-gold-300 xl:w-16"
                     aria-hidden
                   />
                 )}
-                <div className="flex w-[8.5rem] shrink-0 flex-col items-center text-center xl:w-36">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft">
+                <div className="flex w-[8.5rem] shrink-0 flex-col items-center rounded-xl3 border border-transparent px-2 py-3 text-center transition hover:border-ink-100/60 hover:bg-white/50 xl:w-36">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft ring-4 ring-white/80">
                     {step.num}
                   </div>
                   <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
