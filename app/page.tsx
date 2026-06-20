@@ -16,10 +16,10 @@ import type { ZipCodeConfig } from "@/lib/types";
 
 const menuById = Object.fromEntries(READY_MADE.map((item) => [item.id, item]));
 
-const HERO_BOWL_IDS = ["hawaiian-style", "hot-tuna", "tasty-tofu"] as const;
+type HeroBowlId = "hawaiian-style" | "hot-tuna" | "tasty-tofu";
 
 type HeroShowcaseItem =
-  | { kind: "bowl"; id: (typeof HERO_BOWL_IDS)[number] }
+  | { kind: "bowl"; id: HeroBowlId }
   | { kind: "custom" };
 
 const HERO_SHOWCASE: HeroShowcaseItem[] = [
@@ -247,7 +247,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6 sm:pb-16 sm:pt-12 lg:pt-20">
+      <section className="mx-auto max-w-6xl px-4 pb-8 pt-6 sm:px-6 sm:pb-10 sm:pt-12 lg:pt-16">
         <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
           <div className="animate-slide-up min-w-0">
             <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-gold-200 bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">
@@ -381,77 +381,68 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features */}
-      <section className="relative overflow-hidden border-t border-ink-200/40 bg-gradient-to-b from-white via-cream-50 to-cream-100 py-12 sm:py-20">
-        <div className="pointer-events-none absolute -left-24 top-8 h-56 w-56 rounded-full bg-sage-200/40 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -right-16 bottom-0 h-48 w-48 rounded-full bg-gold-100/50 blur-3xl" aria-hidden />
-        <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="mx-auto grid max-w-3xl gap-4 sm:max-w-4xl sm:grid-cols-3 sm:gap-6 sm:justify-items-center sm:text-center">
+      {/* Features + How it works — compact */}
+      <section className="border-t border-ink-200/40 bg-cream-100 py-6 sm:py-8">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="mx-auto grid max-w-3xl gap-3 sm:max-w-4xl sm:grid-cols-3 sm:gap-5 sm:justify-items-center sm:text-center">
             {FEATURES.map((f) => (
               <div
                 key={f.titleKey}
-                className="group flex items-start gap-3 rounded-xl3 border border-ink-100/80 bg-white/80 p-5 shadow-soft backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-gold-200/80 hover:shadow-soft-hover sm:flex-col sm:items-center sm:p-6"
+                className="flex items-start gap-2.5 rounded-xl2 border border-ink-100/70 bg-white p-3.5 sm:flex-col sm:items-center sm:p-4"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl2 bg-gradient-to-br from-cream-100 to-gold-50 text-2xl shadow-inner ring-1 ring-gold-100/80 transition group-hover:scale-105 sm:mb-1 sm:h-14 sm:w-14 sm:text-3xl">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gold-50 text-lg sm:mb-0.5 sm:h-10 sm:w-10 sm:text-xl">
                   {f.icon}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-display font-semibold text-ink-900">{t(f.titleKey)}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-ink-500">{t(f.descKey)}</p>
+                  <h3 className="text-sm font-semibold text-ink-900">{t(f.titleKey)}</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-ink-500 sm:text-[13px]">
+                    {t(f.descKey)}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* How it works */}
-      <section className="relative bg-cream-100 py-12 sm:py-20">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="mb-10 text-center sm:mb-12">
-            <span className="mb-3 inline-block rounded-full border border-gold-200/80 bg-gold-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gold-700">
-              {t("footer.how_badge")}
-            </span>
-            <h2 className="font-display text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">
-              {t("landing.how_title")}
-            </h2>
-          </div>
+          <div className="mx-auto mt-5 max-w-3xl border-t border-ink-200/40 pt-5 sm:mt-6 sm:max-w-4xl sm:pt-6">
+            <div className="mb-3 text-center sm:mb-4">
+              <h2 className="font-display text-xl font-bold tracking-tight text-ink-900 sm:text-2xl">
+                {t("landing.how_title")}
+              </h2>
+            </div>
 
-          {/* Mobile & tablet */}
-          <div className="mx-auto grid max-w-md grid-cols-2 gap-x-4 gap-y-8 sm:max-w-lg lg:hidden">
-            {HOW_IT_WORKS.map((step) => (
-              <div
-                key={step.num}
-                className="flex flex-col items-center rounded-xl3 border border-ink-100/60 bg-white/70 p-4 text-center shadow-soft"
-              >
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft ring-4 ring-gold-100/80">
-                  {step.num}
-                </div>
-                <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
-                <p className="mt-1 text-sm leading-relaxed text-ink-500">{t(step.descKey)}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop — centered cluster */}
-          <div className="mx-auto hidden w-fit max-w-full items-start lg:flex">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div key={step.num} className="flex items-start">
-                {i > 0 && (
-                  <div
-                    className="mt-6 h-0.5 w-12 shrink-0 self-start bg-gradient-to-r from-gold-200 to-gold-300 xl:w-16"
-                    aria-hidden
-                  />
-                )}
-                <div className="flex w-[8.5rem] shrink-0 flex-col items-center rounded-xl3 border border-transparent px-2 py-3 text-center transition hover:border-ink-100/60 hover:bg-white/50 xl:w-36">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-sm font-bold text-white shadow-soft ring-4 ring-white/80">
+            {/* Mobile & tablet */}
+            <div className="mx-auto grid max-w-md grid-cols-2 gap-x-3 gap-y-4 sm:max-w-lg lg:hidden">
+              {HOW_IT_WORKS.map((step) => (
+                <div key={step.num} className="flex flex-col items-center text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-xs font-bold text-white">
                     {step.num}
                   </div>
-                  <h4 className="mt-3 font-semibold text-ink-900">{t(step.labelKey)}</h4>
-                  <p className="mt-1 text-sm leading-relaxed text-ink-500">{t(step.descKey)}</p>
+                  <h4 className="mt-2 text-sm font-semibold text-ink-900">{t(step.labelKey)}</h4>
+                  <p className="mt-0.5 text-xs leading-snug text-ink-500">{t(step.descKey)}</p>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            {/* Desktop — centered cluster */}
+            <div className="mx-auto hidden w-fit max-w-full items-start lg:flex">
+              {HOW_IT_WORKS.map((step, i) => (
+                <div key={step.num} className="flex items-start">
+                  {i > 0 && (
+                    <div
+                      className="mt-4 h-px w-10 shrink-0 self-start bg-gold-200 xl:w-12"
+                      aria-hidden
+                    />
+                  )}
+                  <div className="flex w-[7.5rem] shrink-0 flex-col items-center text-center xl:w-32">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-gold-400 to-gold-600 text-xs font-bold text-white">
+                      {step.num}
+                    </div>
+                    <h4 className="mt-2 text-sm font-semibold text-ink-900">{t(step.labelKey)}</h4>
+                    <p className="mt-0.5 text-xs leading-snug text-ink-500">{t(step.descKey)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
