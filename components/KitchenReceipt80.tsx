@@ -30,7 +30,7 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
   return (
     <div className="kitchen-receipt-80mm text-black">
       <div className="border-b border-dashed border-neutral-400 pb-2 text-center">
-        <div className="text-base font-black uppercase tracking-tight">Rollen Bowl</div>
+        <div className="text-base font-black uppercase tracking-tight">Roll&amp;Bowl</div>
         <div className="text-[10px] font-semibold">Keukenbon · 80 mm</div>
       </div>
 

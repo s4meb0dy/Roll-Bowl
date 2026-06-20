@@ -44,6 +44,11 @@ const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
 const KITCHEN_SETUP_DISMISSED_KEY = "roll-bowl-kitchen-setup-dismissed";
 
+/** Cash orders arrive as pending; Stripe/webhook orders as paid — both need the kitchen chime. */
+function isNewOrderAlertStatus(status: OrderStatus): boolean {
+  return status === "pending" || status === "paid";
+}
+
 const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; next: OrderStatus | null }
@@ -311,7 +316,7 @@ function OrderCard({
         </div>
       </div>
 
-      {order.status === "pending" && (
+      {isNewOrderAlertStatus(order.status) && (
         <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
           <button
             type="button"
@@ -324,7 +329,7 @@ function OrderCard({
         </div>
       )}
 
-      {order.status !== "pending" && cfg.next && (
+      {!isNewOrderAlertStatus(order.status) && cfg.next && (
         <div className="no-print border-t border-neutral-100 px-5 py-3">
           <button
             type="button"
@@ -427,7 +432,7 @@ export default function AdminPage() {
     for (const o of orders) {
       if (!seenOrderIds.current.has(o.id)) {
         seenOrderIds.current.add(o.id);
-        if (o.status === "pending") {
+        if (isNewOrderAlertStatus(o.status)) {
           setAlarmOrderId(o.id);
           startKitchenAlarmLoop();
         }

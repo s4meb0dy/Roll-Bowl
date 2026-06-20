@@ -12,6 +12,11 @@ export const BUSINESS = {
   vat: "BE 0731.988.031",
   mapsUrl:
     "https://www.google.com/maps/search/?api=1&query=Ruggeveldlaan+730,+2100+Deurne,+Belgium",
+  social: {
+    instagram: "https://www.instagram.com/rollnbowl_/",
+    tiktok: "https://www.tiktok.com/@rollnbowl_",
+    facebook: "https://www.facebook.com/p/RollBowl-100060276047327/",
+  },
 } as const;
 
 export const BUSINESS_ADDRESS_LINE = `${BUSINESS.street}, ${BUSINESS.postalCode} ${BUSINESS.city}`;
