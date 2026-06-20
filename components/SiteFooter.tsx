@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Mail, MapPin, Phone } from "lucide-react";
@@ -67,13 +68,36 @@ export default function SiteFooter() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2 border-t border-ink-100 pt-4 text-[11px] leading-relaxed text-ink-400 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <p className="text-ink-500">{t("landing.hours")}</p>
-          <p className="shrink-0">
-            {t("footer.kbo")} {BUSINESS.kbo}
-            <span className="mx-1.5 text-ink-200">·</span>
-            {t("footer.vat")} {BUSINESS.vat}
-          </p>
+        <div className="mt-4 flex flex-col gap-3 border-t border-ink-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="text-[11px] leading-relaxed text-ink-400">
+            <p className="text-ink-500">{t("landing.hours")}</p>
+            <p className="mt-1">
+              {t("footer.kbo")} {BUSINESS.kbo}
+              <span className="mx-1.5 text-ink-200">·</span>
+              {t("footer.vat")} {BUSINESS.vat}
+            </p>
+          </div>
+
+          <nav
+            className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-500 sm:justify-end"
+            aria-label="Legal"
+          >
+            <Link href="/privacy" className="transition-colors hover:text-gold-700">
+              {t("legal.privacy")}
+            </Link>
+            <span className="text-ink-200" aria-hidden>
+              ·
+            </span>
+            <Link href="/voorwaarden" className="transition-colors hover:text-gold-700">
+              {t("legal.terms")}
+            </Link>
+            <span className="text-ink-200" aria-hidden>
+              ·
+            </span>
+            <Link href="/allergenen" className="transition-colors hover:text-gold-700">
+              {t("legal.allergens")}
+            </Link>
+          </nav>
         </div>
 
         <p className="mt-3 text-center text-[10px] text-ink-300 sm:text-left">

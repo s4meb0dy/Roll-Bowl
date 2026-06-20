@@ -1,30 +1,24 @@
-import { promises as fs } from "fs";
-import path from "path";
 import type {
   InventoryState,
   InventoryUpdateRequest,
   InventoryStreamEvent,
 } from "./types";
 import { PROTECTED_CATEGORIES } from "./config";
+import {
+  isInventoryRedisConfigured,
+  loadInventoryState,
+  saveInventoryState,
+} from "./persistence";
 
 /**
- * Server-side inventory source of truth. Persists state to disk and broadcasts
- * patches to subscribers (used by the SSE endpoint) so that every connected
- * browser — customer or admin — sees availability changes within milliseconds.
+ * Server-side inventory source of truth. Persists to Redis (production) or
+ * data/inventory.json (local dev without KV) and broadcasts patches via SSE.
  *
- * NOTE: this module must never be imported from client code. It uses `fs` and
- * holds an in-memory subscriber list that only makes sense inside the Next.js
- * Node.js runtime.
+ * NOTE: this module must never be imported from client code.
  */
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "inventory.json");
 
 type Subscriber = (event: InventoryStreamEvent) => void;
 
-// Module-scope singletons survive across route-handler invocations within the
-// same Node.js process. In dev (`next dev`) the HMR boundary resets them only
-// on full server restarts.
 const g = globalThis as unknown as {
   __rb_inventory_state?: InventoryState;
   __rb_inventory_subs?: Set<Subscriber>;
@@ -33,53 +27,27 @@ const g = globalThis as unknown as {
 
 g.__rb_inventory_subs ??= new Set<Subscriber>();
 
-function emptyState(): InventoryState {
-  return {
-    categories: {},
-    items: {},
-    lastSynced: null,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
 async function ensureLoaded(): Promise<void> {
-  if (g.__rb_inventory_loaded) return;
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw) as Partial<InventoryState>;
-    g.__rb_inventory_state = {
-      categories: parsed.categories ?? {},
-      items: parsed.items ?? {},
-      lastSynced: parsed.lastSynced ?? null,
-      updatedAt: parsed.updatedAt ?? new Date().toISOString(),
-    };
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code !== "ENOENT") {
-      console.error("[inventory] failed to read", DATA_FILE, err);
-    }
-    g.__rb_inventory_state = emptyState();
+  // With Redis, always reload so every serverless instance sees the same stock.
+  if (isInventoryRedisConfigured()) {
+    g.__rb_inventory_state = await loadInventoryState();
+    return;
   }
+
+  if (g.__rb_inventory_loaded) return;
+  g.__rb_inventory_state = await loadInventoryState();
   g.__rb_inventory_loaded = true;
 }
 
-async function persist(): Promise<void> {
-  if (!g.__rb_inventory_state) return;
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(
-      DATA_FILE,
-      JSON.stringify(g.__rb_inventory_state, null, 2),
-      "utf8",
-    );
-  } catch (err) {
-    console.error("[inventory] failed to persist", DATA_FILE, err);
-  }
+async function persist(state: InventoryState): Promise<void> {
+  await saveInventoryState(state);
 }
 
 function broadcast(event: InventoryStreamEvent): void {
   g.__rb_inventory_subs!.forEach((sub) => {
-    try { sub(event); } catch (err) {
+    try {
+      sub(event);
+    } catch (err) {
       console.error("[inventory] subscriber threw", err);
     }
   });
@@ -104,7 +72,6 @@ export async function applyUpdate(update: InventoryUpdateRequest): Promise<Inven
     };
   } else {
     if (update.available) {
-      // Removing the key keeps the JSON file compact (default = available).
       const copy = { ...state.items };
       delete copy[update.id];
       state.items = copy;
@@ -114,7 +81,7 @@ export async function applyUpdate(update: InventoryUpdateRequest): Promise<Inven
   }
   state.updatedAt = new Date().toISOString();
 
-  await persist();
+  await persist(state);
   broadcast({ type: "patch", update, state });
   return state;
 }
@@ -124,7 +91,7 @@ export async function applyBulk(updates: InventoryUpdateRequest[]): Promise<Inve
   const state = g.__rb_inventory_state!;
   for (const u of updates) {
     if (u.kind === "category" && PROTECTED_CATEGORIES.has(u.id as never) && !u.available) {
-      continue; // silently skip protected-category disable attempts in bulk mode
+      continue;
     }
     if (u.kind === "category") {
       state.categories = { ...state.categories, [u.id]: u.available };
@@ -138,13 +105,16 @@ export async function applyBulk(updates: InventoryUpdateRequest[]): Promise<Inve
   }
   state.updatedAt = new Date().toISOString();
   state.lastSynced = state.updatedAt;
-  await persist();
-  // Broadcast as a snapshot so every client fully re-hydrates after a sync.
+  await persist(state);
   broadcast({ type: "snapshot", state });
   return state;
 }
 
 export function subscribe(sub: Subscriber): () => void {
   g.__rb_inventory_subs!.add(sub);
-  return () => { g.__rb_inventory_subs!.delete(sub); };
+  return () => {
+    g.__rb_inventory_subs!.delete(sub);
+  };
 }
+
+export { isInventoryRedisConfigured };
