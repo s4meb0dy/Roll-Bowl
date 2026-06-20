@@ -34,7 +34,7 @@ import {
   unlockKitchenAudio,
   ensureKitchenAudioUnlock,
 } from "@/lib/kitchenSound";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 import AdminPinGate from "@/components/AdminPinGate";
@@ -60,6 +60,25 @@ const STATUS_CONFIG: Record<
   delivered: { label: "🎉 Bezorgd", color: "bg-neutral-50 text-neutral-500 border-neutral-200", next: null },
 };
 
+function getStatusLabel(status: OrderStatus, orderType: OrderType): string {
+  if (orderType === "takeaway" && status === "delivered") {
+    return "🎉 Opgehaald";
+  }
+  return STATUS_CONFIG[status].label;
+}
+
+function getStatusDisplay(order: Order): {
+  label: string;
+  color: string;
+  next: OrderStatus | null;
+} {
+  const base = STATUS_CONFIG[order.status];
+  if (order.orderType === "takeaway" && order.status === "delivered") {
+    return { ...base, label: "🎉 Opgehaald" };
+  }
+  return base;
+}
+
 function formatCheckedTime(d: Date) {
   return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
@@ -76,7 +95,7 @@ function OrderCard({
   isAlarmTarget?: boolean;
 }) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
-  const cfg = STATUS_CONFIG[order.status];
+  const cfg = getStatusDisplay(order);
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -336,7 +355,7 @@ function OrderCard({
             onClick={() => updateOrderStatus(order.id, cfg.next!)}
             className="btn-primary text-sm"
           >
-            Markeer als {STATUS_CONFIG[cfg.next].label}
+            Markeer als {getStatusLabel(cfg.next, order.orderType)}
           </button>
         </div>
       )}

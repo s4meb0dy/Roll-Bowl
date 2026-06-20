@@ -71,6 +71,8 @@ interface AppState {
   zipCode: string | null;
   zipCodeConfig: ZipCodeConfig | null;
   deliveryAddress: string | null;
+  /** Chosen on landing; drives menu access and cart default order type. */
+  sessionOrderType: OrderType;
 
   // Cart
   cart: CartItem[];
@@ -90,6 +92,8 @@ interface AppState {
   // Actions
   setZipCode: (code: string, config: ZipCodeConfig, address: string) => void;
   clearZipCode: () => void;
+  setSessionOrderType: (orderType: OrderType) => void;
+  startTakeawaySession: () => void;
 
   addToCart: (item: Omit<CartItem, "cartId">) => void;
   removeFromCart: (cartId: string) => void;
@@ -128,6 +132,7 @@ export const useStore = create<AppState>()(
       zipCode: null,
       zipCodeConfig: null,
       deliveryAddress: null,
+      sessionOrderType: "delivery",
       cart: [],
       orders: [],
       locale: "nl",
@@ -135,10 +140,25 @@ export const useStore = create<AppState>()(
       kitchenPrintedOrderIds: [],
 
       setZipCode: (code, config, address) =>
-        set({ zipCode: code, zipCodeConfig: config, deliveryAddress: address }),
+        set({
+          zipCode: code,
+          zipCodeConfig: config,
+          deliveryAddress: address,
+          sessionOrderType: "delivery",
+        }),
 
       clearZipCode: () =>
         set({ zipCode: null, zipCodeConfig: null, deliveryAddress: null }),
+
+      setSessionOrderType: (orderType) => set({ sessionOrderType: orderType }),
+
+      startTakeawaySession: () =>
+        set({
+          sessionOrderType: "takeaway",
+          zipCode: null,
+          zipCodeConfig: null,
+          deliveryAddress: null,
+        }),
 
       addToCart: (item) =>
         set((state) => ({
@@ -308,9 +328,15 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "roll-bowl-store",
-      version: 6,
+      version: 7,
       migrate: (persistedState, version) => {
         let p = persistedState as Partial<AppState> | null;
+        if (version < 7) {
+          p = {
+            ...p,
+            sessionOrderType: p?.sessionOrderType ?? "delivery",
+          };
+        }
         if (version < 2 && p?.orders) {
           p = {
             ...p,
@@ -398,6 +424,7 @@ export const useStore = create<AppState>()(
         zipCode: state.zipCode,
         zipCodeConfig: state.zipCodeConfig,
         deliveryAddress: state.deliveryAddress,
+        sessionOrderType: state.sessionOrderType,
         cart: state.cart,
         orders: state.orders,
         locale: state.locale,

@@ -52,6 +52,8 @@ export default function CartPage() {
   const zipCode = useStore((s) => s.zipCode);
   const zipCodeConfig = useStore((s) => s.zipCodeConfig);
   const deliveryAddress = useStore((s) => s.deliveryAddress);
+  const sessionOrderType = useStore((s) => s.sessionOrderType);
+  const setSessionOrderType = useStore((s) => s.setSessionOrderType);
   const removeFromCart = useStore((s) => s.removeFromCart);
   const updateQuantity = useStore((s) => s.updateQuantity);
   const updateNote = useStore((s) => s.updateNote);
@@ -90,6 +92,12 @@ export default function CartPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      setOrderType(sessionOrderType);
+    }
+  }, [mounted, sessionOrderType]);
 
   useEffect(() => {
     if (mounted) {
@@ -761,7 +769,10 @@ export default function CartPage() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={() => setOrderType("delivery")}
+                    onClick={() => {
+                      setOrderType("delivery");
+                      setSessionOrderType("delivery");
+                    }}
                     className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       orderType === "delivery"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
@@ -773,7 +784,10 @@ export default function CartPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOrderType("takeaway")}
+                    onClick={() => {
+                      setOrderType("takeaway");
+                      setSessionOrderType("takeaway");
+                    }}
                     className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
                       orderType === "takeaway"
                         ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
@@ -1029,6 +1043,9 @@ export default function CartPage() {
 
                 {paymentMethod === "cash" && (
                   <div className="mt-3 space-y-3 animate-slide-up">
+                    <p className="text-xs text-ink-500">
+                      {isTakeaway ? t("payment.cash_sub_takeaway") : t("payment.cash_sub")}
+                    </p>
                     <p className="text-xs font-medium text-ink-600">
                       {t("payment.denomination_label")}
                     </p>

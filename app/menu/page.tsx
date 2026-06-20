@@ -186,6 +186,7 @@ export default function MenuPage() {
   const router = useRouter();
   const t = useT();
   const zipCode = useStore((s) => s.zipCode);
+  const sessionOrderType = useStore((s) => s.sessionOrderType);
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("ready");
 
@@ -197,10 +198,10 @@ export default function MenuPage() {
   }, []);
 
   useEffect(() => {
-    if (mounted && !zipCode) {
+    if (mounted && !zipCode && sessionOrderType !== "takeaway") {
       router.replace("/");
     }
-  }, [mounted, zipCode, router]);
+  }, [mounted, zipCode, sessionOrderType, router]);
 
   useEffect(() => {
     const cat = TAB_CATEGORY[activeTab];

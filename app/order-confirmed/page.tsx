@@ -15,6 +15,20 @@ import {
 import { postOrderToInbox } from "@/lib/orders/postInboxClient";
 import { pushOrderToPos, shouldRetryPosPush } from "@/lib/orders/pushPosClient";
 
+const DELIVERY_PROGRESS_STEPS = [
+  { icon: "📝", labelKey: "order.confirmed.status.confirmed" },
+  { icon: "👨‍🍳", labelKey: "order.confirmed.status.preparing" },
+  { icon: "🛵", labelKey: "order.confirmed.status.on_the_way" },
+  { icon: "🏠", labelKey: "order.confirmed.status.delivered" },
+] as const;
+
+const TAKEAWAY_PROGRESS_STEPS = [
+  { icon: "📝", labelKey: "order.confirmed.status.confirmed" },
+  { icon: "👨‍🍳", labelKey: "order.confirmed.status.preparing" },
+  { icon: "✅", labelKey: "order.confirmed.status.ready" },
+  { icon: "🏪", labelKey: "order.confirmed.status.picked_up" },
+] as const;
+
 function ConfirmedContent() {
   const params = useSearchParams();
   const orderId = params.get("id");
@@ -23,6 +37,7 @@ function ConfirmedContent() {
   const [dots, setDots] = useState(".");
   const t = useT();
   const orders = useStore((s) => s.orders);
+  const sessionOrderType = useStore((s) => s.sessionOrderType);
   const placeOrder = useStore((s) => s.placeOrder);
   const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
   const [mounted, setMounted] = useState(false);
@@ -34,6 +49,10 @@ function ConfirmedContent() {
   useEffect(() => { setMounted(true); }, []);
 
   const order = mounted ? orders.find((o) => o.id === orderId) : undefined;
+  const isTakeaway =
+    order?.orderType === "takeaway" ||
+    (!order && sessionOrderType === "takeaway");
+  const progressSteps = isTakeaway ? TAKEAWAY_PROGRESS_STEPS : DELIVERY_PROGRESS_STEPS;
 
   /** Complete order after Bancontact / iDEAL redirect back from Stripe. */
   useEffect(() => {
@@ -245,12 +264,7 @@ function ConfirmedContent() {
       {/* Status card */}
       <div className="mb-6 w-full rounded-2xl border border-sage-100 bg-white p-4 shadow-card sm:mb-8 sm:p-6">
         <div className="flex items-start justify-between gap-1.5 sm:gap-2">
-          {[
-            { icon: "📝", labelKey: "order.confirmed.status.confirmed" },
-            { icon: "👨‍🍳", labelKey: "order.confirmed.status.preparing" },
-            { icon: "🛵", labelKey: "order.confirmed.status.on_the_way" },
-            { icon: "🏠", labelKey: "order.confirmed.status.delivered" },
-          ].map((s, i) => (
+          {progressSteps.map((s, i) => (
             <div key={s.labelKey} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full text-base sm:h-10 sm:w-10 sm:text-lg ${
@@ -348,14 +362,24 @@ function ConfirmedContent() {
             {order.paymentMethod === "cash" ? (
               <>
                 <p className="font-semibold">{t("payment.cash")}</p>
+                <p className="mt-1 text-xs leading-relaxed sm:text-sm">
+                  {order.orderType === "takeaway"
+                    ? t("payment.cash_sub_takeaway")
+                    : t("payment.cash_sub")}
+                </p>
                 {order.cashDenomination !== undefined && (
                   <p className="mt-1.5 text-xs leading-relaxed sm:text-sm">
                     {order.cashDenomination === order.total
                       ? t("payment.no_change")
-                      : t("payment.cash_banner", {
-                          denomination: order.cashDenomination.toFixed(2),
-                          change: (order.cashDenomination - order.total).toFixed(2),
-                        })}
+                      : t(
+                          order.orderType === "takeaway"
+                            ? "payment.cash_banner_takeaway"
+                            : "payment.cash_banner",
+                          {
+                            denomination: order.cashDenomination.toFixed(2),
+                            change: (order.cashDenomination - order.total).toFixed(2),
+                          }
+                        )}
                   </p>
                 )}
               </>

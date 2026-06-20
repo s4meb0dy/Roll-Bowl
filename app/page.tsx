@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   MapPin, Leaf,
-  ArrowRight, CheckCircle2, XCircle, Loader2, Home,
+  ArrowRight, CheckCircle2, XCircle, Loader2, Home, Truck, Store, ExternalLink,
 } from "lucide-react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import zipCodesData from "@/lib/zipCodes.json";
 import { READY_MADE } from "@/lib/menu";
-import type { ZipCodeConfig } from "@/lib/types";
+import type { OrderType, ZipCodeConfig } from "@/lib/types";
+import { BUSINESS, BUSINESS_ADDRESS_LINE } from "@/lib/business";
 
 const menuById = Object.fromEntries(READY_MADE.map((item) => [item.id, item]));
 
@@ -146,8 +147,16 @@ type CheckState = "idle" | "loading" | "valid" | "invalid";
 export default function LandingPage() {
   const router = useRouter();
   const t = useT();
-  const { setZipCode, zipCode, deliveryAddress } = useStore();
+  const {
+    setZipCode,
+    zipCode,
+    deliveryAddress,
+    sessionOrderType,
+    setSessionOrderType,
+    startTakeawaySession,
+  } = useStore();
 
+  const [orderMode, setOrderMode] = useState<OrderType>("delivery");
   const [address, setAddress] = useState("");
   const [postalInput, setPostalInput] = useState("");
   const [checkState, setCheckState] = useState<CheckState>("idle");
@@ -155,10 +164,13 @@ export default function LandingPage() {
   const [mounted, setMounted] = useState(false);
   const [addressError, setAddressError] = useState(false);
 
+  const isTakeaway = orderMode === "takeaway";
+
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (mounted) {
+      setOrderMode(sessionOrderType);
       if (zipCode) {
         setPostalInput(zipCode);
         const config = zipCodes[zipCode];
@@ -169,7 +181,18 @@ export default function LandingPage() {
       }
       if (deliveryAddress) setAddress(deliveryAddress);
     }
-  }, [mounted, zipCode, deliveryAddress]);
+  }, [mounted, zipCode, deliveryAddress, sessionOrderType]);
+
+  const selectOrderMode = (mode: OrderType) => {
+    setOrderMode(mode);
+    if (mode === "takeaway") {
+      resetCheck();
+      setAddressError(false);
+      startTakeawaySession();
+    } else {
+      setSessionOrderType("delivery");
+    }
+  };
 
   const handleCheck = () => {
     const code = postalInput.trim();
@@ -187,6 +210,11 @@ export default function LandingPage() {
     if (!address.trim()) { setAddressError(true); return; }
     setAddressError(false);
     setZipCode(postalInput.trim(), foundConfig, address.trim());
+    router.push("/menu");
+  };
+
+  const handleProceedTakeaway = () => {
+    startTakeawaySession();
     router.push("/menu");
   };
 
@@ -215,7 +243,7 @@ export default function LandingPage() {
   ];
 
   const mobileShowcase =
-    checkState === "valid" && foundConfig ? (
+    isTakeaway || (checkState === "valid" && foundConfig) ? (
       <div className="mt-8 lg:hidden">
         <h2 className="mb-3 font-display text-lg font-bold text-ink-900">
           {t("landing.popular_title")}
@@ -265,98 +293,165 @@ export default function LandingPage() {
               {t("landing.subtitle")}
             </p>
 
-            {/* Address + postal code form */}
+            {/* Order mode + delivery / pickup form */}
             <div id="delivery-form" className="card scroll-mt-24 p-4 sm:p-5">
-              <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-800">
-                <MapPin size={15} className="text-gold-600" />
-                {t("landing.address_label")}
-              </label>
+              <p className="mb-3 text-sm font-semibold text-ink-800">
+                {t("order_type.title")}
+              </p>
 
-              <div className="mb-3">
-                <div className="relative">
-                  <Home
-                    size={15}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
-                  />
-                  <input
-                    type="text"
-                    autoComplete="street-address"
-                    value={address}
-                    onChange={(e) => {
-                      setAddress(e.target.value);
-                      setAddressError(false);
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder={t("landing.address_placeholder")}
-                    className={`input-field pl-9 ${addressError ? "border-red-300 focus:ring-red-200" : ""}`}
-                  />
-                </div>
-                {addressError && (
-                  <p className="mt-1 text-xs text-red-500">{t("landing.address_error")}</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="postal-code"
-                  value={postalInput}
-                  onChange={(e) => {
-                    setPostalInput(e.target.value.replace(/\D/g, "").slice(0, 4));
-                    resetCheck();
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder={t("landing.postal_placeholder")}
-                  maxLength={4}
-                  className="input-field flex-1 tabular-nums"
-                />
+              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={canProceed ? handleProceed : handleCheck}
-                  disabled={!postalInput.trim() || checkState === "loading"}
-                  className={`${canProceed ? "btn-gold" : "btn-primary"} w-full shrink-0 sm:w-auto`}
+                  onClick={() => selectOrderMode("delivery")}
+                  className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
+                    orderMode === "delivery"
+                      ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                      : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                  }`}
                 >
-                  {checkState === "loading" ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : canProceed ? (
-                    <>
-                      {t("landing.order_now")}
-                      <ArrowRight size={15} />
-                    </>
-                  ) : (
-                    t("landing.check")
-                  )}
+                  <Truck size={16} className="flex-shrink-0" />
+                  <span>{t("order_type.delivery")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectOrderMode("takeaway")}
+                  className={`flex w-full min-w-0 items-center justify-center gap-2 rounded-xl2 border px-3 py-3 text-sm font-semibold transition-transform motion-reduce:transition-none tap-target active:scale-[0.98] motion-reduce:active:scale-100 ${
+                    orderMode === "takeaway"
+                      ? "border-gold-300 bg-gold-50 text-gold-700 shadow-sm"
+                      : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+                  }`}
+                >
+                  <Store size={16} className="flex-shrink-0" />
+                  <span>{t("order_type.takeaway")}</span>
                 </button>
               </div>
 
-              {checkState === "valid" && foundConfig && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl2 bg-sage-50 p-3 text-sm animate-fade-in">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-sage-500" />
-                  <div>
-                    <span className="font-semibold text-sage-700">
-                      {t("landing.valid_title", { area: foundConfig.area })}
-                    </span>
-                    <div className="mt-0.5 text-ink-500">
-                      {t("landing.min_order")}{" "}
-                      <strong className="tabular-nums text-ink-800">
-                        €{foundConfig.minOrder.toFixed(2)}
-                      </strong>
-                      {" · "}
-                      {t("landing.delivery_fee")}{" "}
-                      <strong className="tabular-nums text-ink-800">
-                        €{foundConfig.deliveryFee.toFixed(2)}
-                      </strong>
+              {isTakeaway ? (
+                <div className="animate-fade-in">
+                  <p className="mb-3 text-xs leading-relaxed text-ink-500">
+                    {t("order_type.takeaway_sub")}
+                  </p>
+                  <div className="mb-4 flex items-start gap-2 rounded-xl2 bg-sage-50 p-3 text-sm">
+                    <Store size={16} className="mt-0.5 shrink-0 text-sage-600" />
+                    <div>
+                      <p className="font-semibold text-sage-800">
+                        {t("landing.pickup_location")}
+                      </p>
+                      <p className="mt-0.5 text-ink-600">{BUSINESS_ADDRESS_LINE}</p>
+                      <a
+                        href={BUSINESS.mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-gold-700 hover:text-gold-800"
+                      >
+                        {t("footer.maps_hint")}
+                        <ExternalLink size={12} />
+                      </a>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleProceedTakeaway}
+                    className="btn-gold w-full sm:w-auto"
+                  >
+                    {t("landing.order_pickup")}
+                    <ArrowRight size={15} />
+                  </button>
                 </div>
-              )}
+              ) : (
+                <>
+                  <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-800">
+                    <MapPin size={15} className="text-gold-600" />
+                    {t("landing.address_label")}
+                  </label>
 
-              {checkState === "invalid" && (
-                <div className="mt-3 flex items-center gap-2 rounded-xl2 bg-red-50 p-3 text-sm text-red-600 animate-fade-in">
-                  <XCircle size={16} className="shrink-0" />
-                  {t("landing.invalid", { code: postalInput })}
-                </div>
+                  <div className="mb-3">
+                    <div className="relative">
+                      <Home
+                        size={15}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"
+                      />
+                      <input
+                        type="text"
+                        autoComplete="street-address"
+                        value={address}
+                        onChange={(e) => {
+                          setAddress(e.target.value);
+                          setAddressError(false);
+                        }}
+                        onKeyDown={handleKeyDown}
+                        placeholder={t("landing.address_placeholder")}
+                        className={`input-field pl-9 ${addressError ? "border-red-300 focus:ring-red-200" : ""}`}
+                      />
+                    </div>
+                    {addressError && (
+                      <p className="mt-1 text-xs text-red-500">{t("landing.address_error")}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      value={postalInput}
+                      onChange={(e) => {
+                        setPostalInput(e.target.value.replace(/\D/g, "").slice(0, 4));
+                        resetCheck();
+                      }}
+                      onKeyDown={handleKeyDown}
+                      placeholder={t("landing.postal_placeholder")}
+                      maxLength={4}
+                      className="input-field flex-1 tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={canProceed ? handleProceed : handleCheck}
+                      disabled={!postalInput.trim() || checkState === "loading"}
+                      className={`${canProceed ? "btn-gold" : "btn-primary"} w-full shrink-0 sm:w-auto`}
+                    >
+                      {checkState === "loading" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : canProceed ? (
+                        <>
+                          {t("landing.order_now")}
+                          <ArrowRight size={15} />
+                        </>
+                      ) : (
+                        t("landing.check")
+                      )}
+                    </button>
+                  </div>
+
+                  {checkState === "valid" && foundConfig && (
+                    <div className="mt-3 flex items-start gap-2 rounded-xl2 bg-sage-50 p-3 text-sm animate-fade-in">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-sage-500" />
+                      <div>
+                        <span className="font-semibold text-sage-700">
+                          {t("landing.valid_title", { area: foundConfig.area })}
+                        </span>
+                        <div className="mt-0.5 text-ink-500">
+                          {t("landing.min_order")}{" "}
+                          <strong className="tabular-nums text-ink-800">
+                            €{foundConfig.minOrder.toFixed(2)}
+                          </strong>
+                          {" · "}
+                          {t("landing.delivery_fee")}{" "}
+                          <strong className="tabular-nums text-ink-800">
+                            €{foundConfig.deliveryFee.toFixed(2)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {checkState === "invalid" && (
+                    <div className="mt-3 flex items-center gap-2 rounded-xl2 bg-red-50 p-3 text-sm text-red-600 animate-fade-in">
+                      <XCircle size={16} className="shrink-0" />
+                      {t("landing.invalid", { code: postalInput })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
