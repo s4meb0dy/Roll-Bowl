@@ -4,6 +4,7 @@ import "./globals.css";
 import StoreHydration from "@/components/StoreHydration";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import SiteFooter from "@/components/SiteFooter";
+import { getSiteUrl } from "@/lib/siteUrl";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -22,9 +23,7 @@ const manrope = Manrope({
 // paths into absolute URLs. Override in production via NEXT_PUBLIC_SITE_URL
 // (e.g. https://rollenbowl.be) so social-card crawlers don't fall back to
 // localhost.
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -55,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`scroll-smooth ${inter.variable} ${manrope.variable}`}>
+    <html lang="nl" className={`scroll-smooth ${inter.variable} ${manrope.variable}`}>
       <body className="min-h-screen">
         <StoreHydration />
         {children}

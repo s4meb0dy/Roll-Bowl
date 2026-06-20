@@ -21,6 +21,7 @@ import {
   Sparkles,
   ListChecks,
   X,
+  Download,
 } from "lucide-react";
 import Header from "@/components/Header";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
@@ -39,6 +40,10 @@ import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 import AdminPinGate from "@/components/AdminPinGate";
 import { isAdminSessionUnlocked } from "@/lib/admin/pinClient";
+import {
+  downloadOrdersFromBrowser,
+  downloadOrdersFromServer,
+} from "@/lib/orders/exportClient";
 
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
@@ -384,6 +389,10 @@ export default function AdminPage() {
   /** Connection state for the SSE stream → drives the live status pill. */
   const [streamConnected, setStreamConnected] = useState(false);
   const [usingPollingFallback, setUsingPollingFallback] = useState(false);
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
@@ -563,6 +572,46 @@ export default function AdminPage() {
     }
   };
 
+  const handleExportOrders = useCallback(async () => {
+    setExporting(true);
+    setExportMessage(null);
+    const range = {
+      from: exportFrom.trim() || undefined,
+      to: exportTo.trim() || undefined,
+    };
+    try {
+      if (orderInboxEnabled !== false) {
+        const result = await downloadOrdersFromServer(range);
+        if (result.ok) {
+          setExportMessage(`${result.count} bestellingen gedownload.`);
+          return;
+        }
+        if (result.reason === "unauthorized") {
+          setExportMessage("Sessie verlopen — log opnieuw in met je PIN.");
+          return;
+        }
+      }
+      const count = downloadOrdersFromBrowser(orders, range);
+      setExportMessage(
+        orderInboxEnabled === false
+          ? `${count} bestellingen (alleen orders in deze browser — koppel Redis voor volledige export).`
+          : `${count} bestellingen (fallback: alleen orders in deze browser).`
+      );
+    } catch {
+      setExportMessage("Export mislukt. Probeer opnieuw.");
+    } finally {
+      setExporting(false);
+    }
+  }, [exportFrom, exportTo, orderInboxEnabled, orders]);
+
+  useEffect(() => {
+    if (!mounted || !unlocked) return;
+    document.body.classList.toggle("admin-kitchen-mode", kitchenMode);
+    return () => {
+      document.body.classList.remove("admin-kitchen-mode");
+    };
+  }, [kitchenMode, mounted, unlocked]);
+
   if (!mounted || !unlocked) {
     return (
       <>
@@ -582,8 +631,11 @@ export default function AdminPage() {
     );
   }
 
-  const filtered =
-    filter === "all" ? orders : orders.filter((o) => o.status === filter);
+  const filtered = kitchenMode
+    ? orders.filter((o) => o.status !== "delivered")
+    : filter === "all"
+      ? orders
+      : orders.filter((o) => o.status === filter);
 
   const counts = {
     all: orders.length,
@@ -597,8 +649,8 @@ export default function AdminPage() {
   const printOrder = printTargetId ? orders.find((o) => o.id === printTargetId) : undefined;
 
   return (
-    <div className="min-h-screen bg-cream pb-24">
-      <Header />
+    <div className={`min-h-screen bg-cream pb-24 ${kitchenMode ? "admin-kitchen-mode-page" : ""}`}>
+      {!kitchenMode && <Header />}
 
       {alarmOrderId && (
         <div
@@ -655,14 +707,16 @@ export default function AdminPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/admin/inventory"
-              className="btn-secondary text-sm"
-              title="Beheer voorraad en product-beschikbaarheid"
-            >
-              <Boxes size={15} />
-              Voorraadbeheer
-            </Link>
+            {!kitchenMode && (
+              <Link
+                href="/admin/inventory"
+                className="btn-secondary text-sm"
+                title="Beheer voorraad en product-beschikbaarheid"
+              >
+                <Boxes size={15} />
+                Voorraadbeheer
+              </Link>
+            )}
             <div
               className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-sm ${
                 streamConnected
@@ -719,16 +773,81 @@ export default function AdminPage() {
                     : "Kitchen link · connecting…"}
               </span>
             </div>
-            <div className="text-xs text-neutral-500">
-              Last checked:{" "}
-              <span className="font-mono font-medium text-neutral-700">
-                {formatCheckedTime(lastChecked)}
-              </span>
-            </div>
+            {!kitchenMode && (
+              <div className="text-xs text-neutral-500">
+                Last checked:{" "}
+                <span className="font-mono font-medium text-neutral-700">
+                  {formatCheckedTime(lastChecked)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        {setupVisible && (
+        {!kitchenMode && (
+          <div className="no-print mb-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-bold text-neutral-800">
+                  <Download size={16} className="text-sage-600" />
+                  Export voor boekhouding
+                </h2>
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-neutral-500">
+                  Download alle bestellingen als CSV (Excel). Semicolon-gescheiden, UTF-8.
+                  {orderInboxEnabled
+                    ? " Data komt uit de server (tot ca. 5000 recente orders)."
+                    : " Redis niet gekoppeld — export bevat alleen orders zichtbaar in deze browser."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleExportOrders()}
+                disabled={
+                  exporting || (orders.length === 0 && orderInboxEnabled !== true)
+                }
+                className="btn-secondary shrink-0 text-sm disabled:opacity-50"
+              >
+                {exporting ? (
+                  "Bezig…"
+                ) : (
+                  <>
+                    <Download size={15} />
+                    Download CSV
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium text-neutral-600">
+                  Van (optioneel)
+                </label>
+                <input
+                  type="date"
+                  value={exportFrom}
+                  onChange={(e) => setExportFrom(e.target.value)}
+                  className="input-field text-sm"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium text-neutral-600">
+                  Tot (optioneel)
+                </label>
+                <input
+                  type="date"
+                  value={exportTo}
+                  onChange={(e) => setExportTo(e.target.value)}
+                  className="input-field text-sm"
+                />
+              </div>
+            </div>
+            {exportMessage && (
+              <p className="mt-3 text-xs font-medium text-sage-700">{exportMessage}</p>
+            )}
+          </div>
+        )}
+
+        {setupVisible && !kitchenMode && (
           <div className="no-print mb-6 rounded-2xl border border-sage-200 bg-sage-50/80 p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -771,14 +890,24 @@ export default function AdminPage() {
         )}
 
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <UtensilsCrossed size={20} className="text-wood-600" />
-            <div>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <UtensilsCrossed size={20} className="shrink-0 text-wood-600" />
+            <div className="min-w-0">
               <p className="text-sm font-bold text-neutral-800">Kitchen mode</p>
               <p className="text-xs text-neutral-500">
-                <strong>Meldingsgeluid</strong> (3× chime, ca. 7s). Dempen,{" "}
-                <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>. 80mm bon. Chrome:{" "}
-                <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> voor stille print.
+                {kitchenMode ? (
+                  <>
+                    <strong>Actief</strong> — compacte weergave: alleen actieve orders, geen filters
+                    of setup. Ideaal voor de keuken-tablet.
+                  </>
+                ) : (
+                  <>
+                    <strong>Meldingsgeluid</strong> (3× chime, ca. 7s). Dempen,{" "}
+                    <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>.
+                    80mm bon. Chrome:{" "}
+                    <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> voor stille print.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -807,24 +936,30 @@ export default function AdminPage() {
                 Test geluid
               </button>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-neutral-600">Kitchen mode</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={kitchenMode}
+                aria-label="Kitchen mode aan of uit"
+                onClick={() => toggleKitchenMode(!kitchenMode)}
+                className={`relative h-9 w-14 shrink-0 rounded-full transition-colors ${
+                  kitchenMode ? "bg-sage-500" : "bg-neutral-300"
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 h-7 w-7 rounded-full bg-white shadow transition-transform ${
+                    kitchenMode ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={kitchenMode}
-            onClick={() => toggleKitchenMode(!kitchenMode)}
-            className={`relative h-9 w-14 shrink-0 rounded-full transition-colors ${
-              kitchenMode ? "bg-sage-500" : "bg-neutral-300"
-            }`}
-          >
-            <span
-              className={`absolute top-1 left-1 h-7 w-7 rounded-full bg-white shadow transition-transform ${
-                kitchenMode ? "translate-x-5" : "translate-x-0"
-              }`}
-            />
-          </button>
         </div>
 
+        {!kitchenMode && (
+        <>
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex gap-2">
             <button
@@ -863,15 +998,21 @@ export default function AdminPage() {
             )
           )}
         </div>
+        </>
+        )}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="mb-3 text-5xl">📋</div>
-            <h3 className="font-semibold text-neutral-700">No orders yet</h3>
+            <h3 className="font-semibold text-neutral-700">
+              {kitchenMode ? "Geen actieve orders" : "No orders yet"}
+            </h3>
             <p className="mt-1 text-sm text-neutral-400">
-              {filter !== "all"
-                ? `No ${filter} orders at the moment.`
-                : "Orders will appear here once customers place them."}
+              {kitchenMode
+                ? "Afgeleverde en opgehaalde orders zijn verborgen in kitchen mode."
+                : filter !== "all"
+                  ? `No ${filter} orders at the moment.`
+                  : "Orders will appear here once customers place them."}
             </p>
           </div>
         ) : (
