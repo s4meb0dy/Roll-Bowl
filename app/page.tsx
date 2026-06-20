@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  MapPin, Leaf, Clock,
+  MapPin, Leaf,
   ArrowRight, CheckCircle2, XCircle, Loader2, Home,
 } from "lucide-react";
 import { useStore } from "@/lib/store/useStore";
@@ -443,31 +443,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t border-ink-200/60 bg-white py-8">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logo.png"
-              alt="Roll & Bowl"
-              width={28}
-              height={28}
-              className="rounded-full object-cover ring-1 ring-ink-200/60"
-            />
-            <span className="font-display font-bold text-ink-900">
-              Roll<span className="text-gold-600">&amp;</span>Bowl
-            </span>
-          </div>
-          <p className="text-xs text-ink-400">
-            © {new Date().getFullYear()} Roll&amp;Bowl. {t("landing.footer_copy")}
-          </p>
-          <div className="flex items-center gap-1 text-xs text-ink-400">
-            <Clock size={12} />
-            {t("landing.hours")}
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

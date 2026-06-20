@@ -3,6 +3,7 @@ import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import StoreHydration from "@/components/StoreHydration";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import SiteFooter from "@/components/SiteFooter";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -58,6 +59,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <StoreHydration />
         {children}
+        <SiteFooter />
         <MobileBottomNav />
       </body>
     </html>
