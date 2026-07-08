@@ -131,7 +131,7 @@ function printViaSdk(url: string, xmlOrRequest: string): Promise<EposPrintResult
       clearTimeout(timer);
       resolve({
         ok: false,
-        error: `Netwerk/CORS: ${err.status ?? ""} ${err.responseText ?? "kan printer niet bereiken"}. Zet ePOS-Print aan via http://[printer-ip] (login epson/epson).`,
+        error: `Netwerk/CORS: ${err.status ?? ""} ${err.responseText ?? "kan printer niet bereiken"}. Open eenmalig https://[printer-ip] op de iPad en accepteer het certificaat. ePOS-Print + SSL aan (login epson/epson).`,
       });
     };
 
@@ -160,7 +160,7 @@ async function printViaHttp(url: string, soapBody: string): Promise<EposPrintRes
     if (!res.ok) {
       return {
         ok: false,
-        error: `HTTP ${res.status} — ePOS-Print inschakelen op printer (http://IP → ePOS-Print → Restart)`,
+        error: `HTTP ${res.status} — ePOS-Print + SSL inschakelen op printer (https://IP → ePOS-Print → Restart)`,
       };
     }
     const text = await res.text();
@@ -175,7 +175,7 @@ async function printViaHttp(url: string, soapBody: string): Promise<EposPrintRes
     return {
       ok: false,
       error:
-        "Geen verbinding met printer. Zelfde Wi‑Fi? ePOS-Print aan? Local Network toestaan voor rollnbowl.be op iPad?",
+        "Geen verbinding met printer. Zelfde Wi‑Fi? ePOS-Print + SSL aan? Open eenmalig https://[printer-ip] op de iPad om het certificaat te accepteren. Local Network toestaan voor rollnbowl.be?",
     };
   }
 }

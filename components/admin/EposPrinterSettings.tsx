@@ -45,9 +45,16 @@ export default function EposPrinterSettings() {
       <p className="mb-3 text-xs leading-relaxed text-neutral-600">
         TM-m30II / TM-m30III op hetzelfde Wi‑Fi als de iPad. Eénmalig:{" "}
         <strong>TM Utility</strong> → Wi‑Fi, daarna op{" "}
-        <strong>http://[printer-IP]</strong> (login <code className="rounded bg-neutral-100 px-1">epson</code>
+        <strong>https://[printer-IP]</strong> (login <code className="rounded bg-neutral-100 px-1">epson</code>
         / <code className="rounded bg-neutral-100 px-1">epson</code>) →{" "}
-        <strong>ePOS-Print inschakelen</strong> → Restart. Vast IP in de router aanbevolen.
+        <strong>ePOS-Print + SSL inschakelen</strong> → Restart. Vast IP in de router aanbevolen.
+      </p>
+      <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+        <strong>Belangrijk (HTTPS):</strong> rollnbowl.be is beveiligd, dus de
+        printer moet via <strong>SSL</strong> bereikbaar zijn. Open eenmalig{" "}
+        <strong>https://[printer-IP]</strong> op de iPad en accepteer het
+        certificaat. Daarna werkt de bon. Zet SSL uit alleen bij testen op een
+        lokale http-pagina.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -76,6 +83,18 @@ export default function EposPrinterSettings() {
       </div>
 
       <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={config.useSsl}
+          onChange={(e) => persist({ ...config, useSsl: e.target.checked })}
+          className="h-4 w-4 rounded border-neutral-300"
+        />
+        <span className="font-medium text-neutral-800">
+          SSL (https) gebruiken — nodig op rollnbowl.be
+        </span>
+      </label>
+
+      <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={config.enabled}

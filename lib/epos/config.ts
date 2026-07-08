@@ -8,6 +8,12 @@ export interface EposPrinterConfig {
   deviceId: string;
   /** Request timeout ms. */
   timeoutMs: number;
+  /**
+   * Use HTTPS to reach the printer. Required when the admin page itself is
+   * served over HTTPS (rollnbowl.be) — browsers block http:// (mixed content).
+   * Enable SSL + ePOS-Print on the printer and accept its self-signed cert once.
+   */
+  useSsl: boolean;
   /** When true, /admin uses ePOS instead of window.print(). */
   enabled: boolean;
 }
@@ -16,6 +22,7 @@ export const DEFAULT_EPOS_CONFIG: EposPrinterConfig = {
   host: "",
   deviceId: "local_printer",
   timeoutMs: 60000,
+  useSsl: true,
   enabled: false,
 };
 
@@ -35,6 +42,7 @@ export function loadEposConfig(): EposPrinterConfig {
         typeof parsed.timeoutMs === "number" && parsed.timeoutMs >= 5000
           ? parsed.timeoutMs
           : DEFAULT_EPOS_CONFIG.timeoutMs,
+      useSsl: parsed.useSsl !== false,
       enabled: parsed.enabled === true,
     };
   } catch {
@@ -51,5 +59,6 @@ export function eposServiceUrl(config: EposPrinterConfig): string | null {
   if (!host) return null;
   const devid = encodeURIComponent(config.deviceId || "local_printer");
   const timeout = config.timeoutMs || 60000;
-  return `http://${host}/cgi-bin/epos/service.cgi?devid=${devid}&timeout=${timeout}`;
+  const scheme = config.useSsl ? "https" : "http";
+  return `${scheme}://${host}/cgi-bin/epos/service.cgi?devid=${devid}&timeout=${timeout}`;
 }
