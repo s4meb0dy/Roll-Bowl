@@ -151,26 +151,34 @@ function OrderCard({
                 POS: niet geconfigureerd
               </span>
             )}
-            <span
-              className={`tag-badge inline-flex items-center gap-1 border text-xs font-semibold ${
-                order.orderType === "takeaway"
-                  ? "border-wood-200 bg-wood-50 text-wood-800"
-                  : "border-sage-200 bg-sage-50 text-sage-800"
-              }`}
-            >
-              {order.orderType === "takeaway" ? (
-                <>
-                  <Store size={11} /> Afhalen
-                </>
-              ) : (
-                <>
-                  <Truck size={11} /> Bezorging
-                </>
-              )}
-            </span>
-            {order.fulfillmentTime?.mode === "scheduled" && (
-              <span className="tag-badge inline-flex items-center gap-1 border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-800">
-                <CalendarClock size={11} />
+            {(() => {
+              const isTakeaway = order.orderType === "takeaway";
+              const isScheduled = order.fulfillmentTime?.mode === "scheduled";
+              const label = isTakeaway
+                ? isScheduled
+                  ? "Geplande afhaling"
+                  : "Afhalen"
+                : isScheduled
+                  ? "Geplande levering"
+                  : "Levering";
+              const color = isScheduled
+                ? "border-blue-300 bg-blue-100 text-blue-900"
+                : isTakeaway
+                  ? "border-wood-300 bg-wood-100 text-wood-900"
+                  : "border-sage-300 bg-sage-100 text-sage-900";
+              return (
+                <span
+                  className={`tag-badge inline-flex items-center gap-1 border text-xs font-bold uppercase tracking-wide ${color}`}
+                >
+                  {isTakeaway ? <Store size={12} /> : <Truck size={12} />}
+                  {label}
+                </span>
+              );
+            })()}
+            {order.fulfillmentTime?.mode === "scheduled" ? (
+              <span className="tag-badge inline-flex items-center gap-1 border border-blue-300 bg-blue-50 text-xs font-bold text-blue-900">
+                <CalendarClock size={12} />
+                Klaar om{" "}
                 {new Date(order.fulfillmentTime.scheduledFor).toLocaleString("nl-BE", {
                   day: "2-digit",
                   month: "2-digit",
@@ -178,8 +186,7 @@ function OrderCard({
                   minute: "2-digit",
                 })}
               </span>
-            )}
-            {order.fulfillmentTime?.mode === "asap" && (
+            ) : (
               <span className="tag-badge inline-flex items-center gap-1 border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-800">
                 <Clock size={11} /> Zo snel mogelijk
               </span>
@@ -194,8 +201,9 @@ function OrderCard({
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-neutral-400">
-            <Clock size={11} />
+          <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-neutral-600">
+            <Clock size={12} className="text-neutral-400" />
+            <span className="text-neutral-400">Besteld:</span>
             {formatDate(order.createdAt)} om {formatTime(order.createdAt)}
           </div>
         </div>
