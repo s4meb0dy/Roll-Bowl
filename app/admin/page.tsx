@@ -24,7 +24,10 @@ import {
   Download,
 } from "lucide-react";
 import Header from "@/components/Header";
+import EposPrinterSettings from "@/components/admin/EposPrinterSettings";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
+import { loadEposConfig } from "@/lib/epos/config";
+import { printKitchenOrderEpos } from "@/lib/epos/printOrder";
 import { useStore } from "@/lib/store/useStore";
 import {
   isKitchenAlarmMuted,
@@ -393,6 +396,7 @@ export default function AdminPage() {
   const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
@@ -401,7 +405,26 @@ export default function AdminPage() {
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
       if (printFlightRef.current) return;
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return;
+
       printFlightRef.current = { id: orderId };
+      setPrintMessage(null);
+
+      const eposConfig = loadEposConfig();
+      if (eposConfig.enabled && eposConfig.host.trim()) {
+        void printKitchenOrderEpos(order, eposConfig).then((result) => {
+          if (result.ok) {
+            markKitchenPrinted(orderId);
+            setPrintMessage(null);
+          } else {
+            setPrintMessage(result.error);
+          }
+          printFlightRef.current = null;
+        });
+        return;
+      }
+
       setPrintTargetId(orderId);
 
       const printTimer = window.setTimeout(() => {
@@ -429,7 +452,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted]
+    [markKitchenPrinted, orders]
   );
 
   const handleAcceptAndPrint = useCallback(
@@ -880,12 +903,19 @@ export default function AdminPage() {
                 Klik <strong>Test geluid</strong> — zorg dat <strong>Dempen</strong> uit staat.
               </li>
               <li>
-                Printer (optioneel): Chrome met <code className="rounded bg-white px-1">--kiosk-printing</code>, 80mm bon.
+                Printer: Wi‑Fi Epson → <strong>ePOS</strong> hieronder (IP + testbon). Geen AirPrint.
               </li>
               <li>
                 Bij elk nieuw order: <strong>Accepteren &amp; afdrukken</strong> (of alleen <strong>Bevestig gehoord</strong>).
               </li>
             </ol>
+            <EposPrinterSettings />
+          </div>
+        )}
+
+        {printMessage && (
+          <div className="no-print mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-800">
+            {printMessage}
           </div>
         )}
 
@@ -904,8 +934,7 @@ export default function AdminPage() {
                   <>
                     <strong>Meldingsgeluid</strong> (3× chime, ca. 7s). Dempen,{" "}
                     <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>.
-                    80mm bon. Chrome:{" "}
-                    <code className="rounded bg-neutral-100 px-1">--kiosk-printing</code> voor stille print.
+                    ePOS 80&nbsp;mm bon (Wi‑Fi printer, geen Safari-dialoog).
                   </>
                 )}
               </p>
