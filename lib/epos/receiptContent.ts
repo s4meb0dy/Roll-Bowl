@@ -83,15 +83,12 @@ function money(amount: number): string {
  *
  * Every component is prefixed with its amount (`1 x`, `2 x`, ...) so the kitchen
  * knows exactly how much of each ingredient to put in. Duplicate selections
- * within the same category are grouped and counted, and the total is multiplied
- * by the item quantity. Any component equal to `skipName` (e.g. the size label
- * that already appears in the item header) is dropped to avoid duplication.
+ * within the same category are grouped and counted. Counts are per single dish
+ * (the item header already shows how many dishes were ordered), so they are not
+ * multiplied by the item quantity. Any component equal to `skipName` (e.g. the
+ * size label that already appears in the item header) is dropped.
  */
-function expandKitchenLines(
-  lines: KitchenLine[],
-  qty = 1,
-  skipName?: string
-): string[] {
+function expandKitchenLines(lines: KitchenLine[], skipName?: string): string[] {
   const out: string[] = [];
   const skip = skipName?.trim().toLowerCase();
   for (const line of lines) {
@@ -108,7 +105,7 @@ function expandKitchenLines(
 
     const isAccent = line.accent || line.label.startsWith("+");
     for (const part of order) {
-      const n = (counts.get(part) ?? 1) * qty;
+      const n = counts.get(part) ?? 1;
       out.push(isAccent ? `+ ${n} x ${part}` : `${n} x ${part}`);
     }
   }
@@ -173,7 +170,6 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     });
     for (const ing of expandKitchenLines(
       describeCartItemForKitchen(item),
-      item.quantity,
       item.name
     )) {
       lines.push({ text: `   ${ing}` });
