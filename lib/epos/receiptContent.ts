@@ -138,6 +138,8 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   // ── Header ──
   lines.push({ text: "ROLL & BOWL", align: "center", bold: true });
   lines.push({ text: "www.rollnbowl.be", align: "center" });
+  lines.push({ text: `Tel: ${BUSINESS.phoneDisplay}`, align: "center" });
+  lines.push({ text: `BTW ${BUSINESS.vat}`, align: "center" });
   lines.push({ text: " " });
   lines.push({
     text: orderTypeBannerLabel(order),

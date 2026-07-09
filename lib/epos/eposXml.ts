@@ -33,9 +33,8 @@ function textNode(line: ReceiptTextLine): string {
   ];
   const attrStr = ` ${attrs.join(" ")}`;
   const content = escapeXml(line.text).replace(/\n/g, "&#10;");
-  if (line.align && line.align !== "left") {
-    return `<text${attrStr}>${content}</text>`;
-  }
+  // Every logical line gets its own feed — including centered/right lines,
+  // otherwise consecutive aligned lines (e.g. the header) print on one row.
   return `<text${attrStr}>${content}&#10;</text>`;
 }
 
