@@ -91,7 +91,7 @@ const CORE_ALLERGENS: AllergenMap = {
   "bakje-couscous": ["gluten"],
   "bakje-feta": ["milk"],
 
-  // ── Desserten (indicatief — check verpakking/leverancier) ──
+  // ── Desserten (gecontroleerd; herzie bij nieuwe verpakking/leverancier) ──
   "apple-pie": ["gluten", "eggs", "milk"],
   "red-velvet-cake": ["gluten", "eggs", "milk"],
   "classic-cheesecake": ["gluten", "eggs", "milk"],
