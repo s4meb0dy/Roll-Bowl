@@ -212,7 +212,7 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
       order.cashDenomination !== undefined
         ? `Contant EUR ${money(order.cashDenomination)}`
         : "Contant";
-    lines.push({ text: padLine("Betaald", paid) });
+    lines.push({ text: padLine("Te betalen", paid) });
     if (
       order.cashDenomination !== undefined &&
       order.cashDenomination > order.total
@@ -226,30 +226,30 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     lines.push({ text: padLine("Betaald", `Kaart ${money(order.total)}`) });
   }
 
+  // Cash is always collected on pickup/delivery, so a cash ticket must never
+  // read "paid" — it always shows "still to be paid", regardless of status.
   const paidOnline =
     order.paymentMethod === "online" &&
     (order.status === "paid" ||
       order.status === "preparing" ||
       order.status === "ready" ||
       order.status === "delivered");
-  const paidCash =
-    order.paymentMethod === "cash" && order.status !== "pending";
 
   lines.push({ text: " " });
-  if (paidOnline || paidCash) {
+  if (order.paymentMethod === "cash") {
+    lines.push({
+      text: "CONTANT - NOG TE BETALEN",
+      align: "center",
+      bold: true,
+      reverse: true,
+    });
+  } else if (paidOnline) {
     lines.push({
       text: "BESTELLING BETAALD",
       align: "center",
       width: 2,
       height: 2,
       bold: true,
-    });
-  } else if (order.paymentMethod === "cash") {
-    lines.push({
-      text: "CONTANT - NOG TE BETALEN",
-      align: "center",
-      bold: true,
-      reverse: true,
     });
   } else {
     lines.push({
