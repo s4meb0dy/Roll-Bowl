@@ -41,6 +41,7 @@ import {
 import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
+import { shortOrderCode } from "@/lib/orderId";
 import AdminPinGate from "@/components/AdminPinGate";
 import { isAdminSessionUnlocked } from "@/lib/admin/pinClient";
 import {
@@ -124,8 +125,8 @@ function OrderCard({
       <div className="flex items-start justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs font-bold text-neutral-500">
-              #{order.id.toUpperCase()}
+            <span className="font-mono text-sm font-bold text-neutral-700">
+              #{shortOrderCode(order.id)}
             </span>
             <span className={`tag-badge border text-xs ${cfg.color}`}>
               {cfg.label}
@@ -695,7 +696,7 @@ export default function AdminPage() {
                 <span className="relative h-3 w-3 rounded-full bg-amber-500" />
               </span>
               <Bell className="shrink-0 text-amber-800" size={20} />
-              <span className="truncate">Nieuw order — #{alarmOrderId.toUpperCase()}</span>
+              <span className="truncate">Nieuw order — #{shortOrderCode(alarmOrderId)}</span>
             </div>
             <div className="flex flex-wrap gap-2">
               <button

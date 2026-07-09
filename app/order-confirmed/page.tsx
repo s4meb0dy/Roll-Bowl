@@ -7,6 +7,7 @@ import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, Cal
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
+import { shortOrderCode } from "@/lib/orderId";
 import type { Order } from "@/lib/types";
 import {
   loadPendingStripeCheckout,
@@ -245,7 +246,7 @@ function ConfirmedContent() {
         <p className="mb-3 text-sm text-neutral-500">
           {t("order.confirmed.order_id")}:{" "}
           <span className="break-all font-mono font-semibold text-neutral-700">
-            #{orderId.toUpperCase()}
+            #{shortOrderCode(orderId)}
           </span>
         </p>
       )}

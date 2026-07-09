@@ -3,6 +3,7 @@ import {
   describeCartItemForKitchen,
   type KitchenLine,
 } from "@/lib/orders/itemDescriptors";
+import { shortOrderCode } from "@/lib/orderId";
 import type { CartItem, Order } from "@/lib/types";
 
 /** Printable width in monospace chars (80 mm, Font A). */
@@ -28,9 +29,7 @@ export interface ReceiptTextLine {
 export const RECEIPT_QR_URL = "https://www.rollnbowl.be";
 
 export function formatReceiptOrderId(orderId: string): string {
-  const clean = orderId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-  const core = clean.slice(0, 9).padEnd(9, "0");
-  return `# ${core.slice(0, 3)} ${core.slice(3, 6)} ${core.slice(6, 9)}`.trim();
+  return `#${shortOrderCode(orderId)}`;
 }
 
 /**
