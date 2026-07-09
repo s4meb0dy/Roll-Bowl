@@ -105,27 +105,10 @@ export default function EposPrinterSettings() {
           ePOS-druk gebruiken (geen Safari/AirPrint-dialoog)
         </span>
       </label>
-
-      <label
-        className={`mt-2 flex items-center gap-2 text-sm ${
-          config.enabled ? "cursor-pointer" : "cursor-not-allowed opacity-50"
-        }`}
-      >
-        <input
-          type="checkbox"
-          checked={config.autoPrint}
-          disabled={!config.enabled}
-          onChange={(e) => persist({ ...config, autoPrint: e.target.checked })}
-          className="h-4 w-4 rounded border-neutral-300"
-        />
-        <span className="font-medium text-neutral-800">
-          Automatisch afdrukken bij nieuwe bestelling
-        </span>
-      </label>
       <p className="mt-1 pl-6 text-xs leading-relaxed text-neutral-500">
-        Elke nieuwe bestelling wordt meteen op de keukenprinter afgedrukt, zonder
-        tikken. Houd deze pagina (Keuken-scherm) open op de iPad. Werkt alleen met
-        ePOS-druk hierboven aan.
+        De keukenbon wordt automatisch afgedrukt zodra je bij een nieuwe
+        bestelling de bereidingstijd kiest. De verwachte tijd staat dan meteen op
+        de bon.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -436,10 +436,6 @@ export default function AdminPage() {
   const printFlightRef = useRef<{ id: string } | null>(null);
   const newOrderWatchInit = useRef(false);
   const seenOrderIds = useRef<Set<string>>(new Set());
-  /** Auto-print bookkeeping: ids queued/printed and a single-worker lock. */
-  const autoPrintQueue = useRef<string[]>([]);
-  const autoPrintedIds = useRef<Set<string>>(new Set());
-  const autoPrintBusy = useRef(false);
 
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
@@ -507,41 +503,6 @@ export default function AdminPage() {
     [acceptOrderWithPrep, triggerKitchenPrint]
   );
 
-  /**
-   * Drains the auto-print queue one order at a time. Runs only for the network
-   * ePOS printer (a browser print dialog cannot be opened without a tap), so
-   * `window.print()` is never used here. Failed prints surface a message and are
-   * dropped from the queue — the operator can still print them by hand.
-   */
-  const processAutoPrintQueue = useCallback(async () => {
-    if (autoPrintBusy.current) return;
-    autoPrintBusy.current = true;
-    try {
-      while (autoPrintQueue.current.length > 0) {
-        const id = autoPrintQueue.current.shift();
-        if (!id) continue;
-        const cfg = loadEposConfig();
-        if (!cfg.enabled || !cfg.host.trim() || !cfg.autoPrint) {
-          autoPrintQueue.current = [];
-          break;
-        }
-        const order = useStore.getState().orders.find((o) => o.id === id);
-        if (!order || order.kitchenPrinted) continue;
-        const result = await printKitchenOrderEpos(order, cfg);
-        if (result.ok) {
-          markKitchenPrinted(id);
-          setPrintMessage(null);
-        } else {
-          setPrintMessage(`Auto-print mislukt: ${result.error}`);
-        }
-        // Small gap so the printer finishes cutting before the next ticket.
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    } finally {
-      autoPrintBusy.current = false;
-    }
-  }, [markKitchenPrinted]);
-
   useEffect(() => {
     setSoundMuted(isKitchenAlarmMuted());
     // Defensive backup: unlock Web Audio on the first interaction with the
@@ -557,29 +518,16 @@ export default function AdminPage() {
       orders.forEach((o) => seenOrderIds.current.add(o.id));
       return;
     }
-    const cfg = loadEposConfig();
-    const autoPrintReady = cfg.enabled && !!cfg.host.trim() && cfg.autoPrint;
-    let queued = false;
     for (const o of orders) {
       if (!seenOrderIds.current.has(o.id)) {
         seenOrderIds.current.add(o.id);
         if (isNewOrderAlertStatus(o.status)) {
           setAlarmOrderId(o.id);
           startKitchenAlarmLoop();
-          if (
-            autoPrintReady &&
-            !o.kitchenPrinted &&
-            !autoPrintedIds.current.has(o.id)
-          ) {
-            autoPrintedIds.current.add(o.id);
-            autoPrintQueue.current.push(o.id);
-            queued = true;
-          }
         }
       }
     }
-    if (queued) void processAutoPrintQueue();
-  }, [orders, storeHydrated, unlocked, processAutoPrintQueue]);
+  }, [orders, storeHydrated, unlocked]);
 
   const acknowledgeAlarm = useCallback(() => {
     stopKitchenAlarmLoop();

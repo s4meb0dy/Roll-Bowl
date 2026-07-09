@@ -16,12 +16,6 @@ export interface EposPrinterConfig {
   useSsl: boolean;
   /** When true, /admin uses ePOS instead of window.print(). */
   enabled: boolean;
-  /**
-   * When true, a new incoming order is printed automatically on the ePOS
-   * printer the moment it lands on the kitchen board — no tap required.
-   * Only works together with `enabled` (network ePOS printer).
-   */
-  autoPrint: boolean;
 }
 
 export const DEFAULT_EPOS_CONFIG: EposPrinterConfig = {
@@ -30,7 +24,6 @@ export const DEFAULT_EPOS_CONFIG: EposPrinterConfig = {
   timeoutMs: 60000,
   useSsl: true,
   enabled: false,
-  autoPrint: false,
 };
 
 export function loadEposConfig(): EposPrinterConfig {
@@ -51,7 +44,6 @@ export function loadEposConfig(): EposPrinterConfig {
           : DEFAULT_EPOS_CONFIG.timeoutMs,
       useSsl: parsed.useSsl !== false,
       enabled: parsed.enabled === true,
-      autoPrint: parsed.autoPrint === true,
     };
   } catch {
     return DEFAULT_EPOS_CONFIG;
