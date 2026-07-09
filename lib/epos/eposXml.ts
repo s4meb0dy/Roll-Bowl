@@ -19,13 +19,20 @@ function symbolNode(data: string): string {
 
 function textNode(line: ReceiptTextLine): string {
   if (line.qr) return symbolNode(line.qr);
-  const attrs: string[] = [];
-  if (line.width && line.width > 1) attrs.push(`width="${line.width}"`);
-  if (line.height && line.height > 1) attrs.push(`height="${line.height}"`);
-  if (line.bold) attrs.push('em="true"');
-  if (line.reverse) attrs.push('reverse="true"');
-  const attrStr = attrs.length ? ` ${attrs.join(" ")}` : "";
-  const content = escapeXml(line.text.replace(/\n/g, "&#10;"));
+  // ePOS-Print XML text attributes are modal: they stay in effect for every
+  // following <text> until changed. So we must set the full style explicitly
+  // on each line, otherwise a single reverse/bold/large line would carry over
+  // and (for reverse) turn the rest of the receipt white-on-black.
+  const width = line.width && line.width > 1 ? line.width : 1;
+  const height = line.height && line.height > 1 ? line.height : 1;
+  const attrs = [
+    `width="${width}"`,
+    `height="${height}"`,
+    `em="${line.bold ? "true" : "false"}"`,
+    `reverse="${line.reverse ? "true" : "false"}"`,
+  ];
+  const attrStr = ` ${attrs.join(" ")}`;
+  const content = escapeXml(line.text).replace(/\n/g, "&#10;");
   if (line.align && line.align !== "left") {
     return `<text${attrStr}>${content}</text>`;
   }

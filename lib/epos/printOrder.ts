@@ -23,11 +23,12 @@ interface EposBuilder {
   addTextSize(w: number, h: number): EposBuilder;
   addText(text: string): EposBuilder;
   addTextAlign(align: number): EposBuilder;
-  addTextStyle(options: {
-    em?: boolean;
-    ul?: boolean;
-    reverse?: boolean;
-  }): EposBuilder;
+  addTextStyle(
+    reverse?: boolean,
+    ul?: boolean,
+    em?: boolean,
+    color?: string
+  ): EposBuilder;
   addFeedLine(lines: number): EposBuilder;
   addCut(type: number): EposBuilder;
   addSymbol(
@@ -106,13 +107,13 @@ function buildSdkDocument(order: Order): string | null {
       continue;
     }
     b.addTextSize(line.width ?? 1, line.height ?? 1);
-    b.addTextStyle({
-      em: line.bold,
-      reverse: line.reverse,
-    });
+    // Epson SDK signature is positional: addTextStyle(reverse, ul, em, color).
+    // Passing an object made every argument truthy, so `reverse` stayed on for
+    // the whole receipt and it printed white-on-black (a fully black ticket).
+    b.addTextStyle(line.reverse ?? false, false, line.bold ?? false);
     b.addText(`${line.text}\n`);
     b.addTextSize(1, 1);
-    b.addTextStyle({});
+    b.addTextStyle(false, false, false);
     b.addTextAlign(b.ALIGN_LEFT);
   }
 
