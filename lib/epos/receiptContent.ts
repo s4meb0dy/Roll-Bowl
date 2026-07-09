@@ -80,21 +80,36 @@ function money(amount: number): string {
 
 /**
  * Flat ingredient lines (Takeaway-style), one per row.
- * When `qty` > 1 every component is prefixed with the amount so the kitchen
- * knows exactly how much of each ingredient to put in.
+ *
+ * Every component is prefixed with its amount (`1 x`, `2 x`, ...) so the kitchen
+ * knows exactly how much of each ingredient to put in. Duplicate selections
+ * within the same category are grouped and counted, and the total is multiplied
+ * by the item quantity. Any component equal to `skipName` (e.g. the size label
+ * that already appears in the item header) is dropped to avoid duplication.
  */
-function expandKitchenLines(lines: KitchenLine[], qty = 1): string[] {
+function expandKitchenLines(
+  lines: KitchenLine[],
+  qty = 1,
+  skipName?: string
+): string[] {
   const out: string[] = [];
-  const prefix = qty > 1 ? `${qty}x ` : "";
+  const skip = skipName?.trim().toLowerCase();
   for (const line of lines) {
     const parts = line.value.split(" · ").map((p) => p.trim()).filter(Boolean);
     if (parts.length === 0) continue;
+
+    const counts = new Map<string, number>();
+    const order: string[] = [];
     for (const part of parts) {
-      if (line.accent || line.label.startsWith("+")) {
-        out.push(`+ ${prefix}${part}`);
-      } else {
-        out.push(`${prefix}${part}`);
-      }
+      if (skip && part.toLowerCase() === skip) continue;
+      if (!counts.has(part)) order.push(part);
+      counts.set(part, (counts.get(part) ?? 0) + 1);
+    }
+
+    const isAccent = line.accent || line.label.startsWith("+");
+    for (const part of order) {
+      const n = (counts.get(part) ?? 1) * qty;
+      out.push(isAccent ? `+ ${n} x ${part}` : `${n} x ${part}`);
     }
   }
   return out;
@@ -158,7 +173,8 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     });
     for (const ing of expandKitchenLines(
       describeCartItemForKitchen(item),
-      item.quantity
+      item.quantity,
+      item.name
     )) {
       lines.push({ text: `   ${ing}` });
     }
