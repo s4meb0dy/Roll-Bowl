@@ -20,6 +20,8 @@ export interface OrderPatchBody {
   status?: OrderStatus;
   lightspeed?: OrderLightspeedMeta | null;
   kitchenPrinted?: boolean;
+  prepMinutes?: number;
+  expectedReadyAt?: string;
 }
 
 /** Fire-and-forget: errors are logged but don't block the optimistic UI. */

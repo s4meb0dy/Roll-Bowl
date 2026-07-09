@@ -59,6 +59,28 @@ function buildPatch(body: unknown): { ok: true; patch: OrderPatch } | { ok: fals
     patch.kitchenPrinted = x.kitchenPrinted;
   }
 
+  if (x.prepMinutes !== undefined) {
+    if (
+      typeof x.prepMinutes !== "number" ||
+      !Number.isFinite(x.prepMinutes) ||
+      x.prepMinutes < 0 ||
+      x.prepMinutes > 180
+    ) {
+      return { ok: false, reason: "invalid_prepMinutes" };
+    }
+    patch.prepMinutes = Math.round(x.prepMinutes);
+  }
+
+  if (x.expectedReadyAt !== undefined) {
+    if (
+      typeof x.expectedReadyAt !== "string" ||
+      Number.isNaN(Date.parse(x.expectedReadyAt))
+    ) {
+      return { ok: false, reason: "invalid_expectedReadyAt" };
+    }
+    patch.expectedReadyAt = x.expectedReadyAt;
+  }
+
   if (Object.keys(patch).length === 0) {
     return { ok: false, reason: "empty_patch" };
   }

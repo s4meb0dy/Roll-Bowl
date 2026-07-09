@@ -314,10 +314,21 @@ function ConfirmedContent() {
             )}
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-                {order.fulfillmentTime.mode === "scheduled" ? t("order.confirmed.scheduled") : t("order.confirmed.asap")}
+                {order.expectedReadyAt
+                  ? t("order.confirmed.expected")
+                  : order.fulfillmentTime.mode === "scheduled"
+                  ? t("order.confirmed.scheduled")
+                  : t("order.confirmed.asap")}
               </div>
               <div className="font-medium">
-                {order.fulfillmentTime.mode === "scheduled"
+                {order.expectedReadyAt
+                  ? t("order.confirmed.expected_ready", {
+                      time: new Date(order.expectedReadyAt).toLocaleTimeString("nl-BE", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }),
+                    })
+                  : order.fulfillmentTime.mode === "scheduled"
                   ? new Date(order.fulfillmentTime.scheduledFor).toLocaleString("nl-BE", {
                       day: "2-digit",
                       month: "2-digit",

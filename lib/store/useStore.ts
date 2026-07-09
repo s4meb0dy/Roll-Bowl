@@ -50,6 +50,12 @@ function mergeOrderRecord(local: Order, server: Order): Order {
     ...(server.kitchenPrinted !== undefined
       ? { kitchenPrinted: server.kitchenPrinted }
       : {}),
+    ...(server.prepMinutes !== undefined
+      ? { prepMinutes: server.prepMinutes }
+      : {}),
+    ...(server.expectedReadyAt !== undefined
+      ? { expectedReadyAt: server.expectedReadyAt }
+      : {}),
     version: Math.max(local.version ?? 0, server.version ?? 0),
     updatedAt: server.updatedAt ?? local.updatedAt,
   };
@@ -58,6 +64,8 @@ function mergeOrderRecord(local: Order, server: Order): Order {
     next.status === local.status &&
     next.lightspeed === local.lightspeed &&
     next.kitchenPrinted === local.kitchenPrinted &&
+    next.prepMinutes === local.prepMinutes &&
+    next.expectedReadyAt === local.expectedReadyAt &&
     next.version === local.version &&
     next.updatedAt === local.updatedAt
   ) {
@@ -115,6 +123,11 @@ interface AppState {
     items?: CartItem[];
   }) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  /**
+   * Accept a new order: set status to `preparing` and record the kitchen's
+   * chosen prep time (minutes), which drives the expected ready/delivery time.
+   */
+  acceptOrderWithPrep: (orderId: string, prepMinutes: number) => void;
   markKitchenPrinted: (orderId: string) => void;
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
   /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
@@ -249,6 +262,31 @@ export const useStore = create<AppState>()(
         // Optimistic UI; server PATCH propagates to other devices via SSE.
         // 503/404 simply means we're running offline — the local copy stays.
         void patchOrderRemote(orderId, { status });
+      },
+
+      acceptOrderWithPrep: (orderId, prepMinutes) => {
+        const minutes = Math.max(0, Math.min(180, Math.round(prepMinutes)));
+        const expectedReadyAt = new Date(
+          Date.now() + minutes * 60_000
+        ).toISOString();
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: "preparing",
+                  prepMinutes: minutes,
+                  expectedReadyAt,
+                  updatedAt: new Date().toISOString(),
+                }
+              : o
+          ),
+        }));
+        void patchOrderRemote(orderId, {
+          status: "preparing",
+          prepMinutes: minutes,
+          expectedReadyAt,
+        });
       },
 
       markKitchenPrinted: (orderId) => {

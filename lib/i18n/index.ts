@@ -207,6 +207,8 @@ const nl: Dict = {
   "order.confirmed.eta_fallback": "Geschatte levertijd: 30–45 minuten",
   "order.confirmed.eta_takeaway": "15–25 min",
   "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.expected": "Verwacht",
+  "order.confirmed.expected_ready": "Rond {time}",
   "order.confirmed.stripe_completing": "Bevestigen van je betaling…",
   "order.confirmed.order_again": "Opnieuw bestellen",
 
@@ -552,6 +554,8 @@ const en: Dict = {
   "order.confirmed.eta_fallback": "Estimated delivery: 30–45 minutes",
   "order.confirmed.eta_takeaway": "15–25 min",
   "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.expected": "Expected",
+  "order.confirmed.expected_ready": "Around {time}",
   "order.confirmed.stripe_completing": "Confirming your payment…",
   "order.confirmed.order_again": "Order again",
 
@@ -887,6 +891,8 @@ const fr: Dict = {
   "order.confirmed.eta_fallback": "Livraison estimée : 30–45 minutes",
   "order.confirmed.eta_takeaway": "15–25 min",
   "order.confirmed.eta_delivery": "30–45 min",
+  "order.confirmed.expected": "Prévu",
+  "order.confirmed.expected_ready": "Vers {time}",
   "order.confirmed.stripe_completing": "Confirmation de votre paiement…",
   "order.confirmed.order_again": "Commander à nouveau",
 

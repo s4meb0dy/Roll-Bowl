@@ -216,4 +216,14 @@ export interface Order {
   updatedAt?: string;
   /** Marker that the order has been auto-printed on the kitchen terminal. */
   kitchenPrinted?: boolean;
+  /**
+   * Preparation time in minutes chosen by the kitchen when the order is
+   * accepted (max 60). Drives the expected ready/delivery time.
+   */
+  prepMinutes?: number;
+  /**
+   * ISO time the kitchen expects the order to be ready (takeaway) or delivered
+   * (delivery). Set when the kitchen accepts the order and picks a prep time.
+   */
+  expectedReadyAt?: string;
 }

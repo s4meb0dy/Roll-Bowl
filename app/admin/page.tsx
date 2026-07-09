@@ -92,6 +92,9 @@ function formatCheckedTime(d: Date) {
   return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Quick prep-time choices (minutes) shown when accepting an order. */
+const PREP_TIME_OPTIONS = [10, 15, 20, 30, 45, 60];
+
 function OrderCard({
   order,
   onAcceptAndPrint,
@@ -99,7 +102,7 @@ function OrderCard({
   isAlarmTarget,
 }: {
   order: Order;
-  onAcceptAndPrint: (id: string) => void;
+  onAcceptAndPrint: (id: string, prepMinutes: number) => void;
   onPrintReceipt: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
@@ -207,6 +210,18 @@ function OrderCard({
             <span className="text-neutral-400">Besteld:</span>
             {formatDate(order.createdAt)} om {formatTime(order.createdAt)}
           </div>
+          {order.expectedReadyAt && (
+            <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-sage-700">
+              <Clock size={12} className="text-sage-500" />
+              <span className="text-sage-500">
+                {order.orderType === "takeaway" ? "Klaar rond:" : "Levering rond:"}
+              </span>
+              {formatTime(order.expectedReadyAt)}
+              {typeof order.prepMinutes === "number" && order.prepMinutes > 0 && (
+                <span className="text-sage-500">(~{order.prepMinutes} min)</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2 text-right">
@@ -354,14 +369,25 @@ function OrderCard({
 
       {isNewOrderAlertStatus(order.status) && (
         <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
-          <button
-            type="button"
-            onClick={() => onAcceptAndPrint(order.id)}
-            className="btn-primary flex w-full items-center justify-center gap-2 text-sm"
-          >
-            <Printer size={16} />
-            Accepteren & afdrukken
-          </button>
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
+            <Printer size={14} className="text-neutral-500" />
+            Bereidingstijd kiezen &amp; afdrukken
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {PREP_TIME_OPTIONS.map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                onClick={() => onAcceptAndPrint(order.id, minutes)}
+                className="rounded-xl border border-sage-300 bg-white px-2 py-3 text-sm font-bold text-sage-800 shadow-sm transition hover:bg-sage-500 hover:text-white active:scale-95"
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+            De klant ziet meteen de verwachte {order.orderType === "takeaway" ? "afhaal" : "lever"}tijd.
+          </p>
         </div>
       )}
 
@@ -383,7 +409,7 @@ function OrderCard({
 export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
-  const updateOrderStatus = useStore((s) => s.updateOrderStatus);
+  const acceptOrderWithPrep = useStore((s) => s.acceptOrderWithPrep);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
 
   const [mounted, setMounted] = useState(false);
@@ -418,7 +444,10 @@ export default function AdminPage() {
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
       if (printFlightRef.current) return;
-      const order = orders.find((o) => o.id === orderId);
+      // Read the freshest copy from the store: accepting an order updates the
+      // prep time synchronously right before we print, and the closed-over
+      // `orders` array would still be the pre-accept snapshot.
+      const order = useStore.getState().orders.find((o) => o.id === orderId);
       if (!order) return;
 
       printFlightRef.current = { id: orderId };
@@ -465,17 +494,17 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted, orders]
+    [markKitchenPrinted]
   );
 
   const handleAcceptAndPrint = useCallback(
-    (orderId: string) => {
-      updateOrderStatus(orderId, "preparing");
+    (orderId: string, prepMinutes: number) => {
+      acceptOrderWithPrep(orderId, prepMinutes);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
       triggerKitchenPrint(orderId);
     },
-    [updateOrderStatus, triggerKitchenPrint]
+    [acceptOrderWithPrep, triggerKitchenPrint]
   );
 
   /**

@@ -175,6 +175,8 @@ export interface OrderPatch {
   status?: OrderStatus;
   lightspeed?: OrderLightspeedMeta;
   kitchenPrinted?: boolean;
+  prepMinutes?: number;
+  expectedReadyAt?: string;
 }
 
 /**
@@ -193,6 +195,8 @@ export async function patchOrderFields(
   if (patch.status !== undefined) next.status = patch.status;
   if (patch.lightspeed !== undefined) next.lightspeed = patch.lightspeed;
   if (patch.kitchenPrinted !== undefined) next.kitchenPrinted = patch.kitchenPrinted;
+  if (patch.prepMinutes !== undefined) next.prepMinutes = patch.prepMinutes;
+  if (patch.expectedReadyAt !== undefined) next.expectedReadyAt = patch.expectedReadyAt;
   next.updatedAt = new Date().toISOString();
 
   const version = await bumpVersion();

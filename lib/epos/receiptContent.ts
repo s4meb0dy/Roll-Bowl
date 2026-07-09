@@ -118,20 +118,37 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
       ? new Date(order.fulfillmentTime.scheduledFor)
       : null;
 
-  const expectedLabel = scheduled
-    ? `Verwacht: ${scheduled.toLocaleString("nl-BE", {
+  const expectedReady =
+    order.expectedReadyAt && !Number.isNaN(Date.parse(order.expectedReadyAt))
+      ? new Date(order.expectedReadyAt)
+      : null;
+
+  const prepSuffix =
+    typeof order.prepMinutes === "number" && order.prepMinutes > 0
+      ? ` (~${order.prepMinutes} min)`
+      : "";
+
+  const expectedLabel = expectedReady
+    ? `Verwacht: ${expectedReady.toLocaleString("nl-BE", {
         day: "2-digit",
         month: "short",
         hour: "2-digit",
         minute: "2-digit",
-      })}`
-    : `Verwacht: ${new Date(order.createdAt).toLocaleString("nl-BE", {
-        day: "2-digit",
-        month: "short",
-      })}, ZSM (${new Date(order.createdAt).toLocaleString("nl-BE", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })})`;
+      })}${prepSuffix}`
+    : scheduled
+      ? `Verwacht: ${scheduled.toLocaleString("nl-BE", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`
+      : `Verwacht: ${new Date(order.createdAt).toLocaleString("nl-BE", {
+          day: "2-digit",
+          month: "short",
+        })}, ZSM (${new Date(order.createdAt).toLocaleString("nl-BE", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })})`;
 
   const lines: ReceiptTextLine[] = [];
 
@@ -280,6 +297,17 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   // ── Footer ──
   lines.push({ text: DIVIDER });
   lines.push({ text: `Besteld:  ${formatReceiptPlacedAt(order.createdAt)}` });
+  if (expectedReady) {
+    const readyLabel = isTakeaway ? "Klaar rond" : "Levering rond";
+    const readyTime = expectedReady.toLocaleString("nl-BE", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    lines.push({
+      text: padLine(`${readyLabel}:`, `${readyTime}${prepSuffix}`),
+      bold: true,
+    });
+  }
   lines.push({
     text: `Bon:      ${formatReceiptPlacedAt(new Date().toISOString())}`,
   });
