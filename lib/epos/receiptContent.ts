@@ -78,17 +78,22 @@ function money(amount: number): string {
   return amount.toFixed(2);
 }
 
-/** Flat ingredient lines (Takeaway-style), one per row. */
-function expandKitchenLines(lines: KitchenLine[]): string[] {
+/**
+ * Flat ingredient lines (Takeaway-style), one per row.
+ * When `qty` > 1 every component is prefixed with the amount so the kitchen
+ * knows exactly how much of each ingredient to put in.
+ */
+function expandKitchenLines(lines: KitchenLine[], qty = 1): string[] {
   const out: string[] = [];
+  const prefix = qty > 1 ? `${qty}x ` : "";
   for (const line of lines) {
     const parts = line.value.split(" · ").map((p) => p.trim()).filter(Boolean);
     if (parts.length === 0) continue;
     for (const part of parts) {
       if (line.accent || line.label.startsWith("+")) {
-        out.push(`+ ${part}`);
+        out.push(`+ ${prefix}${part}`);
       } else {
-        out.push(part);
+        out.push(`${prefix}${part}`);
       }
     }
   }
@@ -151,7 +156,10 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
       text: padLine(`${item.quantity} x ${item.name}`, money(lineTotal)),
       bold: true,
     });
-    for (const ing of expandKitchenLines(describeCartItemForKitchen(item))) {
+    for (const ing of expandKitchenLines(
+      describeCartItemForKitchen(item),
+      item.quantity
+    )) {
       lines.push({ text: `   ${ing}` });
     }
     if (item.note?.trim()) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { QRCodeSVG } from "qrcode.react";
 import type { Order } from "@/lib/types";
 import {
   buildKitchenReceiptLines,
@@ -34,19 +35,9 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
         if (isReverse) className += "bg-black text-white px-1 ";
 
         if (line.qr) {
-          const src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(
-            line.qr
-          )}`;
           return (
             <div key={idx} className="my-1 flex justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt={line.qr}
-                width={96}
-                height={96}
-                className="h-24 w-24"
-              />
+              <QRCodeSVG value={line.qr} size={96} level="M" />
             </div>
           );
         }
