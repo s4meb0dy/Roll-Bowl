@@ -20,7 +20,12 @@ export interface ReceiptTextLine {
   height?: number;
   bold?: boolean;
   reverse?: boolean;
+  /** If set, render a QR code encoding this string instead of `text`. */
+  qr?: string;
 }
+
+/** Public site URL encoded in the receipt QR code. */
+export const RECEIPT_QR_URL = "https://www.rollnbowl.be";
 
 export function formatReceiptOrderId(orderId: string): string {
   const clean = orderId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
@@ -259,6 +264,10 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   });
   lines.push({ text: " " });
   lines.push({ text: "Smakelijk!", align: "center", bold: true });
+  lines.push({ text: " " });
+  lines.push({ text: "Bestel opnieuw & scan:", align: "center" });
+  lines.push({ text: RECEIPT_QR_URL, align: "center", qr: RECEIPT_QR_URL });
+  lines.push({ text: "www.rollnbowl.be", align: "center", bold: true });
 
   return lines;
 }

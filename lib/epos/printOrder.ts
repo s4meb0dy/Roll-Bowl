@@ -30,12 +30,22 @@ interface EposBuilder {
   }): EposBuilder;
   addFeedLine(lines: number): EposBuilder;
   addCut(type: number): EposBuilder;
+  addSymbol(
+    data: string,
+    type: number,
+    level: number,
+    width: number,
+    height: number,
+    size: number
+  ): EposBuilder;
   toString(): string;
   FONT_A: number;
   ALIGN_LEFT: number;
   ALIGN_CENTER: number;
   ALIGN_RIGHT: number;
   CUT_FEED: number;
+  SYMBOL_QRCODE_MODEL_2: number;
+  LEVEL_M: number;
 }
 
 interface EposPrint {
@@ -90,6 +100,11 @@ function buildSdkDocument(order: Order): string | null {
           ? b.ALIGN_RIGHT
           : b.ALIGN_LEFT;
     b.addTextAlign(align);
+    if (line.qr) {
+      b.addSymbol(line.qr, b.SYMBOL_QRCODE_MODEL_2, b.LEVEL_M, 6, 6, 0);
+      b.addTextAlign(b.ALIGN_LEFT);
+      continue;
+    }
     b.addTextSize(line.width ?? 1, line.height ?? 1);
     b.addTextStyle({
       em: line.bold,

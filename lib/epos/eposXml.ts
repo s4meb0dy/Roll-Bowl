@@ -9,7 +9,16 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
+function symbolNode(data: string): string {
+  return (
+    `<symbol type="qrcode_model_2" level="level_m" width="6" height="6" size="0">` +
+    escapeXml(data) +
+    `</symbol>`
+  );
+}
+
 function textNode(line: ReceiptTextLine): string {
+  if (line.qr) return symbolNode(line.qr);
   const attrs: string[] = [];
   if (line.width && line.width > 1) attrs.push(`width="${line.width}"`);
   if (line.height && line.height > 1) attrs.push(`height="${line.height}"`);

@@ -33,6 +33,24 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
         else className += "text-[10px] ";
         if (isReverse) className += "bg-black text-white px-1 ";
 
+        if (line.qr) {
+          const src = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(
+            line.qr
+          )}`;
+          return (
+            <div key={idx} className="my-1 flex justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={line.qr}
+                width={96}
+                height={96}
+                className="h-24 w-24"
+              />
+            </div>
+          );
+        }
+
         if (line.text === " ") {
           return <div key={idx} className="h-1.5" aria-hidden />;
         }
