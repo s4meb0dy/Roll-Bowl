@@ -8,10 +8,8 @@ import type { CartItem, Order } from "@/lib/types";
 /** Printable width in monospace chars (80 mm, Font A). */
 export const RECEIPT_COLS = 42;
 
-const ALLERGEN_NOTICE =
-  "BELANGRIJK: ALLERGENEN-INFO IS GECONTROLEERD DOOR DE KEUKEN. " +
-  "VOLLEDIG OVERZICHT OP DE WEBSITE. " +
-  "MELD ALLERGIEËN BIJ DE BESTELLING.";
+/** Full-width divider rule for the receipt. */
+const DIVIDER = "-".repeat(RECEIPT_COLS);
 
 export interface ReceiptTextLine {
   text: string;
@@ -116,8 +114,10 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
 
   const lines: ReceiptTextLine[] = [];
 
+  // ── Header ──
+  lines.push({ text: "ROLL & BOWL", align: "center", bold: true });
   lines.push({ text: "www.rollnbowl.be", align: "center" });
-  lines.push({ text: BUSINESS.name, align: "center", bold: true });
+  lines.push({ text: " " });
   lines.push({
     text: orderTypeBannerLabel(order),
     align: "center",
@@ -125,7 +125,8 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     height: 2,
     bold: true,
   });
-  lines.push({ text: expectedLabel, align: "center" });
+  lines.push({ text: expectedLabel, align: "center", bold: true });
+  lines.push({ text: " " });
   lines.push({
     text: formatReceiptOrderId(order.id),
     align: "center",
@@ -133,72 +134,59 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     height: 2,
     bold: true,
   });
-  lines.push({ text: " ", align: "left" });
-  lines.push({
-    text: padLine("", "EUR"),
-    align: "left",
-    bold: true,
-  });
 
-  for (const item of order.items) {
+  // ── Items ──
+  lines.push({ text: DIVIDER });
+  lines.push({ text: padLine("AANTAL / ARTIKEL", "EUR"), bold: true });
+  lines.push({ text: DIVIDER });
+
+  order.items.forEach((item, idx) => {
     const lineTotal = item.price * item.quantity;
     lines.push({
-      text: padLine(
-        `${item.quantity} x ${item.name}`,
-        money(lineTotal)
-      ),
+      text: padLine(`${item.quantity} x ${item.name}`, money(lineTotal)),
       bold: true,
     });
     for (const ing of expandKitchenLines(describeCartItemForKitchen(item))) {
-      lines.push({ text: `  ${ing}` });
+      lines.push({ text: `   ${ing}` });
     }
     if (item.note?.trim()) {
-      lines.push({ text: `  ★ ${item.note.trim()}`, bold: true });
+      lines.push({ text: `   >> ${item.note.trim()}`, bold: true });
     }
-    lines.push({ text: " " });
-  }
+    if (idx < order.items.length - 1) lines.push({ text: " " });
+  });
 
+  // ── Totals ──
+  lines.push({ text: DIVIDER });
   lines.push({ text: padLine("Subtotaal", money(order.subtotal)) });
-  lines.push({ text: padLine("Totaal bestelling", money(order.subtotal)) });
   if (!isTakeaway && order.deliveryFee > 0) {
-    lines.push({
-      text: padLine("Leveringskosten", money(order.deliveryFee)),
-    });
+    lines.push({ text: padLine("Leveringskosten", money(order.deliveryFee)) });
   }
+  lines.push({ text: DIVIDER });
   lines.push({
-    text: padLine("Totaal verschuldigd", money(order.total)),
+    text: padLine("TOTAAL", `EUR ${money(order.total)}`),
     bold: true,
   });
-  lines.push({ text: " " });
+  lines.push({ text: DIVIDER });
 
+  // ── Payment ──
   if (order.paymentMethod === "cash") {
     const paid =
       order.cashDenomination !== undefined
-        ? `Contant €${money(order.cashDenomination)}`
+        ? `Contant EUR ${money(order.cashDenomination)}`
         : "Contant";
-    lines.push({
-      text: padLine("Betaald door:", paid),
-    });
+    lines.push({ text: padLine("Betaald", paid) });
     if (
       order.cashDenomination !== undefined &&
       order.cashDenomination > order.total
     ) {
       lines.push({
-        text: padLine(
-          "Wisselgeld",
-          money(order.cashDenomination - order.total)
-        ),
+        text: padLine("Wisselgeld", money(order.cashDenomination - order.total)),
+        bold: true,
       });
     }
   } else {
-    lines.push({
-      text: padLine("Betaald door:", `Kaart ${money(order.total)}`),
-    });
+    lines.push({ text: padLine("Betaald", `Kaart ${money(order.total)}`) });
   }
-
-  lines.push({ text: " " });
-  lines.push({ text: ALLERGEN_NOTICE, align: "left" });
-  lines.push({ text: " " });
 
   const paidOnline =
     order.paymentMethod === "online" &&
@@ -207,9 +195,9 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
       order.status === "ready" ||
       order.status === "delivered");
   const paidCash =
-    order.paymentMethod === "cash" &&
-    order.status !== "pending";
+    order.paymentMethod === "cash" && order.status !== "pending";
 
+  lines.push({ text: " " });
   if (paidOnline || paidCash) {
     lines.push({
       text: "BESTELLING BETAALD",
@@ -220,11 +208,10 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     });
   } else if (order.paymentMethod === "cash") {
     lines.push({
-      text: "CONTANT — NOG TE BETALEN",
+      text: "CONTANT - NOG TE BETALEN",
       align: "center",
-      width: 2,
-      height: 1,
       bold: true,
+      reverse: true,
     });
   } else {
     lines.push({
@@ -237,14 +224,16 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   if (order.isFirstTimeCustomer) {
     lines.push({ text: " " });
     lines.push({
-      text: "★ NIEUWE KLANT — 1E BESTELLING ★",
+      text: "NIEUWE KLANT - 1E BESTELLING",
       align: "center",
+      bold: true,
       reverse: true,
     });
   }
 
-  lines.push({ text: " " });
-  lines.push({ text: "Details van de klant:", bold: true });
+  // ── Customer ──
+  lines.push({ text: DIVIDER });
+  lines.push({ text: "KLANT", bold: true });
   lines.push({ text: order.customerInfo.name });
   if (!isTakeaway) {
     lines.push({ text: order.customerInfo.address });
@@ -255,19 +244,21 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     lines.push({ text: `${BUSINESS.postalCode} ${BUSINESS.city}` });
   }
   lines.push({ text: order.customerInfo.phone });
-  lines.push({ text: " " });
-  lines.push({
-    text: `Bestelling geplaatst om ${formatReceiptPlacedAt(order.createdAt)}`,
-  });
-  lines.push({
-    text: `Bon afgedrukt om ${formatReceiptPlacedAt(new Date().toISOString())}`,
-  });
 
   if (order.generalNote?.trim()) {
     lines.push({ text: " " });
-    lines.push({ text: "Opmerking:", bold: true });
+    lines.push({ text: "OPMERKING", bold: true });
     lines.push({ text: order.generalNote.trim() });
   }
+
+  // ── Footer ──
+  lines.push({ text: DIVIDER });
+  lines.push({ text: `Besteld:  ${formatReceiptPlacedAt(order.createdAt)}` });
+  lines.push({
+    text: `Bon:      ${formatReceiptPlacedAt(new Date().toISOString())}`,
+  });
+  lines.push({ text: " " });
+  lines.push({ text: "Smakelijk!", align: "center", bold: true });
 
   return lines;
 }

@@ -20,8 +20,8 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
       {lines.map((line, idx) => {
         // Double-size lines are the "banners": order type, order id, paid stamp.
         const isBanner = line.width === 2 && line.height === 2;
-        const isHeader = line.text === "www.rollnbowl.be" || line.text === "Roll & Bowl";
-        const isAllergen = line.text.startsWith("BELANGRIJK:");
+        const isHeader =
+          line.text === "www.rollnbowl.be" || line.text === "ROLL & BOWL";
         const isReverse = line.reverse;
 
         let className = "font-mono leading-tight ";
@@ -30,7 +30,6 @@ export default function KitchenReceipt80({ order }: { order: Order }) {
         if (line.bold || line.width === 2) className += "font-bold ";
         if (isBanner) className += "text-[13px] uppercase tracking-wide py-0.5 ";
         else if (isHeader) className += "text-[11px] ";
-        else if (isAllergen) className += "text-[8px] uppercase leading-snug ";
         else className += "text-[10px] ";
         if (isReverse) className += "bg-black text-white px-1 ";
 
