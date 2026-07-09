@@ -24,6 +24,14 @@ const NONE_NAMES = new Set([
   "Geen mix-in",
 ]);
 
+/**
+ * Placeholder tokens inside a ready-made bowl's `ingredients` string that are
+ * only meaningful on the customer menu ("you pick this yourself"). The actual
+ * choice (e.g. the base) is printed separately, so these must be dropped from
+ * the kitchen breakdown to avoid nonsense lines like "1 x Basis naar keuze".
+ */
+const INGREDIENT_PLACEHOLDERS = new Set(["basis naar keuze"]);
+
 function isReal(opt: BuilderOption | null | undefined): opt is BuilderOption {
   return !!opt && !NONE_NAMES.has(opt.name);
 }
@@ -136,7 +144,12 @@ export function describeCartItemForKitchen(item: CartItem): KitchenLine[] {
       const masterRecord = findReadyMadeById(item.menuItemId);
       const ingredients = masterRecord?.ingredients?.trim();
       if (ingredients) {
-        lines.push({ label: "Inhoud", value: ingredients });
+        const cleaned = ingredients
+          .split(" · ")
+          .map((p) => p.trim())
+          .filter((p) => p && !INGREDIENT_PLACEHOLDERS.has(p.toLowerCase()))
+          .join(" · ");
+        if (cleaned) lines.push({ label: "Inhoud", value: cleaned });
       }
       break;
     }
