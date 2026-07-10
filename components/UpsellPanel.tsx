@@ -95,7 +95,7 @@ export default function UpsellPanel() {
       <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-[2px]" aria-hidden />
 
       <div className="relative w-full max-w-md animate-fade-in">
-        <div className="overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-ink-900/5 sm:rounded-3xl">
+        <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-ink-900/5 sm:rounded-3xl">
           {/* Header */}
           <div className="flex items-start justify-between gap-3 bg-gradient-to-br from-gold-50 to-wood-50 px-5 pb-4 pt-5">
             <div className="min-w-0">
@@ -117,15 +117,16 @@ export default function UpsellPanel() {
             </button>
           </div>
 
-          {/* Featured carousel */}
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+          {/* Featured: swipeable row on mobile, 2-col grid on desktop */}
           {featured.length > 0 && (
-            <div className="flex gap-3 overflow-x-auto scrollbar-hide px-5 py-4 [-webkit-overflow-scrolling:touch]">
+            <div className="flex gap-3 overflow-x-auto scrollbar-hide px-5 py-4 [-webkit-overflow-scrolling:touch] sm:grid sm:grid-cols-2 sm:overflow-visible">
               {featured.map((item) => {
                 const added = addedIds.has(item.id);
                 return (
                   <div
                     key={item.id}
-                    className="relative w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-ink-200/70 bg-white"
+                    className="relative w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-ink-200/70 bg-white sm:w-auto"
                   >
                     <div className="relative flex aspect-square w-full items-center justify-center bg-gradient-to-br from-cream-100 to-sage-50">
                       {item.image ? (
@@ -133,7 +134,7 @@ export default function UpsellPanel() {
                           src={item.image}
                           alt={item.name}
                           fill
-                          sizes="112px"
+                          sizes="(min-width: 640px) 200px, 112px"
                           className="object-cover"
                         />
                       ) : (
@@ -209,9 +210,10 @@ export default function UpsellPanel() {
               </div>
             </div>
           )}
+          </div>
 
           {/* Dismiss */}
-          <div className="safe-bottom px-5 pb-5 pt-2">
+          <div className="border-t border-ink-100 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+1.75rem)]">
             <button
               type="button"
               onClick={dismiss}
