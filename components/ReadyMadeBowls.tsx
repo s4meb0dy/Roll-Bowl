@@ -169,7 +169,7 @@ function BowlModal({
           </section>
         </div>
 
-        <div className="safe-bottom flex-shrink-0 rounded-b-3xl border-t border-ink-200/60 bg-white px-5 pb-6 pt-4">
+        <div className="flex-shrink-0 rounded-b-3xl border-t border-ink-200/60 bg-white px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+2rem)]">
           <p className="mb-3 text-xs text-ink-500">
             Basisprijs: €{item.price.toFixed(2)}
             {selectedSize.priceExtra > 0 && (
