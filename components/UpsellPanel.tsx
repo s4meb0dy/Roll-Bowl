@@ -37,14 +37,26 @@ export default function UpsellPanel() {
     visibleRef.current = visible;
   }, [visible]);
 
+  // Track the `lastAddedAt` value we've already reacted to. Seeded on mount so
+  // the panel never opens just because an earlier add (this session) left a
+  // truthy value behind — it only opens on a genuinely NEW add while on /menu.
+  const seenAddRef = useRef<number | null>(null);
+
   const dismiss = useCallback(() => {
     setVisible(false);
     setAddedIds(new Set());
   }, []);
 
-  // Open the panel when an item is added — but not for the adds triggered from
-  // inside the panel itself (those just tick the checkmark, no reshuffle).
+  // Open the panel only on a fresh add that happens after this component
+  // mounted (not on navigation back to the menu, not for adds made from inside
+  // the panel itself — those just tick the checkmark).
   useEffect(() => {
+    if (seenAddRef.current === null) {
+      seenAddRef.current = lastAddedAt;
+      return;
+    }
+    if (lastAddedAt === seenAddRef.current) return;
+    seenAddRef.current = lastAddedAt;
     if (!lastAddedAt) return;
     if (visibleRef.current) return;
     const cartIds = new Set(
