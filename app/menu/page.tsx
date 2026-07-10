@@ -17,6 +17,7 @@ import SmoothieBuilder from "@/components/SmoothieBuilder";
 import ClassicRollBuilder from "@/components/ClassicRollBuilder";
 import InsideOutRollBuilder from "@/components/InsideOutRollBuilder";
 import SimpleItemSection from "@/components/SimpleItemSection";
+import UpsellPanel from "@/components/UpsellPanel";
 import { SIGNATURE_ROLLS, SMOOTHIE_BOWLS, EXTRAS, DESSERTEN, DRANKEN } from "@/lib/menu";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
@@ -419,6 +420,8 @@ export default function MenuPage() {
           </section>
         ))}
       </main>
+
+      <UpsellPanel />
     </div>
   );
 }

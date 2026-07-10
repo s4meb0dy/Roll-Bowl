@@ -308,6 +308,11 @@ const nl: Dict = {
 
   // upsell
   "upsell.title": "Deze al geprobeerd?",
+  "upsell.forgot_title": "Nog iets vergeten?",
+  "upsell.forgot_sub": "Maak je bestelling compleet",
+  "upsell.seen_title": "Misschien ook lekker",
+  "upsell.add": "Toevoegen",
+  "upsell.done": "Nee, bedankt",
   "upsell.close": "Sluiten",
 
   // sections
@@ -648,6 +653,11 @@ const en: Dict = {
   "cat.review":   "Review",
 
   "upsell.title": "Have you tried these?",
+  "upsell.forgot_title": "Forgot something?",
+  "upsell.forgot_sub": "Complete your order",
+  "upsell.seen_title": "You might also like",
+  "upsell.add": "Add",
+  "upsell.done": "No, thanks",
   "upsell.close": "Close",
 
   "sec.poke.title": "Poke bowls",
@@ -986,6 +996,11 @@ const fr: Dict = {
   "cat.review":   "Avis",
 
   "upsell.title": "Avez-vous essayé?",
+  "upsell.forgot_title": "Vous avez oublié?",
+  "upsell.forgot_sub": "Complétez votre commande",
+  "upsell.seen_title": "Vous aimerez aussi",
+  "upsell.add": "Ajouter",
+  "upsell.done": "Non, merci",
   "upsell.close": "Fermer",
 
   "sec.poke.title": "Poke bowls",
