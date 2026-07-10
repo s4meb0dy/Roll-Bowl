@@ -252,6 +252,7 @@ const nl: Dict = {
   "builder.note_ph_simple": "Bijzondere wensen…",
 
   // step labels
+  "step.formaat": "Keuze formaat",
   "step.basis": "Keuze basis",
   "step.saus": "Keuze homemade saus",
   "step.saus_1": "Keuze homemade saus 1",
@@ -596,6 +597,7 @@ const en: Dict = {
   "builder.note_ph_smoothie": "E.g. less sweet, extra ice…",
   "builder.note_ph_simple": "Special requests…",
 
+  "step.formaat": "Choose size",
   "step.basis": "Choose base",
   "step.saus": "Choose homemade sauce",
   "step.saus_1": "Choose homemade sauce 1",
@@ -933,6 +935,7 @@ const fr: Dict = {
   "builder.note_ph_smoothie": "Ex. moins sucré, plus de glace…",
   "builder.note_ph_simple": "Demandes spéciales…",
 
+  "step.formaat": "Choix du format",
   "step.basis": "Choix de la base",
   "step.saus": "Choix de la sauce maison",
   "step.saus_1": "Choix de la sauce maison 1",

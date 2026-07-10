@@ -65,7 +65,7 @@ function BowlModal({
         <div className="overflow-y-auto flex-1 px-5 py-5 space-y-7">
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <p className="text-sm font-semibold text-ink-800">{t("step.basis")}</p>
+              <p className="text-sm font-semibold text-ink-800">{t("step.formaat")}</p>
               <span className="tag-badge bg-gold-50 text-gold-700">{t("common.required_1")}</span>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
@@ -110,7 +110,7 @@ function BowlModal({
 
           <section>
             <div className="mb-3 flex items-center gap-2">
-              <p className="text-sm font-semibold text-ink-800">{t("step.saus")}</p>
+              <p className="text-sm font-semibold text-ink-800">{t("step.basis")}</p>
               <span className="tag-badge bg-gold-50 text-gold-700">{t("common.required_1")}</span>
             </div>
             <div className="space-y-2">
