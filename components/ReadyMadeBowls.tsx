@@ -25,7 +25,7 @@ function BowlModal({
 }: {
   item: ReadyMadeItem;
   onClose: () => void;
-  onAdd: (size: SizeOption, base: BaseOption, note: string, quantity: number) => void;
+  onAdd: (size: SizeOption, base: BaseOption | null, note: string, quantity: number) => void;
 }) {
   const t = useT();
   const [selectedSize, setSelectedSize] = useState<SizeOption>(SIZE_OPTIONS[0]);
@@ -33,7 +33,10 @@ function BowlModal({
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState(1);
 
-  const unitPrice = item.price + selectedSize.priceExtra + selectedBase.priceExtra;
+  // Salads / fixed-recipe bowls have their base baked in — only a size is chosen.
+  const showBase = !item.fixedBase;
+  const unitPrice =
+    item.price + selectedSize.priceExtra + (showBase ? selectedBase.priceExtra : 0);
 
   return (
     <div
@@ -108,6 +111,7 @@ function BowlModal({
             </div>
           </section>
 
+          {showBase && (
           <section>
             <div className="mb-3 flex items-center gap-2">
               <p className="text-sm font-semibold text-ink-800">{t("step.basis")}</p>
@@ -148,6 +152,7 @@ function BowlModal({
               })}
             </div>
           </section>
+          )}
 
           <section>
             <p className="mb-2 text-sm font-semibold text-ink-800">
@@ -170,7 +175,7 @@ function BowlModal({
             {selectedSize.priceExtra > 0 && (
               <> + formaat: €{selectedSize.priceExtra.toFixed(2)}</>
             )}
-            {selectedBase.priceExtra > 0 && (
+            {showBase && selectedBase.priceExtra > 0 && (
               <> + basis: €{selectedBase.priceExtra.toFixed(2)}</>
             )}
             {quantity > 1 && (
@@ -182,7 +187,7 @@ function BowlModal({
               <QuantityStepper size="md" value={quantity} onChange={setQuantity} />
             </div>
             <button
-              onClick={() => onAdd(selectedSize, selectedBase, note, quantity)}
+              onClick={() => onAdd(selectedSize, showBase ? selectedBase : null, note, quantity)}
               className="btn-gold flex-1 justify-center py-3 text-base"
             >
               <Plus size={18} />
@@ -204,8 +209,8 @@ function BowlCard({ item }: { item: ReadyMadeItem }) {
 
   const outOfStock = !isItemAvailable(item.id) || item.unavailable === true;
 
-  const handleAdd = (size: SizeOption, base: BaseOption, note: string, quantity: number) => {
-    const totalPrice = item.price + size.priceExtra + base.priceExtra;
+  const handleAdd = (size: SizeOption, base: BaseOption | null, note: string, quantity: number) => {
+    const totalPrice = item.price + size.priceExtra + (base?.priceExtra ?? 0);
     addToCart({
       type: "ready-made",
       name: item.name,
@@ -214,7 +219,7 @@ function BowlCard({ item }: { item: ReadyMadeItem }) {
       note,
       menuItemId: item.id,
       selectedSize: size,
-      selectedBase: base,
+      ...(base ? { selectedBase: base } : {}),
     });
     setShowModal(false);
     setJustAdded(true);

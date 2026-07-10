@@ -49,6 +49,12 @@ export interface ReadyMadeItem {
   image?: string;
   info?: string;
   unavailable?: boolean;
+  /**
+   * When true, this bowl has a fixed base baked into the recipe (e.g. a salad),
+   * so the customer only picks a size — no base picker is shown and no base is
+   * attached to the cart item.
+   */
+  fixedBase?: boolean;
 }
 
 export interface BuilderOption {

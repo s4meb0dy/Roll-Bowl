@@ -366,6 +366,7 @@ export const READY_MADE: ReadyMadeItem[] = [
     description: "Frisse sla bowl met kipfilet, feta en een romige yoghurt dressing.",
     ingredients: "Sla · Huisgemarineerde kipfilet · Maïs · Feta · Paprika · Kerstomaten · Komkommer · Yoghurt dressing · Mix van noten",
     tags: ["GF"],
+    fixedBase: true,
   },
   {
     id: "spicy-shrimp",
@@ -376,6 +377,7 @@ export const READY_MADE: ReadyMadeItem[] = [
     description: "Pittige garnalen op rijst met nacho's, sriracha mayo en pink ginger.",
     ingredients: "Witte rijst en nacho's · Garnalen · Avocado · Zeewiersalade · Komkommer · Wortel op Koreaanse wijze · Rode biet · Huisgemaakte sriracha mayo · Pink ginger · Chili flakes",
     tags: ["GF"],
+    fixedBase: true,
   },
   {
     id: "tuna-revolution",
