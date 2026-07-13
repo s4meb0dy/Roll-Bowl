@@ -51,6 +51,9 @@ export const SLOT_INTERVAL_MINUTES = 15;
 /** Minimum minutes between "now" and the first selectable slot. */
 export const PREP_LEAD_MINUTES = 30;
 
+/** Kitchen operates in Belgium — slot windows use this IANA zone. */
+export const STORE_TIMEZONE = "Europe/Brussels";
+
 /**
  * Maximum days ahead a customer may schedule an order.
  *
@@ -82,6 +85,90 @@ function roundUpToInterval(date: Date, intervalMinutes: number): Date {
   return d;
 }
 
+/** Calendar date `YYYY-MM-DD` for an instant in the store timezone. */
+export function dateKeyInTimeZone(
+  instant: Date,
+  timeZone: string = STORE_TIMEZONE
+): string {
+  return instant.toLocaleDateString("en-CA", { timeZone });
+}
+
+function weekdayInTimeZone(
+  instant: Date,
+  timeZone: string = STORE_TIMEZONE
+): number {
+  const short = instant.toLocaleDateString("en-US", {
+    timeZone,
+    weekday: "short",
+  });
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[short] ?? instant.getDay();
+}
+
+/**
+ * UTC instant for a wall-clock moment on `dateKey` (`YYYY-MM-DD`) in the store
+ * timezone. Iteratively corrects so DST transitions stay accurate.
+ */
+export function wallClockToDate(
+  dateKey: string,
+  hour: number,
+  minute: number,
+  timeZone: string = STORE_TIMEZONE
+): Date {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  let utc = new Date(`${dateKey}T${pad(hour)}:${pad(minute)}:00Z`);
+  for (let i = 0; i < 4; i++) {
+    const parts = formatter.formatToParts(utc);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
+    const gotKey = `${get("year")}-${get("month")}-${get("day")}`;
+    const gotMinutes = Number(get("hour")) * 60 + Number(get("minute"));
+    const wantMinutes = hour * 60 + minute;
+    let deltaMinutes = wantMinutes - gotMinutes;
+    if (gotKey < dateKey) deltaMinutes += 24 * 60;
+    if (gotKey > dateKey) deltaMinutes -= 24 * 60;
+    if (deltaMinutes === 0 && gotKey === dateKey) break;
+    utc = new Date(utc.getTime() + deltaMinutes * 60_000);
+  }
+  return utc;
+}
+
+function closeInstantForWindow(
+  dateKey: string,
+  hrs: OpenInterval,
+  timeZone: string = STORE_TIMEZONE
+): Date {
+  if (hrs.closeHour >= 24) {
+    return wallClockToDate(dateKey, 23, 59, timeZone);
+  }
+  return wallClockToDate(dateKey, hrs.closeHour, hrs.closeMinute, timeZone);
+}
+
+function openInstantForWindow(
+  dateKey: string,
+  hrs: OpenInterval,
+  timeZone: string = STORE_TIMEZONE
+): Date {
+  return wallClockToDate(dateKey, hrs.openHour, hrs.openMinute, timeZone);
+}
+
 /**
  * Returns the list of schedulable time-slots starting at least `PREP_LEAD_MINUTES`
  * from `now`, aligned to `SLOT_INTERVAL_MINUTES` and clamped to the kitchen's
@@ -93,24 +180,23 @@ export function getAvailableTimeSlots(
 ): TimeSlot[] {
   const interval = SLOT_INTERVAL_MINUTES;
   const result: TimeSlot[] = [];
+  const todayKey = dateKeyInTimeZone(now);
 
-  // Earliest slot we can accept, rounded up to the next interval tick.
   const earliest = roundUpToInterval(
     new Date(now.getTime() + PREP_LEAD_MINUTES * 60_000),
     interval,
   );
 
   for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + dayOffset);
-    const dayWindows = OPENING_HOURS[date.getDay()];
+    if (dayOffset > 0) continue;
+
+    const weekday = weekdayInTimeZone(now);
+    const dayWindows = OPENING_HOURS[weekday];
     if (!dayWindows || dayWindows.length === 0) continue;
 
     for (const hrs of dayWindows) {
-      const open = new Date(date);
-      open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
-      const close = new Date(date);
-      close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
+      const open = openInstantForWindow(todayKey, hrs);
+      const close = closeInstantForWindow(todayKey, hrs);
 
       let slot = roundUpToInterval(
         new Date(Math.max(open.getTime(), earliest.getTime())),
@@ -118,11 +204,26 @@ export function getAvailableTimeSlots(
       );
 
       while (slot.getTime() <= close.getTime()) {
+        if (dateKeyInTimeZone(slot) !== todayKey) {
+          slot = new Date(slot.getTime() + interval * 60_000);
+          continue;
+        }
         result.push({
           value: slot.toISOString(),
-          hour: slot.getHours(),
-          minute: slot.getMinutes(),
-          dayOffset,
+          hour: Number(
+            slot.toLocaleString("en-GB", {
+              timeZone: STORE_TIMEZONE,
+              hour: "2-digit",
+              hour12: false,
+            })
+          ),
+          minute: Number(
+            slot.toLocaleString("en-GB", {
+              timeZone: STORE_TIMEZONE,
+              minute: "2-digit",
+            })
+          ),
+          dayOffset: 0,
           date: new Date(slot),
         });
         slot = new Date(slot.getTime() + interval * 60_000);
@@ -131,6 +232,29 @@ export function getAvailableTimeSlots(
   }
 
   return result;
+}
+
+/** Reject scheduled orders outside today's allowed slot list (same-day only). */
+export function validateScheduledFulfillment(
+  scheduledFor: string,
+  now: Date = new Date()
+): { ok: true } | { ok: false; reason: string } {
+  if (!scheduledFor?.trim() || Number.isNaN(Date.parse(scheduledFor))) {
+    return { ok: false, reason: "invalid_scheduled_time" };
+  }
+
+  const scheduled = new Date(scheduledFor);
+  const todayKey = dateKeyInTimeZone(now);
+  if (dateKeyInTimeZone(scheduled) !== todayKey) {
+    return { ok: false, reason: "scheduled_not_same_day" };
+  }
+
+  const allowed = getAvailableTimeSlots(now, MAX_SCHEDULE_DAYS);
+  if (!allowed.some((slot) => slot.value === scheduledFor)) {
+    return { ok: false, reason: "scheduled_slot_not_allowed" };
+  }
+
+  return { ok: true };
 }
 
 /** `true` when the kitchen is currently accepting orders. */

@@ -26,6 +26,7 @@ import {
   isOpenNow,
   getTodayLastClose,
   formatClosingTime,
+  validateScheduledFulfillment,
   TAKEAWAY_DELIVERY_FEE,
   TAKEAWAY_MIN_ORDER,
   type TimeSlot,
@@ -283,13 +284,7 @@ export default function CartPage() {
   const formatSlotLabel = (slot: TimeSlot): string => {
     const hh = String(slot.hour).padStart(2, "0");
     const mm = String(slot.minute).padStart(2, "0");
-    const prefix =
-      slot.dayOffset === 0
-        ? ""
-        : slot.dayOffset === 1
-        ? `${t("time.tomorrow")} · `
-        : `${slot.date.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" })} · `;
-    return `${prefix}${hh}:${mm}`;
+    return `${hh}:${mm}`;
   };
 
   const validate = (): boolean => {
@@ -315,6 +310,12 @@ export default function CartPage() {
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
     if (timeMode === "scheduled" && !scheduledSlot) return;
+    if (
+      timeMode === "scheduled" &&
+      !validateScheduledFulfillment(scheduledSlot).ok
+    ) {
+      return;
+    }
     if (!isOpenNow(new Date()) && timeMode === "asap") return;
 
     const fulfillmentTime: FulfillmentTime =

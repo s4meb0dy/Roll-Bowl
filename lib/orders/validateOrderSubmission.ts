@@ -1,5 +1,6 @@
 import { getStripe } from "@/lib/stripe/server";
 import { isStripeConfigured } from "@/lib/stripe/config";
+import { validateScheduledFulfillment } from "@/lib/deliveryConfig";
 import type { Order } from "@/lib/types";
 
 export type OrderSubmissionCheck =
@@ -10,6 +11,13 @@ export type OrderSubmissionCheck =
 export async function validateOrderSubmission(
   order: Order
 ): Promise<OrderSubmissionCheck> {
+  if (order.fulfillmentTime?.mode === "scheduled") {
+    const slotCheck = validateScheduledFulfillment(
+      order.fulfillmentTime.scheduledFor
+    );
+    if (!slotCheck.ok) return slotCheck;
+  }
+
   if (order.paymentMethod === "online") {
     if (order.status !== "paid") {
       return { ok: false, reason: "online_must_be_paid" };
