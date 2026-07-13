@@ -83,7 +83,7 @@ export default function CartPage() {
   const stripePaymentRef = useRef<StripePaymentHandle>(null);
   const [cashDenomination, setCashDenomination] = useState<number | null>(null);
   const [customCash, setCustomCash] = useState("");
-  const [orderType, setOrderType] = useState<OrderType>("delivery");
+  const [orderType, setOrderType] = useState<OrderType>(sessionOrderType);
   const [timeMode, setTimeMode] = useState<"asap" | "scheduled">("asap");
   const [scheduledSlot, setScheduledSlot] = useState<string>("");
   // Tick every minute so the time-slot picker stays fresh without a page reload.
@@ -105,13 +105,6 @@ export default function CartPage() {
     setSessionOrderType("delivery");
     router.replace("/");
   };
-
-  useEffect(() => {
-    if (mounted && orderType === "delivery" && !hasValidDeliveryZip) {
-      goToDeliverySetup();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, orderType, hasValidDeliveryZip]);
 
   useEffect(() => {
     if (mounted) {
