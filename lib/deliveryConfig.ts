@@ -25,7 +25,7 @@ export type OpenInterval = {
  */
 export const OPENING_HOURS: Record<number, OpenInterval[] | null> = {
   0: [{ openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 }], // Sunday
-  1: [{ openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 }], // Monday
+  1: [{ openHour: 16, openMinute: 0, closeHour: 24, closeMinute: 0 }], // Monday — TEMP: open until midnight to test the alarm
   2: [
     { openHour: 11, openMinute: 0, closeHour: 13, closeMinute: 15 },
     { openHour: 16, openMinute: 0, closeHour: 22, closeMinute: 0 },
