@@ -243,6 +243,8 @@ const nl: Dict = {
   "val.name": "Naam is verplicht",
   "val.phone": "Telefoonnummer is verplicht",
   "val.address": "Adres is verplicht",
+  "cart.delivery_zip_required":
+    "Voer eerst je postcode in op de startpagina om te bestellen met bezorging.",
 
   // builders (shared)
   "builder.review_sub": "Controleer je keuzes voor je bestelt.",
@@ -595,6 +597,8 @@ const en: Dict = {
   "val.name": "Name is required",
   "val.phone": "Phone is required",
   "val.address": "Address is required",
+  "cart.delivery_zip_required":
+    "Enter your postcode on the home page first to order delivery.",
 
   "builder.review_sub": "Review your choices before ordering.",
   "builder.note_ph_general": "Special requests (e.g. no onion, extra jalapeños…)",
@@ -938,6 +942,8 @@ const fr: Dict = {
   "val.name": "Le nom est obligatoire",
   "val.phone": "Le téléphone est obligatoire",
   "val.address": "L'adresse est obligatoire",
+  "cart.delivery_zip_required":
+    "Entrez d'abord votre code postal sur la page d'accueil pour commander en livraison.",
 
   "builder.review_sub": "Vérifiez vos choix avant de commander.",
   "builder.note_ph_general": "Demandes spéciales (ex. sans oignon, jalapeños en plus…)",
