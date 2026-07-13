@@ -101,11 +101,17 @@ export default function CartPage() {
 
   const hasValidDeliveryZip = Boolean(zipCode?.trim() && zipCodeConfig);
 
+  const goToDeliverySetup = () => {
+    setSessionOrderType("delivery");
+    router.replace("/");
+  };
+
   useEffect(() => {
     if (mounted && orderType === "delivery" && !hasValidDeliveryZip) {
-      router.replace("/");
+      goToDeliverySetup();
     }
-  }, [mounted, orderType, hasValidDeliveryZip, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, orderType, hasValidDeliveryZip]);
 
   useEffect(() => {
     if (mounted) {
@@ -783,7 +789,7 @@ export default function CartPage() {
                     type="button"
                     onClick={() => {
                       if (!hasValidDeliveryZip) {
-                        router.replace("/");
+                        goToDeliverySetup();
                         return;
                       }
                       setOrderType("delivery");
