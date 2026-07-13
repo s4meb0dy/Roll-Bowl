@@ -39,6 +39,7 @@ import {
   playTestKitchenAlarm,
   unlockKitchenAudio,
   ensureKitchenAudioUnlock,
+  isKitchenAudioUnlocked,
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
@@ -455,6 +456,7 @@ export default function AdminPage() {
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
   const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
+  const [audioArmed, setAudioArmed] = useState(false);
   /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
   /** Connection state for the SSE stream → drives the live status pill. */
@@ -572,6 +574,28 @@ export default function AdminPage() {
     setSoundMuted(next);
     setKitchenAlarmMuted(next);
   }, [soundMuted]);
+
+  /**
+   * Browsers only allow audio after a user gesture. When the board is reopened
+   * within the 12h session it skips the PIN screen, so there may be no gesture
+   * and the alarm would stay silent. Poll the unlock flag and, until it flips,
+   * show a prominent "enable sound" button.
+   */
+  useEffect(() => {
+    if (!unlocked || audioArmed) return;
+    const check = () => {
+      if (isKitchenAudioUnlocked()) setAudioArmed(true);
+    };
+    check();
+    const id = window.setInterval(check, 800);
+    return () => window.clearInterval(id);
+  }, [unlocked, audioArmed]);
+
+  const armKitchenAudio = useCallback(() => {
+    unlockKitchenAudio();
+    setAudioArmed(true);
+    if (!isKitchenAlarmMuted()) playTestKitchenAlarm();
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -774,6 +798,16 @@ export default function AdminPage() {
       )}
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+        {!soundMuted && !audioArmed && (
+          <button
+            type="button"
+            onClick={armKitchenAudio}
+            className="no-print mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.99]"
+          >
+            <Bell size={18} className="animate-pulse text-amber-600" />
+            Tik hier om het meldingsgeluid aan te zetten
+          </button>
+        )}
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold text-neutral-800">

@@ -106,6 +106,11 @@ export function unlockKitchenAudio(): void {
   }
 }
 
+/** True once Web Audio has been unlocked by a user gesture this session. */
+export function isKitchenAudioUnlocked(): boolean {
+  return unlocked;
+}
+
 export function ensureKitchenAudioUnlock(): void {
   if (typeof window === "undefined") return;
   if (unlocked) return;

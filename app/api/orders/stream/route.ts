@@ -78,6 +78,10 @@ export async function GET(req: NextRequest) {
       };
       req.signal.addEventListener("abort", onAbort);
 
+      // Tell EventSource to reconnect quickly (2s) after our ~55s recycle,
+      // so the "kitchen link" gap between connections stays short.
+      safeEnqueue("retry: 2000\n\n");
+
       // Initial snapshot. If the inbox isn't configured yet, return an empty
       // snapshot and a hint so the client doesn't sit on a busy retry loop.
       let lastVersion = 0;
@@ -185,3 +189,6 @@ export async function GET(req: NextRequest) {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Let the ~55s streaming loop run to completion instead of being killed early
+// (the platform default can be as low as 10s, which caused constant reconnects).
+export const maxDuration = 60;

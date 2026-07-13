@@ -90,10 +90,19 @@ export function subscribeToOrderStream(
   let cancelled = false;
   let es: EventSource | null = null;
   let pollTimer: number | null = null;
+  let disconnectTimer: number | null = null;
   let consecutiveErrors = 0;
   let lastVersion = -1;
 
+  const clearDisconnectTimer = () => {
+    if (disconnectTimer !== null) {
+      window.clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+    }
+  };
+
   const cleanup = () => {
+    clearDisconnectTimer();
     if (es) {
       es.close();
       es = null;
@@ -143,6 +152,7 @@ export function subscribeToOrderStream(
       try {
         const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
         consecutiveErrors = 0;
+        clearDisconnectTimer();
         lastVersion = data.version;
         handlers.onSnapshot(data);
       } catch (e) {
@@ -173,11 +183,20 @@ export function subscribeToOrderStream(
     };
 
     es.onerror = () => {
-      handlers.onDisconnect?.();
       consecutiveErrors += 1;
-      // Browser auto-reconnects EventSource on transient errors. After three
-      // hard failures (e.g. proxy stripped the stream), fall back to polling.
-      if (consecutiveErrors >= 3) {
+      // Our stream recycles itself every ~55s, which the browser sees as an
+      // error right before it auto-reconnects (a fresh `snapshot` clears this).
+      // Only surface "disconnected" if no reconnect lands within a short grace
+      // window, so the live pill doesn't flicker on every healthy recycle.
+      if (disconnectTimer === null) {
+        disconnectTimer = window.setTimeout(() => {
+          disconnectTimer = null;
+          handlers.onDisconnect?.();
+        }, 4_000);
+      }
+      // After several back-to-back failures (proxy stripped the stream, etc.)
+      // give up on SSE and fall back to polling so orders keep coming in.
+      if (consecutiveErrors >= 5) {
         cleanup();
         startPollingFallback();
       }
