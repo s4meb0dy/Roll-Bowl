@@ -106,11 +106,13 @@ const PREP_DEFAULT = 15;
 function OrderCard({
   order,
   onAcceptAndPrint,
+  onAcceptScheduledAndPrint,
   onPrintReceipt,
   isAlarmTarget,
 }: {
   order: Order;
   onAcceptAndPrint: (id: string, prepMinutes: number) => void;
+  onAcceptScheduledAndPrint: (id: string) => void;
   onPrintReceipt: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
@@ -119,6 +121,11 @@ function OrderCard({
   const adjustPrep = (delta: number) =>
     setPrepMinutes((m) => Math.min(PREP_MAX, Math.max(PREP_MIN, m + delta)));
   const cfg = getStatusDisplay(order);
+  const isScheduled = order.fulfillmentTime?.mode === "scheduled";
+  const scheduledAt =
+    isScheduled && order.fulfillmentTime.mode === "scheduled"
+      ? new Date(order.fulfillmentTime.scheduledFor)
+      : null;
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -380,50 +387,82 @@ function OrderCard({
 
       {isNewOrderAlertStatus(order.status) && (
         <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
-            <Clock size={14} className="text-neutral-500" />
-            Bereidingstijd
-          </div>
+          {isScheduled && scheduledAt ? (
+            <>
+              <div className="mb-3 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
+                <CalendarClock size={16} className="shrink-0" />
+                <span>
+                  Klant koos{" "}
+                  <strong>
+                    {scheduledAt.toLocaleString("nl-BE", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onAcceptScheduledAndPrint(order.id)}
+                className="btn-primary flex w-full items-center justify-center gap-2 text-sm"
+              >
+                <Printer size={16} />
+                Accepteren &amp; afdrukken
+              </button>
+              <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+                Gepland order — geen bereidingstijd nodig, de klanttijd staat op de bon.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
+                <Clock size={14} className="text-neutral-500" />
+                Bereidingstijd
+              </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-sage-200 bg-white p-2 shadow-sm">
-            <button
-              type="button"
-              onClick={() => adjustPrep(-PREP_STEP)}
-              disabled={prepMinutes <= PREP_MIN}
-              aria-label="Minder tijd"
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
-            >
-              <Minus size={20} />
-            </button>
-            <div className="flex flex-1 items-baseline justify-center gap-1">
-              <span className="text-3xl font-extrabold tabular-nums text-neutral-800">
-                {prepMinutes}
-              </span>
-              <span className="text-sm font-semibold text-neutral-500">min</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => adjustPrep(PREP_STEP)}
-              disabled={prepMinutes >= PREP_MAX}
-              aria-label="Meer tijd"
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
-            >
-              <Plus size={20} />
-            </button>
-          </div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-sage-200 bg-white p-2 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => adjustPrep(-PREP_STEP)}
+                  disabled={prepMinutes <= PREP_MIN}
+                  aria-label="Minder tijd"
+                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+                >
+                  <Minus size={20} />
+                </button>
+                <div className="flex flex-1 items-baseline justify-center gap-1">
+                  <span className="text-3xl font-extrabold tabular-nums text-neutral-800">
+                    {prepMinutes}
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-500">min</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => adjustPrep(PREP_STEP)}
+                  disabled={prepMinutes >= PREP_MAX}
+                  aria-label="Meer tijd"
+                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
 
-          <button
-            type="button"
-            onClick={() => onAcceptAndPrint(order.id, prepMinutes)}
-            className="btn-primary mt-3 flex w-full items-center justify-center gap-2 text-sm"
-          >
-            <Printer size={16} />
-            Accepteren &amp; afdrukken
-          </button>
+              <button
+                type="button"
+                onClick={() => onAcceptAndPrint(order.id, prepMinutes)}
+                className="btn-primary mt-3 flex w-full items-center justify-center gap-2 text-sm"
+              >
+                <Printer size={16} />
+                Accepteren &amp; afdrukken
+              </button>
 
-          <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-            De klant ziet meteen de verwachte {order.orderType === "takeaway" ? "afhaal" : "lever"}tijd.
-          </p>
+              <p className="mt-2 text-[11px] leading-snug text-neutral-500">
+                De klant ziet meteen de verwachte {order.orderType === "takeaway" ? "afhaal" : "lever"}tijd.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -446,6 +485,7 @@ export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
   const acceptOrderWithPrep = useStore((s) => s.acceptOrderWithPrep);
+  const acceptScheduledOrder = useStore((s) => s.acceptScheduledOrder);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
   const clearOrders = useStore((s) => s.clearOrders);
 
@@ -543,6 +583,16 @@ export default function AdminPage() {
       triggerKitchenPrint(orderId);
     },
     [acceptOrderWithPrep, triggerKitchenPrint]
+  );
+
+  const handleAcceptScheduledAndPrint = useCallback(
+    (orderId: string) => {
+      acceptScheduledOrder(orderId);
+      stopKitchenAlarmLoop();
+      setAlarmOrderId((cur) => (cur === orderId ? null : cur));
+      triggerKitchenPrint(orderId);
+    },
+    [acceptScheduledOrder, triggerKitchenPrint]
   );
 
   useEffect(() => {
@@ -1304,6 +1354,7 @@ export default function AdminPage() {
                 order={order}
                 isAlarmTarget={order.id === alarmOrderId}
                 onAcceptAndPrint={handleAcceptAndPrint}
+                onAcceptScheduledAndPrint={handleAcceptScheduledAndPrint}
                 onPrintReceipt={triggerKitchenPrint}
               />
             ))}

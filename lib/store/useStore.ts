@@ -128,6 +128,8 @@ interface AppState {
    * chosen prep time (minutes), which drives the expected ready/delivery time.
    */
   acceptOrderWithPrep: (orderId: string, prepMinutes: number) => void;
+  /** Accept a scheduled order using the customer's chosen time slot. */
+  acceptScheduledOrder: (orderId: string) => void;
   markKitchenPrinted: (orderId: string) => void;
   setOrderLightspeed: (orderId: string, meta: OrderLightspeedMeta) => void;
   /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
@@ -288,6 +290,34 @@ export const useStore = create<AppState>()(
         void patchOrderRemote(orderId, {
           status: "preparing",
           prepMinutes: minutes,
+          expectedReadyAt,
+        });
+      },
+
+      acceptScheduledOrder: (orderId) => {
+        const order = get().orders.find((o) => o.id === orderId);
+        if (
+          !order?.fulfillmentTime ||
+          order.fulfillmentTime.mode !== "scheduled"
+        ) {
+          return;
+        }
+        const expectedReadyAt = order.fulfillmentTime.scheduledFor;
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: "preparing",
+                  expectedReadyAt,
+                  prepMinutes: undefined,
+                  updatedAt: new Date().toISOString(),
+                }
+              : o
+          ),
+        }));
+        void patchOrderRemote(orderId, {
+          status: "preparing",
           expectedReadyAt,
         });
       },
