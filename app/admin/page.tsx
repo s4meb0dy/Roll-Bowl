@@ -22,6 +22,8 @@ import {
   ListChecks,
   X,
   Download,
+  Minus,
+  Plus,
 } from "lucide-react";
 import Header from "@/components/Header";
 import EposPrinterSettings from "@/components/admin/EposPrinterSettings";
@@ -92,8 +94,11 @@ function formatCheckedTime(d: Date) {
   return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Quick prep-time choices (minutes) shown when accepting an order. */
-const PREP_TIME_OPTIONS = [10, 15, 20, 30, 45, 60];
+/** Prep-time stepper bounds (minutes) shown when accepting an order. */
+const PREP_MIN = 5;
+const PREP_MAX = 60;
+const PREP_STEP = 5;
+const PREP_DEFAULT = 15;
 
 function OrderCard({
   order,
@@ -107,6 +112,9 @@ function OrderCard({
   isAlarmTarget?: boolean;
 }) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
+  const [prepMinutes, setPrepMinutes] = useState(PREP_DEFAULT);
+  const adjustPrep = (delta: number) =>
+    setPrepMinutes((m) => Math.min(PREP_MAX, Math.max(PREP_MIN, m + delta)));
   const cfg = getStatusDisplay(order);
 
   const formatTime = (iso: string) => {
@@ -370,21 +378,46 @@ function OrderCard({
       {isNewOrderAlertStatus(order.status) && (
         <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
-            <Printer size={14} className="text-neutral-500" />
-            Bereidingstijd kiezen &amp; afdrukken
+            <Clock size={14} className="text-neutral-500" />
+            Bereidingstijd
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {PREP_TIME_OPTIONS.map((minutes) => (
-              <button
-                key={minutes}
-                type="button"
-                onClick={() => onAcceptAndPrint(order.id, minutes)}
-                className="rounded-xl border border-sage-300 bg-white px-2 py-3 text-sm font-bold text-sage-800 shadow-sm transition hover:bg-sage-500 hover:text-white active:scale-95"
-              >
-                {minutes} min
-              </button>
-            ))}
+
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-sage-200 bg-white p-2 shadow-sm">
+            <button
+              type="button"
+              onClick={() => adjustPrep(-PREP_STEP)}
+              disabled={prepMinutes <= PREP_MIN}
+              aria-label="Minder tijd"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+            >
+              <Minus size={20} />
+            </button>
+            <div className="flex flex-1 items-baseline justify-center gap-1">
+              <span className="text-3xl font-extrabold tabular-nums text-neutral-800">
+                {prepMinutes}
+              </span>
+              <span className="text-sm font-semibold text-neutral-500">min</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => adjustPrep(PREP_STEP)}
+              disabled={prepMinutes >= PREP_MAX}
+              aria-label="Meer tijd"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+            >
+              <Plus size={20} />
+            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => onAcceptAndPrint(order.id, prepMinutes)}
+            className="btn-primary mt-3 flex w-full items-center justify-center gap-2 text-sm"
+          >
+            <Printer size={16} />
+            Accepteren &amp; afdrukken
+          </button>
+
           <p className="mt-2 text-[11px] leading-snug text-neutral-500">
             De klant ziet meteen de verwachte {order.orderType === "takeaway" ? "afhaal" : "lever"}tijd.
           </p>

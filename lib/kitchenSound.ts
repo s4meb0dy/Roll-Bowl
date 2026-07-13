@@ -12,17 +12,25 @@
 
 const MUTE_KEY = "roll-bowl-kitchen-mute";
 
-const ALARM_WALL_MS = 7_000;
-/** One 3-note chime cycle length (seconds). */
-const CHIME_CYCLE_S = 0.52;
-const CHIME_CYCLE_GAP_S = 1.15;
-const CHIME_CYCLES = 3;
+/** How long the alarm keeps ringing (ms) — long enough to be heard in a busy kitchen. */
+const ALARM_WALL_MS = 14_000;
+/** One chime cycle length (seconds) — matches the last note's offset + duration. */
+const CHIME_CYCLE_S = 0.82;
+const CHIME_CYCLE_GAP_S = 0.5;
+const CHIME_CYCLES = 9;
+/** Per-note peak gain — loud and clearly audible over kitchen noise. */
+const NOTE_PEAK = 0.9;
 
-/** Ascending major triad — short, friendly notification. */
+/**
+ * Bright, insistent ascending "attention" motif (G major arpeggio up to G6).
+ * Higher octave + repeated cycles cut through fryers/extraction fans much
+ * better than a soft two-note chime.
+ */
 const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
-  [587.33, 0, 0.1], // D5
-  [739.99, 0.12, 0.1], // F#5
-  [880, 0.24, 0.18], // A5
+  [783.99, 0, 0.14], // G5
+  [987.77, 0.16, 0.14], // B5
+  [1174.66, 0.32, 0.14], // D6
+  [1567.98, 0.48, 0.34], // G6
 ];
 
 type Session = { stop: () => void };
@@ -131,26 +139,34 @@ function buildSoftOutputGraph(ctx: AudioContext): {
   cleanup: () => void;
 } {
   const master = ctx.createGain();
-  master.gain.value = 0.5;
+  master.gain.value = 0.95;
 
+  // Compressor pushes the perceived loudness up (radio-style) without hard
+  // clipping when several notes overlap — makes the alarm cut through noise.
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -22;
+  comp.knee.value = 26;
+  comp.ratio.value = 12;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.25;
+
+  // Keep plenty of high end so the alarm stays bright/piercing enough to hear.
   const lowpass = ctx.createBiquadFilter();
   lowpass.type = "lowpass";
-  lowpass.frequency.value = 4200;
+  lowpass.frequency.value = 9000;
   lowpass.Q.value = 0.7;
 
-  lowpass.connect(master);
+  lowpass.connect(comp);
+  comp.connect(master);
   master.connect(ctx.destination);
 
   const cleanup = () => {
-    try {
-      lowpass.disconnect();
-    } catch {
-      /* ignore */
-    }
-    try {
-      master.disconnect();
-    } catch {
-      /* ignore */
+    for (const node of [lowpass, comp, master]) {
+      try {
+        node.disconnect();
+      } catch {
+        /* ignore */
+      }
     }
   };
 
@@ -212,7 +228,7 @@ function scheduleDeliveryChime(
     const cycleStart = t0 + c * (CHIME_CYCLE_S + cycleGapS);
     for (const [freq, offsetS, durS] of CHIME_NOTES) {
       oscs.push(
-        ...scheduleNote(ctx, input, cycleStart + offsetS, freq, durS, 0.38)
+        ...scheduleNote(ctx, input, cycleStart + offsetS, freq, durS, NOTE_PEAK)
       );
     }
   }
@@ -265,7 +281,11 @@ export function startKitchenAlarmLoop(): void {
     return;
   }
 
-  tryVibrate([120, 60, 120, 900, 120, 60, 120, 900, 120]);
+  tryVibrate([
+    350, 180, 350, 180, 350, 700,
+    350, 180, 350, 180, 350, 700,
+    350, 180, 350, 180, 350,
+  ]);
 
   let endTimer: number | null = null;
   let scheduled: { stop: () => void } | null = null;
