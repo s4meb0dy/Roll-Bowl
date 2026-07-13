@@ -136,6 +136,9 @@ interface AppState {
   /** Apply a snapshot of orders from the server (initial fetch / SSE snapshot event). */
   applyOrdersSnapshot: (orders: Order[]) => void;
 
+  /** Wipe the local order board (e.g. after server-side clear). */
+  clearOrders: () => void;
+
   setLocale: (locale: Locale) => void;
 }
 
@@ -361,6 +364,8 @@ export const useStore = create<AppState>()(
           );
           return { orders };
         }),
+
+      clearOrders: () => set({ orders: [], kitchenPrintedOrderIds: [] }),
 
       setLocale: (locale) => set({ locale }),
     }),

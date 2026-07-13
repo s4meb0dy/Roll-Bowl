@@ -24,6 +24,7 @@ import {
   Download,
   Minus,
   Plus,
+  Trash2,
 } from "lucide-react";
 import Header from "@/components/Header";
 import EposPrinterSettings from "@/components/admin/EposPrinterSettings";
@@ -46,11 +47,12 @@ import { subscribeToOrderStream } from "@/lib/orders/client";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 import { shortOrderCode } from "@/lib/orderId";
 import AdminPinGate from "@/components/AdminPinGate";
-import { isAdminSessionUnlocked } from "@/lib/admin/pinClient";
+import { isAdminSessionUnlocked, verifyAdminPinRemote } from "@/lib/admin/pinClient";
 import {
   downloadOrdersFromBrowser,
   downloadOrdersFromServer,
 } from "@/lib/orders/exportClient";
+import { clearAllOrdersRemote } from "@/lib/orders/clearOrdersClient";
 
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
@@ -445,6 +447,7 @@ export default function AdminPage() {
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
   const acceptOrderWithPrep = useStore((s) => s.acceptOrderWithPrep);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
+  const clearOrders = useStore((s) => s.clearOrders);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -466,6 +469,10 @@ export default function AdminPage() {
   const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [clearOrdersOpen, setClearOrdersOpen] = useState(false);
+  const [clearOrdersPin, setClearOrdersPin] = useState("");
+  const [clearingOrders, setClearingOrders] = useState(false);
+  const [clearOrdersMessage, setClearOrdersMessage] = useState<string | null>(null);
   const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
@@ -722,6 +729,43 @@ export default function AdminPage() {
     }
   }, [exportFrom, exportTo, orderInboxEnabled, orders]);
 
+  const handleConfirmClearOrders = useCallback(async () => {
+    const pin = clearOrdersPin.trim();
+    if (pin.length < 4) {
+      setClearOrdersMessage("Voer je PIN in.");
+      return;
+    }
+    setClearingOrders(true);
+    setClearOrdersMessage(null);
+    const pinOk = await verifyAdminPinRemote(pin);
+    if (!pinOk) {
+      setClearOrdersMessage("Onjuiste PIN.");
+      setClearingOrders(false);
+      return;
+    }
+    const result = await clearAllOrdersRemote(pin);
+    if (!result.ok) {
+      setClearOrdersMessage(
+        result.reason === "unauthorized"
+          ? "Sessie verlopen — log opnieuw in met je PIN."
+          : result.reason === "inbox_unreachable"
+            ? "Redis niet bereikbaar. Probeer opnieuw."
+            : "Wissen mislukt. Probeer opnieuw."
+      );
+      setClearingOrders(false);
+      return;
+    }
+    clearOrders();
+    setClearOrdersOpen(false);
+    setClearOrdersPin("");
+    setClearOrdersMessage(
+      result.inboxEnabled
+        ? `${result.deleted} bestellingen gewist (server + dit scherm).`
+        : "Lokale bestellingen gewist (Redis niet gekoppeld)."
+    );
+    setClearingOrders(false);
+  }, [clearOrdersPin, clearOrders]);
+
   useEffect(() => {
     if (!mounted || !unlocked) return;
     document.body.classList.toggle("admin-kitchen-mode", kitchenMode);
@@ -974,6 +1018,109 @@ export default function AdminPage() {
             )}
           </div>
         )}
+
+        {!kitchenMode && (
+          <div className="no-print mb-6 rounded-2xl border border-red-200 bg-red-50/50 p-4 shadow-sm sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-bold text-red-900">
+                  <Trash2 size={16} />
+                  Alle bestellingen wissen
+                </h2>
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-red-800/80">
+                  Verwijdert alle orders uit Redis en op dit scherm. Handig vóór je opent.
+                  Dit kan niet ongedaan worden gemaakt — exporteer eerst een CSV als je een
+                  back-up wilt.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setClearOrdersOpen(true);
+                  setClearOrdersPin("");
+                  setClearOrdersMessage(null);
+                }}
+                disabled={orders.length === 0 && orderInboxEnabled !== true}
+                className="shrink-0 rounded-xl2 border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 size={15} className="mr-1.5 inline" />
+                Wissen…
+              </button>
+            </div>
+            {clearOrdersMessage && (
+              <p className="mt-3 text-xs font-medium text-red-800">{clearOrdersMessage}</p>
+            )}
+          </div>
+        )}
+
+        {clearOrdersOpen &&
+          mounted &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="clear-orders-title"
+            >
+              <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-xl">
+                <h3
+                  id="clear-orders-title"
+                  className="flex items-center gap-2 text-base font-bold text-red-900"
+                >
+                  <Trash2 size={18} />
+                  Alle bestellingen wissen?
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                  Alle bestellingen worden permanent verwijderd uit de server en dit scherm.
+                  Voer je keuken-PIN in om te bevestigen.
+                </p>
+                <label className="mt-4 block text-xs font-medium text-neutral-600">
+                  PIN
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={clearOrdersPin}
+                  onChange={(e) =>
+                    setClearOrdersPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleConfirmClearOrders();
+                  }}
+                  className="input-field mt-1 tabular-nums"
+                  placeholder="••••"
+                  autoFocus
+                />
+                {clearOrdersMessage && clearOrdersOpen && (
+                  <p className="mt-2 text-xs font-medium text-red-600">{clearOrdersMessage}</p>
+                )}
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClearOrdersOpen(false);
+                      setClearOrdersPin("");
+                      setClearOrdersMessage(null);
+                    }}
+                    disabled={clearingOrders}
+                    className="btn-secondary text-sm"
+                  >
+                    Annuleren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmClearOrders()}
+                    disabled={clearingOrders || clearOrdersPin.length < 4}
+                    className="rounded-xl2 bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {clearingOrders ? "Bezig…" : "Definitief wissen"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
 
         {setupVisible && !kitchenMode && (
           <div className="no-print mb-6 rounded-2xl border border-sage-200 bg-sage-50/80 p-4 shadow-sm sm:p-5">

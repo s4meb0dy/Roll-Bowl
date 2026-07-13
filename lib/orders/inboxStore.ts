@@ -249,3 +249,51 @@ export async function getRecentOrders(limit = 200): Promise<Order[]> {
   );
   return orders;
 }
+
+/**
+ * Remove every order from the server inbox. Used before opening service to
+ * start with a clean kitchen board. Does not touch inventory or other keys.
+ */
+export async function clearAllOrders(): Promise<{ deleted: number; version: number }> {
+  await drainLegacyList();
+  const redis = getInboxRedis();
+
+  let ids: string[] = [];
+  try {
+    ids = (await redis.zrange(KEY_RECENT, 0, -1)) as string[];
+  } catch (e) {
+    if (isWrongTypeError(e)) {
+      try {
+        await redis.del(KEY_RECENT);
+      } catch {
+        /* ignore */
+      }
+      ids = [];
+    } else {
+      throw e;
+    }
+  }
+
+  if (ids.length > 0) {
+    const keys = ids.map((id) => KEY_BY_ID(id));
+    const CHUNK = 100;
+    for (let i = 0; i < keys.length; i += CHUNK) {
+      const chunk = keys.slice(i, i + CHUNK);
+      if (chunk.length > 0) await redis.del(...chunk);
+    }
+  }
+
+  try {
+    await redis.del(KEY_RECENT);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await redis.del(KEY_LEGACY_LIST);
+  } catch {
+    /* ignore */
+  }
+
+  const version = await bumpVersion();
+  return { deleted: ids.length, version };
+}
