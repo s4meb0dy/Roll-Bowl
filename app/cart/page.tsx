@@ -99,6 +99,14 @@ export default function CartPage() {
     }
   }, [mounted, sessionOrderType]);
 
+  const hasValidDeliveryZip = Boolean(zipCode?.trim() && zipCodeConfig);
+
+  useEffect(() => {
+    if (mounted && orderType === "delivery" && !hasValidDeliveryZip) {
+      router.replace("/");
+    }
+  }, [mounted, orderType, hasValidDeliveryZip, router]);
+
   useEffect(() => {
     if (mounted) {
       setCustomerInfo((prev) => ({
@@ -137,6 +145,7 @@ export default function CartPage() {
   );
 
   const isTakeaway = orderType === "takeaway";
+  const deliveryZipMissing = !isTakeaway && !hasValidDeliveryZip;
 
   const buildFulfillmentTime = (): FulfillmentTime =>
     timeMode === "asap" || !scheduledSlot
@@ -303,6 +312,7 @@ export default function CartPage() {
   };
 
   const handlePlaceOrder = async () => {
+    if (deliveryZipMissing) return;
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
     if (timeMode === "scheduled" && !scheduledSlot) return;
@@ -414,6 +424,7 @@ export default function CartPage() {
 
   const placeOrderBlockReason = (() => {
     if (placing) return null;
+    if (deliveryZipMissing) return t("cart.delivery_zip_required");
     if (belowMinimum) {
       return t("cart.min_warning", {
         amount: minOrder.toFixed(2),
@@ -445,6 +456,7 @@ export default function CartPage() {
 
   const placeOrderDisabled =
     placing ||
+    deliveryZipMissing ||
     belowMinimum ||
     timeSlots.length === 0 ||
     (paymentMethod === "cash" &&
@@ -770,6 +782,10 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!hasValidDeliveryZip) {
+                        router.replace("/");
+                        return;
+                      }
                       setOrderType("delivery");
                       setSessionOrderType("delivery");
                     }}
