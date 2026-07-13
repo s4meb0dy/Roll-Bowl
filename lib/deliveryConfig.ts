@@ -51,15 +51,12 @@ export const SLOT_INTERVAL_MINUTES = 15;
 /** Minimum minutes between "now" and the first selectable slot. */
 export const PREP_LEAD_MINUTES = 30;
 
-/** Kitchen operates in Belgium — slot windows use this IANA zone. */
+/** Kitchen operates in Belgium — all slot logic uses this IANA zone. */
 export const STORE_TIMEZONE = "Europe/Brussels";
 
 /**
- * Maximum days ahead a customer may schedule an order.
- *
- * `0` = same-day only (no scheduling for tomorrow / day-after). The kitchen
- * prefers to handle each day's mise en place fresh, so we don't take orders
- * for future days from the storefront.
+ * Same-day scheduling only — never tomorrow or later.
+ * (Hard-coded; the storefront must not expose future-day slots.)
  */
 export const MAX_SCHEDULE_DAYS = 0;
 
@@ -70,19 +67,15 @@ export interface TimeSlot {
   hour: number;
   /** Local minute (0-59) of the slot. */
   minute: number;
-  /** Offset in whole days from `now` (0 = today, 1 = tomorrow, …). */
+  /** Always 0 — same-day scheduling only. */
   dayOffset: number;
   /** Raw local Date object for display formatting. */
   date: Date;
 }
 
-function roundUpToInterval(date: Date, intervalMinutes: number): Date {
-  const d = new Date(date);
-  d.setSeconds(0, 0);
-  const mins = d.getMinutes();
-  const rem = mins % intervalMinutes;
-  if (rem !== 0) d.setMinutes(mins + (intervalMinutes - rem));
-  return d;
+function roundUpUtc(instant: Date, intervalMinutes: number): Date {
+  const ms = intervalMinutes * 60_000;
+  return new Date(Math.ceil(instant.getTime() / ms) * ms);
 }
 
 /** Calendar date `YYYY-MM-DD` for an instant in the store timezone. */
@@ -93,7 +86,14 @@ export function dateKeyInTimeZone(
   return instant.toLocaleDateString("en-CA", { timeZone });
 }
 
-function weekdayInTimeZone(
+function previousDateKey(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  probe.setUTCDate(probe.getUTCDate() - 1);
+  return probe.toISOString().slice(0, 10);
+}
+
+export function weekdayInTimeZone(
   instant: Date,
   timeZone: string = STORE_TIMEZONE
 ): number {
@@ -111,6 +111,18 @@ function weekdayInTimeZone(
     Sat: 6,
   };
   return map[short] ?? instant.getDay();
+}
+
+function brusselsHourMinute(instant: Date): { hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: STORE_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(instant);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { hour: get("hour"), minute: get("minute") };
 }
 
 /**
@@ -170,64 +182,86 @@ function openInstantForWindow(
 }
 
 /**
- * Returns the list of schedulable time-slots starting at least `PREP_LEAD_MINUTES`
- * from `now`, aligned to `SLOT_INTERVAL_MINUTES` and clamped to the kitchen's
- * opening hours, for up to `maxDays` days ahead.
+ * After the kitchen closes, block scheduling until the next service window
+ * opens (prevents "order tomorrow morning" slots right after midnight).
+ */
+export function isInOvernightBlackout(now: Date = new Date()): boolean {
+  const todayKey = dateKeyInTimeZone(now);
+  const weekday = weekdayInTimeZone(now);
+  const windows = OPENING_HOURS[weekday];
+  if (!windows?.length) return true;
+
+  const lastClose = closeInstantForWindow(todayKey, windows[windows.length - 1]);
+  if (now.getTime() > lastClose.getTime()) return true;
+
+  const firstOpen = openInstantForWindow(todayKey, windows[0]);
+  const earliestOrderTime = new Date(
+    firstOpen.getTime() - PREP_LEAD_MINUTES * 60_000
+  );
+  if (now.getTime() < earliestOrderTime.getTime()) {
+    const prevKey = previousDateKey(todayKey);
+    const prevWeekday = weekdayInTimeZone(wallClockToDate(prevKey, 12, 0));
+    const prevWindows = OPENING_HOURS[prevWeekday];
+    if (prevWindows?.length) {
+      const prevClose = closeInstantForWindow(
+        prevKey,
+        prevWindows[prevWindows.length - 1]
+      );
+      if (now.getTime() > prevClose.getTime()) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Returns schedulable time-slots for **today only** (Europe/Brussels).
+ * Never includes tomorrow or later calendar days.
  */
 export function getAvailableTimeSlots(
   now: Date = new Date(),
-  maxDays: number = MAX_SCHEDULE_DAYS,
+  _maxDays: number = MAX_SCHEDULE_DAYS
 ): TimeSlot[] {
+  void _maxDays;
   const interval = SLOT_INTERVAL_MINUTES;
-  const result: TimeSlot[] = [];
   const todayKey = dateKeyInTimeZone(now);
 
-  const earliest = roundUpToInterval(
+  if (isInOvernightBlackout(now)) return [];
+
+  const earliest = roundUpUtc(
     new Date(now.getTime() + PREP_LEAD_MINUTES * 60_000),
-    interval,
+    interval
   );
 
-  for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
-    if (dayOffset > 0) continue;
+  if (dateKeyInTimeZone(earliest) !== todayKey) return [];
 
-    const weekday = weekdayInTimeZone(now);
-    const dayWindows = OPENING_HOURS[weekday];
-    if (!dayWindows || dayWindows.length === 0) continue;
+  const weekday = weekdayInTimeZone(now);
+  const dayWindows = OPENING_HOURS[weekday];
+  if (!dayWindows?.length) return [];
 
-    for (const hrs of dayWindows) {
-      const open = openInstantForWindow(todayKey, hrs);
-      const close = closeInstantForWindow(todayKey, hrs);
+  const result: TimeSlot[] = [];
 
-      let slot = roundUpToInterval(
-        new Date(Math.max(open.getTime(), earliest.getTime())),
-        interval,
-      );
+  for (const hrs of dayWindows) {
+    const open = openInstantForWindow(todayKey, hrs);
+    const close = closeInstantForWindow(todayKey, hrs);
 
-      while (slot.getTime() <= close.getTime()) {
-        if (dateKeyInTimeZone(slot) !== todayKey) {
-          slot = new Date(slot.getTime() + interval * 60_000);
-          continue;
-        }
-        result.push({
-          value: slot.toISOString(),
-          hour: Number(
-            slot.toLocaleString("en-GB", {
-              timeZone: STORE_TIMEZONE,
-              hour: "2-digit",
-              hour12: false,
-            })
-          ),
-          minute: Number(
-            slot.toLocaleString("en-GB", {
-              timeZone: STORE_TIMEZONE,
-              minute: "2-digit",
-            })
-          ),
-          dayOffset: 0,
-          date: new Date(slot),
-        });
-        slot = new Date(slot.getTime() + interval * 60_000);
-      }
+    let slot = roundUpUtc(
+      new Date(Math.max(open.getTime(), earliest.getTime())),
+      interval
+    );
+
+    while (slot.getTime() <= close.getTime()) {
+      if (dateKeyInTimeZone(slot) !== todayKey) break;
+
+      const { hour, minute } = brusselsHourMinute(slot);
+      result.push({
+        value: slot.toISOString(),
+        hour,
+        minute,
+        dayOffset: 0,
+        date: new Date(slot),
+      });
+      slot = new Date(slot.getTime() + interval * 60_000);
     }
   }
 
@@ -249,7 +283,11 @@ export function validateScheduledFulfillment(
     return { ok: false, reason: "scheduled_not_same_day" };
   }
 
-  const allowed = getAvailableTimeSlots(now, MAX_SCHEDULE_DAYS);
+  if (isInOvernightBlackout(now)) {
+    return { ok: false, reason: "scheduled_overnight_blackout" };
+  }
+
+  const allowed = getAvailableTimeSlots(now);
   if (!allowed.some((slot) => slot.value === scheduledFor)) {
     return { ok: false, reason: "scheduled_slot_not_allowed" };
   }
@@ -257,15 +295,16 @@ export function validateScheduledFulfillment(
   return { ok: true };
 }
 
-/** `true` when the kitchen is currently accepting orders. */
+/** `true` when the kitchen is currently accepting orders (Brussels local time). */
 export function isOpenNow(now: Date = new Date()): boolean {
-  const windows = OPENING_HOURS[now.getDay()];
-  if (!windows || windows.length === 0) return false;
+  const todayKey = dateKeyInTimeZone(now);
+  const weekday = weekdayInTimeZone(now);
+  const windows = OPENING_HOURS[weekday];
+  if (!windows?.length) return false;
+
   for (const hrs of windows) {
-    const open = new Date(now);
-    open.setHours(hrs.openHour, hrs.openMinute, 0, 0);
-    const close = new Date(now);
-    close.setHours(hrs.closeHour, hrs.closeMinute, 0, 0);
+    const open = openInstantForWindow(todayKey, hrs);
+    const close = closeInstantForWindow(todayKey, hrs);
     if (now.getTime() >= open.getTime() && now.getTime() <= close.getTime()) {
       return true;
     }
@@ -282,7 +321,7 @@ export function formatClosingTime(hour: number, minute: number): string {
 export function getTodayLastClose(
   now: Date = new Date()
 ): { hour: number; minute: number } | null {
-  const windows = OPENING_HOURS[now.getDay()];
+  const windows = OPENING_HOURS[weekdayInTimeZone(now)];
   if (!windows?.length) return null;
   const last = windows[windows.length - 1];
   return { hour: last.closeHour, minute: last.closeMinute };

@@ -186,6 +186,10 @@ export default function CartPage() {
     ) {
       setScheduledSlot("");
     }
+    if (timeMode === "scheduled" && timeSlots.length === 0) {
+      setTimeMode("asap");
+      setScheduledSlot("");
+    }
   }, [timeSlots, timeMode, scheduledSlot]);
 
   useEffect(() => {
