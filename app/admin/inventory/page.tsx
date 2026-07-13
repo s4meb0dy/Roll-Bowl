@@ -423,14 +423,16 @@ export default function InventoryAdminPage() {
             </div>
           </div>
           <div className="card flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-50 text-sage-700">
-              <ShieldCheck size={18} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-700">
+              <PackageX size={18} />
             </div>
             <div>
               <div className="text-xs uppercase tracking-wide text-neutral-400">
-                Beschermd
+                Categorieën uit
               </div>
-              <div className="font-bold text-neutral-800">Bowls · Burritos · Sushi</div>
+              <div className="font-bold text-neutral-800">
+                {disabledCategories.length}
+              </div>
             </div>
           </div>
         </div>

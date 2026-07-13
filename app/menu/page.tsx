@@ -34,6 +34,17 @@ type Tab =
   | "smoothie-bowls" | "extras" | "desserten" | "dranken";
 
 const TAB_CATEGORY: Partial<Record<Tab, InventoryCategoryId>> = {
+  // Bowls: chef suggestions + the bowl builder.
+  ready: "bowls",
+  build: "bowls",
+  // Burritos: suggestions + the burrito builder.
+  burritos: "burritos",
+  "burrito-build": "burritos",
+  // Sushi: signature rolls + both roll builders — hide together when off.
+  "signature-rolls": "sushi",
+  "classic-roll-build": "sushi",
+  "inside-out-roll-build": "sushi",
+  // Smoothies: suggestions + the smoothie builder.
   smoothies: "smoothies",
   "smoothie-build": "smoothies",
   "smoothie-bowls": "smoothie-bowls",
@@ -203,13 +214,6 @@ export default function MenuPage() {
       router.replace("/");
     }
   }, [mounted, zipCode, sessionOrderType, router]);
-
-  useEffect(() => {
-    const cat = TAB_CATEGORY[activeTab];
-    if (cat && !isCategoryAvailable(cat)) {
-      setActiveTab("ready");
-    }
-  }, [activeTab, isCategoryAvailable]);
 
   const tabVisible = (id: Tab): boolean => {
     const cat = TAB_CATEGORY[id];

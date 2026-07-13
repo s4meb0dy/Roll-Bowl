@@ -26,16 +26,11 @@ import type { BuilderOption, ReadyMadeItem } from "@/lib/types";
 import type { InventoryCategoryId } from "./types";
 
 /**
- * Categories the admin may NEVER globally disable — even through the API.
- * These are the three menu cornerstones the brief calls out: Bowls, Burritos,
- * and Sushi. The admin UI keeps the toggle visible but locks it, and the
- * server-side writer also rejects category-level writes against them.
+ * Categories the admin may never globally disable. Empty by design: the
+ * kitchen must be able to switch off any whole section (e.g. no sushi chef
+ * today) so that its suggestions AND its builder disappear together.
  */
-export const PROTECTED_CATEGORIES: ReadonlySet<InventoryCategoryId> = new Set([
-  "bowls",
-  "burritos",
-  "sushi",
-]);
+export const PROTECTED_CATEGORIES: ReadonlySet<InventoryCategoryId> = new Set([]);
 
 export interface InventoryItemEntry {
   id: string;
@@ -83,8 +78,8 @@ export const INVENTORY_CATALOG: InventoryCategoryConfig[] = [
     id: "bowls",
     label: "Poké bowls",
     description:
-      "Chef-bowls + de volledige 'Stel je poké bowl samen'-flow. Deze categorie is beschermd en kan niet globaal uit.",
-    protected: true,
+      "Chef-bowls + de volledige 'Stel je poké bowl samen'-flow. Uit = zowel de suggesties als de bowl-builder verdwijnen.",
+    protected: false,
     readyMade: READY_MADE,
     builderGroups: [
       { id: "bowl-bases",    label: "Basis",       items: toBuilderEntries(BUILDER_BASES) },
@@ -98,8 +93,8 @@ export const INVENTORY_CATALOG: InventoryCategoryConfig[] = [
     id: "burritos",
     label: "Poké burrito's",
     description:
-      "Burrito-suggesties + 'Stel je poké burrito samen'. Beschermd tegen globaal uitschakelen.",
-    protected: true,
+      "Burrito-suggesties + 'Stel je poké burrito samen'. Uit = beide verdwijnen uit het menu.",
+    protected: false,
     readyMade: BURRITOS,
     builderGroups: [
       { id: "burrito-proteins", label: "Proteïnes", items: toBuilderEntries(BURRITO_PROTEINS) },
@@ -110,8 +105,8 @@ export const INVENTORY_CATALOG: InventoryCategoryConfig[] = [
     id: "sushi",
     label: "Sushi rolls",
     description:
-      "Sushi Push Pop (signature rolls) + 'Stel zelf samen (Classic Roll / Inside-Out Roll)'. Beschermd tegen globaal uitschakelen.",
-    protected: true,
+      "Sushi Push Pop (signature rolls) + 'Stel zelf samen (Classic Roll / Inside-Out Roll)'. Uit = suggesties én beide roll-builders verdwijnen.",
+    protected: false,
     readyMade: SIGNATURE_ROLLS,
     builderGroups: [
       { id: "roll-proteins", label: "Proteïnes (Classic & Inside-Out)", items: toBuilderEntries(CLASSIC_ROLL_PROTEINS) },
