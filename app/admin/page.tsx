@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -25,6 +25,10 @@ import {
   Minus,
   Plus,
   Trash2,
+  CreditCard,
+  Banknote,
+  Euro,
+  Wallet,
 } from "lucide-react";
 import Header from "@/components/Header";
 import EposPrinterSettings from "@/components/admin/EposPrinterSettings";
@@ -44,6 +48,7 @@ import {
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
+import { dateKeyInTimeZone } from "@/lib/deliveryConfig";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 import { shortOrderCode } from "@/lib/orderId";
 import AdminPinGate from "@/components/AdminPinGate";
@@ -839,6 +844,36 @@ export default function AdminPage() {
     };
   }, [kitchenMode, mounted, unlocked]);
 
+  // End-of-day till reconciliation: sum today's confirmed sales (Europe/Brussels)
+  // split by payment method. Pending (unpaid / not-yet-accepted) orders are
+  // excluded so abandoned online checkouts don't inflate the card total.
+  const dayTotals = useMemo(() => {
+    const todayKey = dateKeyInTimeZone(new Date());
+    let card = 0;
+    let cash = 0;
+    let cardCount = 0;
+    let cashCount = 0;
+    for (const o of orders) {
+      if (o.status === "pending") continue;
+      if (dateKeyInTimeZone(new Date(o.createdAt)) !== todayKey) continue;
+      if (o.paymentMethod === "cash") {
+        cash += o.total;
+        cashCount += 1;
+      } else {
+        card += o.total;
+        cardCount += 1;
+      }
+    }
+    return {
+      card,
+      cash,
+      total: card + cash,
+      cardCount,
+      cashCount,
+      count: cardCount + cashCount,
+    };
+  }, [orders]);
+
   if (!mounted || !unlocked) {
     return (
       <>
@@ -1343,6 +1378,58 @@ export default function AdminPage() {
               </button>
             )
           )}
+        </div>
+
+        <div className="no-print mb-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Wallet size={16} className="text-sage-600" />
+            <h2 className="text-sm font-bold text-neutral-800">Dagtotaal</h2>
+            <span className="text-xs text-neutral-400">
+              — einde van de dag
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-700">
+                <CreditCard size={14} />
+                Kaart (online)
+              </div>
+              <div className="mt-1 text-2xl font-bold text-sky-900">
+                €{dayTotals.card.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-sky-600">
+                {dayTotals.cardCount} order(s)
+              </div>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                <Banknote size={14} />
+                Contant
+              </div>
+              <div className="mt-1 text-2xl font-bold text-emerald-900">
+                €{dayTotals.cash.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-emerald-600">
+                {dayTotals.cashCount} order(s)
+              </div>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-600">
+                <Euro size={14} />
+                Totaal
+              </div>
+              <div className="mt-1 text-2xl font-bold text-neutral-900">
+                €{dayTotals.total.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-neutral-500">
+                {dayTotals.count} order(s)
+              </div>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Betaalde en geaccepteerde orders van vandaag (Europe/Brussels).
+            Openstaande (pending) orders tellen niet mee.
+          </p>
         </div>
         </>
         )}
