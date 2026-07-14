@@ -1,12 +1,13 @@
 /**
- * @file Kitchen new-order notification — delivery-app style chime.
+ * @file Kitchen new-order notification — takeaway-app style marimba chime.
  *
  * - Mobile browsers need a user gesture before audio; call
  *   `unlockKitchenAudio()` from the PIN unlock (or any click).
  * - One shared AudioContext for the session; visibility hook re-resumes
  *   after the tab was backgrounded.
- * - Three-note ascending chime, repeated a few times (Uber/Deliveroo feel),
- *   not a piercing siren.
+ * - Warm, mid-register marimba/bell motif (Takeaway/Just Eat feel) that is
+ *   friendly and recognisable instead of a piercing high-pitched siren, so it
+ *   grabs attention without being harsh or disturbing.
  * - `navigator.vibrate` runs in parallel on supported phones.
  */
 
@@ -15,22 +16,24 @@ const MUTE_KEY = "roll-bowl-kitchen-mute";
 /** How long the alarm keeps ringing (ms) — long enough to be heard in a busy kitchen. */
 const ALARM_WALL_MS = 14_000;
 /** One chime cycle length (seconds) — matches the last note's offset + duration. */
-const CHIME_CYCLE_S = 0.82;
-const CHIME_CYCLE_GAP_S = 0.5;
-const CHIME_CYCLES = 9;
-/** Per-note peak gain — loud and clearly audible over kitchen noise. */
-const NOTE_PEAK = 0.9;
+const CHIME_CYCLE_S = 1.0;
+/** Gap between cycles — a relaxed "ding … ding" cadence, not a relentless siren. */
+const CHIME_CYCLE_GAP_S = 1.1;
+const CHIME_CYCLES = 7;
+/** Per-note peak gain — clearly audible over kitchen noise, but warm not shrill. */
+const NOTE_PEAK = 0.85;
 
 /**
- * Bright, insistent ascending "attention" motif (G major arpeggio up to G6).
- * Higher octave + repeated cycles cut through fryers/extraction fans much
- * better than a soft two-note chime.
+ * Warm takeaway-app marimba motif: a friendly rising C-major phrase that
+ * resolves on the octave (C5 → E5 → G5 → C6). It stays in the mid register
+ * instead of climbing to a shrill G6, so it reads as a pleasant "order in!"
+ * jingle rather than an alarm.
  */
 const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
-  [783.99, 0, 0.14], // G5
-  [987.77, 0.16, 0.14], // B5
-  [1174.66, 0.32, 0.14], // D6
-  [1567.98, 0.48, 0.34], // G6
+  [523.25, 0, 0.42], // C5
+  [659.25, 0.18, 0.42], // E5
+  [783.99, 0.36, 0.46], // G5
+  [1046.5, 0.54, 0.5], // C6
 ];
 
 type Session = { stop: () => void };
@@ -146,19 +149,20 @@ function buildSoftOutputGraph(ctx: AudioContext): {
   const master = ctx.createGain();
   master.gain.value = 0.95;
 
-  // Compressor pushes the perceived loudness up (radio-style) without hard
-  // clipping when several notes overlap — makes the alarm cut through noise.
+  // Compressor evens out the loudness so the chime carries across the kitchen
+  // without the harsh, in-your-face punch of a siren.
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -22;
-  comp.knee.value = 26;
-  comp.ratio.value = 12;
-  comp.attack.value = 0.003;
-  comp.release.value = 0.25;
+  comp.threshold.value = -20;
+  comp.knee.value = 28;
+  comp.ratio.value = 8;
+  comp.attack.value = 0.006;
+  comp.release.value = 0.3;
 
-  // Keep plenty of high end so the alarm stays bright/piercing enough to hear.
+  // Roll off the piercing high end — a marimba/bell timbre lives in the mids,
+  // so this keeps the tone warm and pleasant rather than shrill.
   const lowpass = ctx.createBiquadFilter();
   lowpass.type = "lowpass";
-  lowpass.frequency.value = 9000;
+  lowpass.frequency.value = 5200;
   lowpass.Q.value = 0.7;
 
   lowpass.connect(comp);
@@ -186,34 +190,41 @@ function scheduleNote(
   durS: number,
   peakGain: number
 ): OscillatorNode[] {
-  const sine = ctx.createOscillator();
-  sine.type = "sine";
-  sine.frequency.value = freq;
+  // Marimba/bell timbre: a sine fundamental plus a softer overtone, struck with
+  // a fast attack and left to ring out with a natural exponential decay.
+  const fundamental = ctx.createOscillator();
+  fundamental.type = "sine";
+  fundamental.frequency.value = freq;
 
-  const triangle = ctx.createOscillator();
-  triangle.type = "triangle";
-  triangle.frequency.value = freq;
+  const overtone = ctx.createOscillator();
+  overtone.type = "sine";
+  overtone.frequency.value = freq * 4; // 2 octaves up gives the mallet "ping"
+
+  const overtoneGain = ctx.createGain();
+  overtoneGain.gain.value = 0.18;
 
   const mix = ctx.createGain();
-  mix.gain.value = 0.72;
+  mix.gain.value = 0.85;
 
+  // Percussive envelope — quick attack then a smooth ring-out (no plateau),
+  // which reads as a friendly marimba tap rather than a sustained beep.
   const env = ctx.createGain();
   env.gain.setValueAtTime(0.0001, t0);
-  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.012);
-  env.gain.setValueAtTime(peakGain * 0.85, t0 + durS - 0.04);
+  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.008);
   env.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
 
-  sine.connect(mix);
-  triangle.connect(mix);
+  fundamental.connect(mix);
+  overtone.connect(overtoneGain);
+  overtoneGain.connect(mix);
   mix.connect(env);
   env.connect(input);
 
-  sine.start(t0);
-  sine.stop(t0 + durS + 0.03);
-  triangle.start(t0);
-  triangle.stop(t0 + durS + 0.03);
+  fundamental.start(t0);
+  fundamental.stop(t0 + durS + 0.05);
+  overtone.start(t0);
+  overtone.stop(t0 + durS + 0.05);
 
-  return [sine, triangle];
+  return [fundamental, overtone];
 }
 
 /**
