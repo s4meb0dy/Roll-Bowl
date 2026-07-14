@@ -607,7 +607,22 @@ export default function AdminPage() {
     if (!storeHydrated || !unlocked) return;
     if (!newOrderWatchInit.current) {
       newOrderWatchInit.current = true;
-      orders.forEach((o) => seenOrderIds.current.add(o.id));
+      // Seed all current orders as "seen" so we don't double-alarm on them,
+      // but if any unaccepted (pending/paid) order arrived while the kitchen
+      // was sitting on the PIN screen, fire the alarm now instead of letting
+      // it appear silently after unlock.
+      const waiting: typeof orders = [];
+      orders.forEach((o) => {
+        seenOrderIds.current.add(o.id);
+        if (isNewOrderAlertStatus(o.status)) waiting.push(o);
+      });
+      if (waiting.length > 0) {
+        const newest = waiting.reduce((a, b) =>
+          new Date(b.createdAt).getTime() > new Date(a.createdAt).getTime() ? b : a
+        );
+        setAlarmOrderId(newest.id);
+        startKitchenAlarmLoop();
+      }
       return;
     }
     for (const o of orders) {
