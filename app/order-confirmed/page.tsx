@@ -287,12 +287,6 @@ function ConfirmedContent() {
           </span>
         </p>
       )}
-      {orderId && order?.lightspeed?.state === "failed" && (
-        <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-950 sm:mb-6 sm:text-center">
-          {t("order.confirmed.pos_failed")}{" "}
-          {order.lightspeed.errorMessage && <span className="mt-1 block text-xs opacity-90 sm:mt-0 sm:inline">({order.lightspeed.errorMessage.slice(0, 120)})</span>}
-        </p>
-      )}
       {orderId && order?.isFirstTimeCustomer && (
         <p className="mb-5 w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-medium text-amber-950 sm:mb-6 sm:text-center">
           {t("order.first_order_welcome")}
