@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock } from "lucide-react";
+import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock, AlertTriangle } from "lucide-react";
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
 import { useT } from "@/lib/i18n";
@@ -43,6 +43,7 @@ function ConfirmedContent() {
   const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
   const [mounted, setMounted] = useState(false);
   const [stripeCompleting, setStripeCompleting] = useState(false);
+  const [stripeError, setStripeError] = useState(false);
   const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
   const posPushDone = useRef(false);
@@ -74,7 +75,13 @@ function ConfirmedContent() {
     }
 
     const pending = loadPendingStripeCheckout(orderId);
-    if (!pending) return;
+    if (!pending) {
+      // Redirected back from Stripe but the checkout snapshot is gone: we can't
+      // safely reconstruct the order. Surface an error instead of a fake success.
+      stripeReturnHandled.current = true;
+      setStripeError(true);
+      return;
+    }
 
     stripeReturnHandled.current = true;
     setStripeCompleting(true);
@@ -107,7 +114,10 @@ function ConfirmedContent() {
             amountCents: pending.amountCents,
           }),
         });
-        if (!verifyRes.ok) return;
+        if (!verifyRes.ok) {
+          setStripeError(true);
+          return;
+        }
 
         const placed = placeOrder({
           customerInfo: pending.customerInfo,
@@ -123,6 +133,8 @@ function ConfirmedContent() {
         clearPendingStripeCheckout(orderId);
         await postOrderToInbox(placed);
         void pushOrderToPos(placed, setOrderLightspeed);
+      } catch {
+        setStripeError(true);
       } finally {
         setStripeCompleting(false);
       }
@@ -227,6 +239,31 @@ function ConfirmedContent() {
     );
     return () => clearInterval(t);
   }, []);
+
+  if (stripeError && !order) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 pb-28 pt-10 text-center sm:px-6 sm:pb-8 sm:pt-12">
+        <div className="flex w-full max-w-md flex-col items-center">
+          <div className="mb-5 flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-amber-500 shadow-lg sm:mb-6 sm:h-20 sm:w-20">
+            <AlertTriangle className="h-9 w-9 text-white sm:h-10 sm:w-10" />
+          </div>
+          <h1 className="font-display mb-2 text-2xl font-bold text-neutral-800 sm:text-3xl">
+            {t("order.confirmed.error_title")}
+          </h1>
+          <p className="mb-6 max-w-sm text-[15px] leading-relaxed text-neutral-600 sm:text-base">
+            {t("order.confirmed.error_body")}
+          </p>
+          <Link
+            href="/cart"
+            className="btn-primary flex w-full min-h-[48px] items-center justify-center gap-2 sm:w-auto sm:min-w-[200px] sm:px-8"
+          >
+            <ArrowLeft size={16} className="shrink-0" />
+            {t("order.confirmed.order_again")}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-cream px-4 pb-28 pt-10 text-center sm:justify-center sm:px-6 sm:pb-8 sm:pt-12">

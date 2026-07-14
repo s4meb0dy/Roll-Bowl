@@ -1,6 +1,7 @@
 import { getInboxRedis } from "@/lib/orders/inboxRedis";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
 import { computeOrderAmounts, getMinOrderAmount } from "@/lib/stripe/orderTotal";
+import { recomputeUnitPrice } from "@/lib/orders/priceValidation";
 import type {
   CartItem,
   CustomerInfo,
@@ -161,6 +162,19 @@ export function buildPendingStripeOrder(
   input: PendingStripeOrderInput,
   existing?: PendingStripeOrder | null
 ): PendingStripeOrder | { error: string; minOrder?: number; subtotal?: number } {
+  // Prices arrive from the browser and are untrusted — verify each line against
+  // the menu catalog so the Payment Intent can never be created for a tampered
+  // (e.g. €0,50) amount.
+  for (const item of input.items) {
+    const unit = recomputeUnitPrice(item);
+    if (unit == null) {
+      return { error: "invalid_item" };
+    }
+    if (Math.abs(Math.round(unit * 100) - Math.round(item.price * 100)) > 1) {
+      return { error: "price_mismatch" };
+    }
+  }
+
   const { subtotal, deliveryFee, total, amountCents } = computeOrderAmounts(
     input.items,
     input.orderType,
