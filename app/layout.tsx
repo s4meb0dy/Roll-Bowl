@@ -5,6 +5,7 @@ import StoreHydration from "@/components/StoreHydration";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import SiteFooter from "@/components/SiteFooter";
 import { getSiteUrl } from "@/lib/siteUrl";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -60,6 +61,7 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <MobileBottomNav />
+        <SpeedInsights />
       </body>
     </html>
   );
