@@ -5,6 +5,7 @@ import StoreHydration from "@/components/StoreHydration";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import SiteFooter from "@/components/SiteFooter";
 import { getSiteUrl } from "@/lib/siteUrl";
+import { buildRestaurantJsonLd } from "@/lib/structuredData";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,12 +26,48 @@ const manrope = Manrope({
 // localhost.
 const siteUrl = getSiteUrl();
 
+// Google Search Console verification token. Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+// in production to the value Google gives you when adding the site as a property
+// (the "HTML tag" method). Leave unset locally.
+const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Roll&Bowl",
+  title: {
+    default: "Roll&Bowl — Poké bowls, sushi & burritos in Deurne, Antwerpen",
+    template: "%s | Roll&Bowl",
+  },
   description:
-    "Build your perfect bowl or choose from our chef-curated ready-made selections. Healthy, delicious, delivered fast.",
-  keywords: ["healthy food", "bowls", "delivery", "fresh", "vegan", "gluten-free"],
+    "Build your perfect bowl or choose from our chef-curated ready-made selections. Healthy, delicious, delivered fast in Deurne & Antwerpen.",
+  keywords: [
+    "poké bowl",
+    "poke bowl Antwerpen",
+    "sushi Deurne",
+    "burritos",
+    "healthy food",
+    "bowls",
+    "delivery",
+    "afhalen",
+    "takeaway Antwerpen",
+    "vegan",
+    "gluten-free",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  ...(googleSiteVerification
+    ? { verification: { google: googleSiteVerification } }
+    : {}),
   icons: {
     icon: [
       { url: "/logo.png", type: "image/png" },
@@ -56,6 +93,12 @@ export default function RootLayout({
   return (
     <html lang="nl" className={`scroll-smooth ${inter.variable} ${manrope.variable}`}>
       <body className="min-h-screen">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(buildRestaurantJsonLd()),
+          }}
+        />
         <StoreHydration />
         {children}
         <SiteFooter />
