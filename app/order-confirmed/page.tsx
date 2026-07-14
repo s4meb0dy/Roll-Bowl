@@ -224,11 +224,11 @@ function ConfirmedContent() {
     };
 
     tryPush();
-    const t1 = setTimeout(tryPush, 400);
-    const t2 = setTimeout(tryPush, 2_000);
+    // Several spaced retries: for cash orders the POS push can race ahead of the
+    // Redis inbox write, so keep retrying long enough for the inbox to commit.
+    const timers = [400, 1_200, 2_500, 5_000].map((ms) => setTimeout(tryPush, ms));
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      timers.forEach(clearTimeout);
     };
   }, [orderId, orders, setOrderLightspeed]);
 
