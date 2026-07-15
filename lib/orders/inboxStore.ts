@@ -251,6 +251,33 @@ export async function getRecentOrders(limit = 200): Promise<Order[]> {
 }
 
 /**
+ * Remove a single order from the server inbox (body + recent index). Bumps the
+ * global version so connected kitchen boards re-sync. Returns whether a record
+ * actually existed.
+ */
+export async function deleteOrderById(
+  id: string
+): Promise<{ deleted: boolean; version: number }> {
+  const redis = getInboxRedis();
+
+  let existed = false;
+  try {
+    const res = (await redis.del(KEY_BY_ID(id))) as number;
+    existed = Number(res) > 0;
+  } catch (e) {
+    console.error("[orders] delete body failed", id, e);
+  }
+  try {
+    await redis.zrem(KEY_RECENT, id);
+  } catch {
+    /* index entry may already be gone */
+  }
+
+  const version = await bumpVersion();
+  return { deleted: existed, version };
+}
+
+/**
  * Remove every order from the server inbox. Used before opening service to
  * start with a clean kitchen board. Does not touch inventory or other keys.
  */

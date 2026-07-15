@@ -44,7 +44,7 @@ import {
   playTestKitchenAlarm,
   unlockKitchenAudio,
   ensureKitchenAudioUnlock,
-  isKitchenAudioUnlocked,
+  isKitchenAudioReady,
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
@@ -52,12 +52,17 @@ import { dateKeyInTimeZone } from "@/lib/deliveryConfig";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
 import { shortOrderCode } from "@/lib/orderId";
 import AdminPinGate from "@/components/AdminPinGate";
-import { isAdminSessionUnlocked, verifyAdminPinRemote } from "@/lib/admin/pinClient";
+import {
+  isAdminSessionUnlocked,
+  verifyAdminPinRemote,
+  getStoredAdminPin,
+} from "@/lib/admin/pinClient";
 import {
   downloadOrdersFromBrowser,
   downloadOrdersFromServer,
 } from "@/lib/orders/exportClient";
 import { clearAllOrdersRemote } from "@/lib/orders/clearOrdersClient";
+import { deleteOrderRemote } from "@/lib/orders/deleteOrderClient";
 
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
@@ -113,16 +118,19 @@ function OrderCard({
   onAcceptAndPrint,
   onAcceptScheduledAndPrint,
   onPrintReceipt,
+  onDelete,
   isAlarmTarget,
 }: {
   order: Order;
   onAcceptAndPrint: (id: string, prepMinutes: number) => void;
   onAcceptScheduledAndPrint: (id: string) => void;
   onPrintReceipt: (id: string) => void;
+  onDelete: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
   const [prepMinutes, setPrepMinutes] = useState(PREP_DEFAULT);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const adjustPrep = (delta: number) =>
     setPrepMinutes((m) => Math.min(PREP_MAX, Math.max(PREP_MIN, m + delta)));
   const cfg = getStatusDisplay(order);
@@ -248,15 +256,50 @@ function OrderCard({
         </div>
 
         <div className="flex flex-col items-end gap-2 text-right">
-          <button
-            type="button"
-            onClick={() => onPrintReceipt(order.id)}
-            className="no-print flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
-            title="Keukenbon (her)afdrukken"
-          >
-            <Printer size={14} />
-            Print
-          </button>
+          <div className="no-print flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onPrintReceipt(order.id)}
+              className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+              title="Keukenbon (her)afdrukken"
+            >
+              <Printer size={14} />
+              Print
+            </button>
+            {confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    onDelete(order.id);
+                  }}
+                  className="flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-600 px-2 py-1 text-xs font-semibold text-white shadow-sm hover:bg-rose-700"
+                  title="Bevestig verwijderen"
+                >
+                  <Trash2 size={14} />
+                  Verwijder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-neutral-500 shadow-sm hover:bg-neutral-50"
+                  title="Annuleer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-semibold text-rose-600 shadow-sm hover:bg-rose-50"
+                title="Bestelling verwijderen"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
           <div>
             <div className="font-bold text-neutral-800">€{order.total.toFixed(2)}</div>
             <div className="text-xs text-neutral-400">
@@ -493,6 +536,7 @@ export default function AdminPage() {
   const acceptScheduledOrder = useStore((s) => s.acceptScheduledOrder);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
   const clearOrders = useStore((s) => s.clearOrders);
+  const removeOrder = useStore((s) => s.removeOrder);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -646,6 +690,27 @@ export default function AdminPage() {
     setAlarmOrderId(null);
   }, []);
 
+  const handleDeleteOrder = useCallback(
+    (orderId: string) => {
+      // Stop the alarm if we're deleting the order that is currently ringing.
+      setAlarmOrderId((cur) => {
+        if (cur === orderId) stopKitchenAlarmLoop();
+        return cur === orderId ? null : cur;
+      });
+      // Drop it locally right away for a snappy board…
+      removeOrder(orderId);
+      // …and remove it from the server inbox so it doesn't resync on reload.
+      void deleteOrderRemote(orderId, getStoredAdminPin() ?? undefined).then(
+        (res) => {
+          if (!res.ok) {
+            console.warn("[admin] delete order failed", orderId, res.reason);
+          }
+        }
+      );
+    },
+    [removeOrder]
+  );
+
   const toggleMute = useCallback(() => {
     const next = !soundMuted;
     setSoundMuted(next);
@@ -653,20 +718,19 @@ export default function AdminPage() {
   }, [soundMuted]);
 
   /**
-   * Browsers only allow audio after a user gesture. When the board is reopened
-   * within the 12h session it skips the PIN screen, so there may be no gesture
-   * and the alarm would stay silent. Poll the unlock flag and, until it flips,
-   * show a prominent "enable sound" button.
+   * Browsers only allow audio after a user gesture, and can silently re-suspend
+   * the audio context after inactivity even once unlocked. Poll the *real*
+   * readiness (unlocked AND context running) continuously so the "enable sound"
+   * button reappears whenever the alarm would otherwise fail silently — tapping
+   * it re-arms the audio.
    */
   useEffect(() => {
-    if (!unlocked || audioArmed) return;
-    const check = () => {
-      if (isKitchenAudioUnlocked()) setAudioArmed(true);
-    };
+    if (!unlocked) return;
+    const check = () => setAudioArmed(isKitchenAudioReady());
     check();
-    const id = window.setInterval(check, 800);
+    const id = window.setInterval(check, 1000);
     return () => window.clearInterval(id);
-  }, [unlocked, audioArmed]);
+  }, [unlocked]);
 
   const armKitchenAudio = useCallback(() => {
     unlockKitchenAudio();
@@ -1458,6 +1522,7 @@ export default function AdminPage() {
                 onAcceptAndPrint={handleAcceptAndPrint}
                 onAcceptScheduledAndPrint={handleAcceptScheduledAndPrint}
                 onPrintReceipt={triggerKitchenPrint}
+                onDelete={handleDeleteOrder}
               />
             ))}
           </div>

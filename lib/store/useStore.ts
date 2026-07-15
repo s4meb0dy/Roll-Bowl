@@ -141,6 +141,9 @@ interface AppState {
   /** Wipe the local order board (e.g. after server-side clear). */
   clearOrders: () => void;
 
+  /** Remove a single order from the local board (e.g. after server-side delete). */
+  removeOrder: (orderId: string) => void;
+
   setLocale: (locale: Locale) => void;
 }
 
@@ -396,6 +399,14 @@ export const useStore = create<AppState>()(
         }),
 
       clearOrders: () => set({ orders: [], kitchenPrintedOrderIds: [] }),
+
+      removeOrder: (orderId) =>
+        set((state) => ({
+          orders: state.orders.filter((o) => o.id !== orderId),
+          kitchenPrintedOrderIds: state.kitchenPrintedOrderIds.filter(
+            (id) => id !== orderId
+          ),
+        })),
 
       setLocale: (locale) => set({ locale }),
     }),
