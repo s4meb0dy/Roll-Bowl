@@ -63,6 +63,7 @@ import {
 } from "@/lib/orders/exportClient";
 import { clearAllOrdersRemote } from "@/lib/orders/clearOrdersClient";
 import { deleteOrderRemote } from "@/lib/orders/deleteOrderClient";
+import { requestScreenWakeLock, releaseScreenWakeLock } from "@/lib/wakeLock";
 
 const STORAGE_KEY = "roll-bowl-store";
 const KITCHEN_MODE_KEY = "roll-bowl-kitchen-mode";
@@ -734,9 +735,19 @@ export default function AdminPage() {
 
   const armKitchenAudio = useCallback(() => {
     unlockKitchenAudio();
+    void requestScreenWakeLock();
     setAudioArmed(true);
     if (!isKitchenAlarmMuted()) playTestKitchenAlarm();
   }, []);
+
+  // Hold a screen wake lock while the board is open so a dedicated kitchen
+  // tablet never sleeps (sleeping suspends audio → silent alarm). Released on
+  // unmount; re-acquired on focus by the wake-lock helper itself.
+  useEffect(() => {
+    if (!unlocked) return;
+    void requestScreenWakeLock();
+    return () => releaseScreenWakeLock();
+  }, [unlocked]);
 
   useEffect(() => {
     setMounted(true);
@@ -951,7 +962,10 @@ export default function AdminPage() {
             </div>
           }
           onUnlock={() => setUnlocked(true)}
-          onUnlockGesture={unlockKitchenAudio}
+          onUnlockGesture={() => {
+            unlockKitchenAudio();
+            void requestScreenWakeLock();
+          }}
         />
       </>
     );

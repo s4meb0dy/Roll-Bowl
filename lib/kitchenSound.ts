@@ -43,6 +43,7 @@ let sharedCtx: AudioContext | null = null;
 let unlocked = false;
 let visibilityHookInstalled = false;
 let keepAliveHookInstalled = false;
+let silentKeepAlive: { osc: OscillatorNode; gain: GainNode } | null = null;
 
 export function isKitchenAlarmMuted(): boolean {
   if (typeof window === "undefined") return true;
@@ -119,19 +120,44 @@ function installKeepAliveResumeHook(): void {
 
 export function unlockKitchenAudio(): void {
   if (typeof window === "undefined") return;
-  if (unlocked) return;
   const ctx = getSharedCtx();
   if (!ctx) return;
   try {
     if (ctx.state === "suspended") void ctx.resume();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    unlocked = true;
+    if (!unlocked) {
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      unlocked = true;
+    }
+    startSilentKeepAlive(ctx);
   } catch {
     /* ignore — we'll retry on the next gesture */
+  }
+}
+
+/**
+ * Keep the AudioContext from being idled-out by the browser when no alarm has
+ * played for a while (rare orders!). A permanently-running, fully silent
+ * oscillator (gain 0) keeps the context in the "running" state so the very next
+ * new-order chime fires instantly without needing another user gesture.
+ */
+function startSilentKeepAlive(ctx: AudioContext): void {
+  if (silentKeepAlive) return;
+  try {
+    const gain = ctx.createGain();
+    gain.gain.value = 0; // truly inaudible — this only keeps the graph active
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 30;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    silentKeepAlive = { osc, gain };
+  } catch {
+    /* ignore */
   }
 }
 
