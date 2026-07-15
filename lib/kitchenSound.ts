@@ -42,6 +42,7 @@ let activeSession: Session | null = null;
 let sharedCtx: AudioContext | null = null;
 let unlocked = false;
 let visibilityHookInstalled = false;
+let keepAliveHookInstalled = false;
 
 export function isKitchenAlarmMuted(): boolean {
   if (typeof window === "undefined") return true;
@@ -71,6 +72,7 @@ function getSharedCtx(): AudioContext | null {
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     sharedCtx = new AC({ latencyHint: "interactive" });
     installVisibilityResumeHook();
+    installKeepAliveResumeHook();
     return sharedCtx;
   } catch {
     return null;
@@ -89,6 +91,30 @@ function installVisibilityResumeHook(): void {
       /* ignore — needs a fresh gesture */
     });
   });
+}
+
+/**
+ * Browsers can silently re-suspend an AudioContext after a period of inactivity
+ * (or when the tab was backgrounded), even after it was unlocked once. When that
+ * happens the next alarm can't start without a fresh user gesture and stays
+ * silent. Keep a persistent, passive listener that resumes the context on any
+ * interaction with the kitchen board (tapping an order, entering the PIN, etc.),
+ * so the alarm is ready the moment a new order lands.
+ */
+function installKeepAliveResumeHook(): void {
+  if (keepAliveHookInstalled) return;
+  if (typeof window === "undefined") return;
+  keepAliveHookInstalled = true;
+  const resume = () => {
+    const ctx = sharedCtx;
+    if (!ctx || ctx.state !== "suspended") return;
+    void ctx.resume().catch(() => {
+      /* ignore — will retry on the next gesture */
+    });
+  };
+  for (const evt of ["pointerdown", "touchstart", "keydown", "click"] as const) {
+    window.addEventListener(evt, resume, { capture: true, passive: true });
+  }
 }
 
 export function unlockKitchenAudio(): void {
@@ -112,6 +138,25 @@ export function unlockKitchenAudio(): void {
 /** True once Web Audio has been unlocked by a user gesture this session. */
 export function isKitchenAudioUnlocked(): boolean {
   return unlocked;
+}
+
+/**
+ * True only when audio is unlocked AND the shared context is actually running.
+ * The context can be silently re-suspended by the browser after inactivity, so
+ * the kitchen board should use this (not `isKitchenAudioUnlocked`) to decide
+ * whether to keep prompting the operator to tap "enable sound".
+ */
+export function isKitchenAudioReady(): boolean {
+  if (!unlocked) return false;
+  const ctx = sharedCtx;
+  if (!ctx) return false;
+  if (ctx.state === "suspended") {
+    void ctx.resume().catch(() => {
+      /* needs a fresh gesture; the prompt will stay visible */
+    });
+    return false;
+  }
+  return ctx.state === "running";
 }
 
 export function ensureKitchenAudioUnlock(): void {
