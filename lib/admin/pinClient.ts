@@ -39,6 +39,19 @@ export function clearAdminSession(): void {
   }
 }
 
+/**
+ * Refresh the `rb_admin` session cookie from the PIN stored this session.
+ * EventSource (the kitchen stream) can only authenticate via that cookie, which
+ * may be missing or expired (e.g. tab left open > 12 h); re-verifying the stored
+ * PIN re-issues a fresh cookie so the live link connects on the first try.
+ * No-op (returns false) when no PIN is stored.
+ */
+export async function refreshAdminSessionCookie(): Promise<boolean> {
+  const pin = getStoredAdminPin();
+  if (!pin) return false;
+  return verifyAdminPinRemote(pin);
+}
+
 export async function verifyAdminPinRemote(pin: string): Promise<boolean> {
   try {
     const res = await fetch("/api/admin/verify-pin", {

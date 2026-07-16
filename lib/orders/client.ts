@@ -1,7 +1,7 @@
 "use client";
 
 import type { Order, OrderLightspeedMeta, OrderStatus } from "@/lib/types";
-import { getStoredAdminPin } from "@/lib/admin/pinClient";
+import { getStoredAdminPin, refreshAdminSessionCookie } from "@/lib/admin/pinClient";
 
 function adminOrderHeaders(): HeadersInit {
   const headers: Record<string, string> = {};
@@ -94,6 +94,7 @@ export function subscribeToOrderStream(
   let sseRetryTimer: number | null = null;
   let consecutiveErrors = 0;
   let lastVersion = -1;
+  let connecting = false;
 
   const clearDisconnectTimer = () => {
     if (disconnectTimer !== null) {
@@ -151,7 +152,7 @@ export function subscribeToOrderStream(
     // `snapshot` tears the polling fallback back down (see the snapshot handler).
     if (sseRetryTimer === null) {
       sseRetryTimer = window.setInterval(() => {
-        if (cancelled || es !== null) return;
+        if (cancelled || es !== null || connecting) return;
         consecutiveErrors = 0;
         connect();
       }, 20_000);
@@ -159,50 +160,70 @@ export function subscribeToOrderStream(
   };
 
   const connect = () => {
-    if (cancelled) return;
-    try {
-      es = new EventSource("/api/orders/stream", { withCredentials: true });
-    } catch (e) {
-      console.error("[orders/stream] cannot open EventSource", e);
-      startPollingFallback();
-      return;
-    }
+    if (cancelled || connecting || es !== null) return;
+    connecting = true;
+    void (async () => {
+      // EventSource can only authenticate via the `rb_admin` cookie, which may
+      // be absent or expired. Refresh it from the stored PIN first so the live
+      // link comes up on the very first attempt in every case.
+      await refreshAdminSessionCookie().catch(() => false);
+      if (cancelled) {
+        connecting = false;
+        return;
+      }
 
-    es.onopen = () => {
-      // A healthy (re)connect: clear the transient "disconnected" grace timer
-      // and reset the error streak so a normal ~55s recycle never trips the
-      // polling fallback.
-      consecutiveErrors = 0;
-      clearDisconnectTimer();
-    };
-
-    es.addEventListener("snapshot", (ev) => {
+      let source: EventSource;
       try {
-        const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
+        source = new EventSource("/api/orders/stream", { withCredentials: true });
+      } catch (e) {
+        console.error("[orders/stream] cannot open EventSource", e);
+        connecting = false;
+        startPollingFallback();
+        return;
+      }
+      es = source;
+      connecting = false;
+
+      source.onopen = () => {
+        // A healthy (re)connect: clear the transient "disconnected" grace timer
+        // and reset the error streak so a normal ~55s recycle never trips the
+        // polling fallback.
         consecutiveErrors = 0;
         clearDisconnectTimer();
-        // Live stream is (back) up — retire any polling fallback.
-        clearPollTimers();
-        lastVersion = data.version;
-        handlers.onSnapshot(data);
-      } catch (e) {
-        console.error("[orders/stream] snapshot parse", e);
-      }
-    });
+      };
 
-    es.addEventListener("orders", (ev) => {
-      try {
-        const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
-        lastVersion = data.version;
-        handlers.onUpdate(data);
-      } catch (e) {
-        console.error("[orders/stream] orders parse", e);
-      }
-    });
+      source.addEventListener("snapshot", (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
+          consecutiveErrors = 0;
+          clearDisconnectTimer();
+          // Live stream is (back) up — retire any polling fallback.
+          clearPollTimers();
+          lastVersion = data.version;
+          handlers.onSnapshot(data);
+        } catch (e) {
+          console.error("[orders/stream] snapshot parse", e);
+        }
+      });
 
-    // Default handler — older Safari ignores `event:` headers entirely and
-    // delivers everything as `message`. Re-dispatch via the body we sent.
-    es.onmessage = (ev) => {
+      source.addEventListener("orders", (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
+          lastVersion = data.version;
+          handlers.onUpdate(data);
+        } catch (e) {
+          console.error("[orders/stream] orders parse", e);
+        }
+      });
+
+      attachLooseHandlers(source);
+    })();
+  };
+
+  // Default handlers — older Safari ignores `event:` headers entirely and
+  // delivers everything as `message`. Re-dispatch via the body we sent.
+  const attachLooseHandlers = (source: EventSource) => {
+    source.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data) as OrderInboxSnapshot;
         lastVersion = data.version;
@@ -212,7 +233,7 @@ export function subscribeToOrderStream(
       }
     };
 
-    es.onerror = () => {
+    source.onerror = () => {
       consecutiveErrors += 1;
       // Our stream recycles itself every ~55s, which the browser sees as an
       // error right before it auto-reconnects (a fresh `snapshot` clears this).
