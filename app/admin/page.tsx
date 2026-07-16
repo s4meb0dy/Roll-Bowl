@@ -828,6 +828,12 @@ export default function AdminPage() {
    * Runs even before the PIN gate is unlocked: that way the kitchen tab can
    * sit idle on the gate while phones place orders, and the moment the PIN
    * is entered everything is already loaded.
+   *
+   * Re-subscribes when `unlocked` flips true: EventSource can only authenticate
+   * via the `rb_admin` cookie, which is set when the PIN is verified. A stream
+   * opened on a fresh session (no cookie yet) gets a 401 and falls back to
+   * polling; re-opening it right after unlock establishes the live SSE link
+   * instead of leaving the "kitchen link" stuck on the polling fallback.
    */
   useEffect(() => {
     if (!storeHydrated) return;
@@ -856,7 +862,7 @@ export default function AdminPage() {
     return () => {
       unsubscribe();
     };
-  }, [storeHydrated, applyOrdersSnapshot]);
+  }, [storeHydrated, unlocked, applyOrdersSnapshot]);
 
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);

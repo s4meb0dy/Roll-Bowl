@@ -91,6 +91,7 @@ export function subscribeToOrderStream(
   let es: EventSource | null = null;
   let pollTimer: number | null = null;
   let disconnectTimer: number | null = null;
+  let sseRetryTimer: number | null = null;
   let consecutiveErrors = 0;
   let lastVersion = -1;
 
@@ -101,41 +102,60 @@ export function subscribeToOrderStream(
     }
   };
 
+  const clearPollTimers = () => {
+    if (pollTimer !== null) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (sseRetryTimer !== null) {
+      window.clearInterval(sseRetryTimer);
+      sseRetryTimer = null;
+    }
+  };
+
   const cleanup = () => {
     clearDisconnectTimer();
     if (es) {
       es.close();
       es = null;
     }
-    if (pollTimer !== null) {
-      window.clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    clearPollTimers();
   };
 
   const startPollingFallback = () => {
-    if (cancelled || pollTimer !== null) return;
-    handlers.onFallbackToPolling?.();
-    const tick = async () => {
-      if (cancelled) return;
-      try {
-        const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: adminOrderHeaders(),
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as OrderInboxSnapshot;
-        if (data.version !== lastVersion) {
-          lastVersion = data.version;
-          handlers.onUpdate(data);
+    if (cancelled) return;
+    if (pollTimer === null) {
+      handlers.onFallbackToPolling?.();
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: adminOrderHeaders(),
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as OrderInboxSnapshot;
+          if (data.version !== lastVersion) {
+            lastVersion = data.version;
+            handlers.onUpdate(data);
+          }
+        } catch (e) {
+          console.error("[orders/stream] poll fallback", e);
         }
-      } catch (e) {
-        console.error("[orders/stream] poll fallback", e);
-      }
-    };
-    void tick();
-    pollTimer = window.setInterval(tick, 4_000);
+      };
+      void tick();
+      pollTimer = window.setInterval(tick, 4_000);
+    }
+    // Keep trying to restore the live SSE link in the background; a recovered
+    // `snapshot` tears the polling fallback back down (see the snapshot handler).
+    if (sseRetryTimer === null) {
+      sseRetryTimer = window.setInterval(() => {
+        if (cancelled || es !== null) return;
+        consecutiveErrors = 0;
+        connect();
+      }, 20_000);
+    }
   };
 
   const connect = () => {
@@ -148,11 +168,21 @@ export function subscribeToOrderStream(
       return;
     }
 
+    es.onopen = () => {
+      // A healthy (re)connect: clear the transient "disconnected" grace timer
+      // and reset the error streak so a normal ~55s recycle never trips the
+      // polling fallback.
+      consecutiveErrors = 0;
+      clearDisconnectTimer();
+    };
+
     es.addEventListener("snapshot", (ev) => {
       try {
         const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
         consecutiveErrors = 0;
         clearDisconnectTimer();
+        // Live stream is (back) up — retire any polling fallback.
+        clearPollTimers();
         lastVersion = data.version;
         handlers.onSnapshot(data);
       } catch (e) {
