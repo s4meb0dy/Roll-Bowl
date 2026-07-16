@@ -749,6 +749,29 @@ export default function AdminPage() {
     return () => releaseScreenWakeLock();
   }, [unlocked]);
 
+  // Browsers require one user gesture before audio/wake-lock can start. Rather
+  // than force the operator to hit the dedicated "enable sound" button, treat
+  // ANY interaction with the board (tap, scroll, key) as that gesture — so in
+  // practice sound arms itself the first time the kitchen touches the screen
+  // and then stays alive all shift (silent keep-alive + wake lock). The button
+  // remains only as a visible fallback until that first touch happens.
+  useEffect(() => {
+    if (!unlocked) return;
+    const arm = () => {
+      unlockKitchenAudio();
+      void requestScreenWakeLock();
+    };
+    const opts = { capture: true, passive: true } as const;
+    window.addEventListener("pointerdown", arm, opts);
+    window.addEventListener("keydown", arm, opts);
+    window.addEventListener("touchstart", arm, opts);
+    return () => {
+      window.removeEventListener("pointerdown", arm, opts);
+      window.removeEventListener("keydown", arm, opts);
+      window.removeEventListener("touchstart", arm, opts);
+    };
+  }, [unlocked]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -811,14 +834,14 @@ export default function AdminPage() {
     const unsubscribe = subscribeToOrderStream({
       onSnapshot: (snap) => {
         setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders);
+        applyOrdersSnapshot(snap.orders, { prune: snap.inboxEnabled });
         setStreamConnected(true);
         setUsingPollingFallback(false);
         setLastChecked(new Date());
       },
       onUpdate: (snap) => {
         setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders);
+        applyOrdersSnapshot(snap.orders, { prune: snap.inboxEnabled });
         setStreamConnected(true);
         setLastChecked(new Date());
       },

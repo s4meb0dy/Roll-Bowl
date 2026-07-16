@@ -135,8 +135,14 @@ interface AppState {
   /** Merge an order from the server inbox (e.g. phone) into this browser — idempotent. */
   mergeOrderFromInbox: (order: Order) => void;
 
-  /** Apply a snapshot of orders from the server (initial fetch / SSE snapshot event). */
-  applyOrdersSnapshot: (orders: Order[]) => void;
+  /**
+   * Apply a snapshot of orders from the server (initial fetch / SSE snapshot).
+   * When `opts.prune` is set (i.e. the server inbox is authoritative), orders
+   * the server no longer has are removed locally so deletes/clears propagate
+   * across devices — while never dropping orders not yet acknowledged by the
+   * server or older than the snapshot window.
+   */
+  applyOrdersSnapshot: (orders: Order[], opts?: { prune?: boolean }) => void;
 
   /** Wipe the local order board (e.g. after server-side clear). */
   clearOrders: () => void;
@@ -372,11 +378,14 @@ export const useStore = create<AppState>()(
           return { orders: next };
         }),
 
-      applyOrdersSnapshot: (incoming) =>
+      applyOrdersSnapshot: (incoming, opts) =>
         set((state) => {
+          const prune = opts?.prune ?? false;
           let changed = false;
           const byId = new Map<string, Order>();
           for (const o of state.orders) byId.set(o.id, o);
+
+          const incomingIds = new Set(incoming.map((o) => o.id));
           for (const remote of incoming) {
             const local = byId.get(remote.id);
             if (!local) {
@@ -390,6 +399,35 @@ export const useStore = create<AppState>()(
               changed = true;
             }
           }
+
+          if (prune) {
+            // The snapshot is the authoritative set of the server's most-recent
+            // orders. Drop locally-held orders the server no longer has (deleted
+            // or cleared on another device), but keep:
+            //   • orders not yet acknowledged by the server (no `version`), so a
+            //     just-placed order is never wiped before it syncs, and
+            //   • orders older than the snapshot window (beyond the read cap) —
+            //     those are simply out of range, not deleted.
+            let oldestIncomingMs = Infinity;
+            for (const o of incoming) {
+              const t = new Date(o.createdAt).getTime();
+              if (Number.isFinite(t) && t < oldestIncomingMs) oldestIncomingMs = t;
+            }
+            for (const [id, o] of byId) {
+              if (incomingIds.has(id)) continue;
+              if (o.version === undefined) continue;
+              const t = new Date(o.createdAt).getTime();
+              const withinWindow =
+                incoming.length === 0 || !Number.isFinite(oldestIncomingMs)
+                  ? true
+                  : t >= oldestIncomingMs;
+              if (withinWindow) {
+                byId.delete(id);
+                changed = true;
+              }
+            }
+          }
+
           if (!changed) return state;
           const orders = [...byId.values()].sort(
             (a, b) =>
