@@ -435,15 +435,23 @@ export default function CartPage() {
         diff: (minOrder - subtotal).toFixed(2),
       });
     }
-    const noSlotsToday = timeSlots.length === 0;
-    if (noSlotsToday) {
-      return t("time.closed_after_hours", { closeTime: closeTimeLabel });
-    }
-    if (!cafeOpen && timeMode === "asap") {
-      return t("time.closed_asap_pick_later", { closeTime: closeTimeLabel });
-    }
-    if (timeMode === "scheduled" && !scheduledSlot) {
-      return t("time.slot_required");
+    // Time / open-hours gating. ASAP orders are accepted right up to closing
+    // time — prep time is NOT subtracted. The +prep-lead only limits the
+    // "schedule for later" slots, so an empty later-slot list must never block
+    // an ASAP order while the kitchen is still open.
+    if (timeMode === "asap") {
+      if (!cafeOpen) {
+        return timeSlots.length > 0
+          ? t("time.closed_asap_pick_later", { closeTime: closeTimeLabel })
+          : t("time.closed_after_hours", { closeTime: closeTimeLabel });
+      }
+    } else {
+      if (timeSlots.length === 0) {
+        return t("time.closed_after_hours", { closeTime: closeTimeLabel });
+      }
+      if (!scheduledSlot) {
+        return t("time.slot_required");
+      }
     }
     if (paymentMethod === "cash") {
       if (cashDenomination === null) return t("payment.denomination_required");
@@ -462,14 +470,14 @@ export default function CartPage() {
     placing ||
     deliveryZipMissing ||
     belowMinimum ||
-    timeSlots.length === 0 ||
+    (timeMode === "asap"
+      ? !cafeOpen
+      : timeSlots.length === 0 || !scheduledSlot) ||
     (paymentMethod === "cash" &&
       (cashDenomination === null || cashDenomination < total)) ||
     (paymentMethod === "online" &&
       stripeEnabled &&
-      (!stripeClientSecret || stripeLoading || !stripeFormReady)) ||
-    (timeMode === "scheduled" && !scheduledSlot) ||
-    (!cafeOpen && timeMode === "asap");
+      (!stripeClientSecret || stripeLoading || !stripeFormReady));
 
   const formatComponents = (item: (typeof cart)[0]): string => {
     if (item.type !== "custom" || !item.components) return "";
@@ -1046,9 +1054,9 @@ export default function CartPage() {
                       errorMessage={stripeError}
                       disabled={
                         placing ||
-                        timeSlots.length === 0 ||
-                        (timeMode === "scheduled" && !scheduledSlot) ||
-                        (!cafeOpen && timeMode === "asap")
+                        (timeMode === "asap"
+                          ? !cafeOpen
+                          : timeSlots.length === 0 || !scheduledSlot)
                       }
                       onReady={() => setStripeFormReady(true)}
                     />
