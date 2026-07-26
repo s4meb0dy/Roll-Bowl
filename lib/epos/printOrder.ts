@@ -132,7 +132,7 @@ function printViaSdk(url: string, xmlOrRequest: string): Promise<EposPrintResult
     const printer = new e.ePOSPrint(url);
     const timer = window.setTimeout(() => {
       resolve({ ok: false, error: "Printer timeout — controleer IP en ePOS-Print instelling" });
-    }, 65000);
+    }, 15000);
 
     printer.onreceive = (res) => {
       clearTimeout(timer);

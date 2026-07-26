@@ -113,6 +113,8 @@ const PREP_MIN = 5;
 const PREP_MAX = 60;
 const PREP_STEP = 5;
 const PREP_DEFAULT = 15;
+/** How many times an ePOS print auto-retries before we flag it for the operator. */
+const MAX_PRINT_ATTEMPTS = 4;
 
 function OrderCard({
   order,
@@ -564,37 +566,101 @@ export default function AdminPage() {
   const [clearingOrders, setClearingOrders] = useState(false);
   const [clearOrdersMessage, setClearOrdersMessage] = useState<string | null>(null);
   const [printMessage, setPrintMessage] = useState<string | null>(null);
+  /** Accepted orders whose ePOS print failed after auto-retries — needs attention. */
+  const [failedPrintIds, setFailedPrintIds] = useState<string[]>([]);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
+  const printQueueRef = useRef<string[]>([]);
+  const printAttemptsRef = useRef<Map<string, number>>(new Map());
+  const printBusyRef = useRef(false);
   const newOrderWatchInit = useRef(false);
   const seenOrderIds = useRef<Set<string>>(new Set());
 
-  const triggerKitchenPrint = useCallback(
-    (orderId: string) => {
-      if (printFlightRef.current) return;
-      // Read the freshest copy from the store: accepting an order updates the
-      // prep time synchronously right before we print, and the closed-over
-      // `orders` array would still be the pre-accept snapshot.
-      const order = useStore.getState().orders.find((o) => o.id === orderId);
-      if (!order) return;
+  /**
+   * ePOS print queue with automatic retry. A single printer serves one job at a
+   * time; failures are retried with backoff and, if they keep failing, the order
+   * is surfaced in a persistent "NOT PRINTED" banner (never silently dropped).
+   */
+  const processPrintQueue = useCallback(() => {
+    if (printBusyRef.current) return;
+    const orderId = printQueueRef.current[0];
+    if (!orderId) return;
 
-      printFlightRef.current = { id: orderId };
-      setPrintMessage(null);
+    const order = useStore.getState().orders.find((o) => o.id === orderId);
+    if (!order) {
+      printQueueRef.current.shift();
+      printAttemptsRef.current.delete(orderId);
+      processPrintQueue();
+      return;
+    }
 
-      const eposConfig = loadEposConfig();
-      if (eposConfig.enabled && eposConfig.host.trim()) {
-        void printKitchenOrderEpos(order, eposConfig).then((result) => {
-          if (result.ok) {
-            markKitchenPrinted(orderId);
-            setPrintMessage(null);
-          } else {
-            setPrintMessage(result.error);
-          }
-          printFlightRef.current = null;
-        });
+    const eposConfig = loadEposConfig();
+    if (!eposConfig.enabled || !eposConfig.host.trim()) {
+      printQueueRef.current.shift();
+      return;
+    }
+
+    printBusyRef.current = true;
+    printFlightRef.current = { id: orderId };
+
+    void printKitchenOrderEpos(order, eposConfig).then((result) => {
+      printBusyRef.current = false;
+      printFlightRef.current = null;
+
+      if (result.ok) {
+        printQueueRef.current = printQueueRef.current.filter((id) => id !== orderId);
+        printAttemptsRef.current.delete(orderId);
+        setFailedPrintIds((ids) => ids.filter((id) => id !== orderId));
+        markKitchenPrinted(orderId);
+        setPrintMessage(null);
+        processPrintQueue();
         return;
       }
 
+      const attempts = (printAttemptsRef.current.get(orderId) ?? 0) + 1;
+      printAttemptsRef.current.set(orderId, attempts);
+      setPrintMessage(result.error);
+
+      if (attempts < MAX_PRINT_ATTEMPTS) {
+        // Keep it at the head and retry after a short backoff.
+        const delay = Math.min(2000 * attempts, 8000);
+        window.setTimeout(processPrintQueue, delay);
+      } else {
+        // Give up auto-retrying: surface loudly, move on to any other jobs.
+        printQueueRef.current = printQueueRef.current.filter((id) => id !== orderId);
+        setFailedPrintIds((ids) => (ids.includes(orderId) ? ids : [...ids, orderId]));
+        processPrintQueue();
+      }
+    });
+  }, [markKitchenPrinted]);
+
+  const queuePrint = useCallback(
+    (orderId: string) => {
+      printAttemptsRef.current.set(orderId, 0);
+      setFailedPrintIds((ids) => ids.filter((id) => id !== orderId));
+      if (!printQueueRef.current.includes(orderId)) {
+        printQueueRef.current.push(orderId);
+      }
+      processPrintQueue();
+    },
+    [processPrintQueue]
+  );
+
+  const triggerKitchenPrint = useCallback(
+    (orderId: string) => {
+      const order = useStore.getState().orders.find((o) => o.id === orderId);
+      if (!order) return;
+
+      const eposConfig = loadEposConfig();
+      if (eposConfig.enabled && eposConfig.host.trim()) {
+        setPrintMessage(null);
+        queuePrint(orderId);
+        return;
+      }
+
+      // Browser-print fallback (no ePOS configured): one-shot via window.print().
+      if (printFlightRef.current) return;
+      printFlightRef.current = { id: orderId };
       setPrintTargetId(orderId);
 
       const printTimer = window.setTimeout(() => {
@@ -622,7 +688,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted]
+    [markKitchenPrinted, queuePrint]
   );
 
   const handleAcceptAndPrint = useCallback(
@@ -864,6 +930,27 @@ export default function AdminPage() {
     };
   }, [storeHydrated, unlocked, applyOrdersSnapshot]);
 
+  // Auto-retry prints that failed all in-queue attempts: the printer may have
+  // been briefly asleep/offline. Retry periodically and when the tab regains
+  // focus, so a receipt is never permanently lost without the operator acting.
+  useEffect(() => {
+    if (failedPrintIds.length === 0) return;
+    const retry = () => {
+      for (const id of printQueueRef.current.length ? [] : failedPrintIds) {
+        queuePrint(id);
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") retry();
+    };
+    const interval = window.setInterval(retry, 30_000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [failedPrintIds, queuePrint]);
+
   const toggleKitchenMode = (on: boolean) => {
     setKitchenMode(on);
     if (typeof window !== "undefined") {
@@ -1058,6 +1145,29 @@ export default function AdminPage() {
             <Bell size={18} className="animate-pulse text-amber-600" />
             Tik hier om het meldingsgeluid aan te zetten
           </button>
+        )}
+        {failedPrintIds.length > 0 && (
+          <div className="no-print mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-bold text-rose-900">
+              <Printer size={18} className="text-rose-600" />
+              Bon NIET afgedrukt ({failedPrintIds.length}) — controleer de printer
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {failedPrintIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => triggerKitchenPrint(id)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-800 shadow-sm hover:bg-rose-100"
+                >
+                  <Printer size={14} />#{shortOrderCode(id)} opnieuw afdrukken
+                </button>
+              ))}
+            </div>
+            {printMessage && (
+              <p className="mt-2 text-xs text-rose-700">{printMessage}</p>
+            )}
+          </div>
         )}
         <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
