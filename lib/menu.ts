@@ -1228,6 +1228,23 @@ export const DRANKEN: ReadyMadeItem[] = [
  * All ready-made / fixed-recipe items in one flat list. Builders are excluded
  * since their composition lives on the cart-item itself.
  */
+/**
+ * Hidden test product for verifying the full order + payment flow end-to-end.
+ * It is intentionally NOT part of any public menu list, so customers never see
+ * it — it is only reachable via the private `/test-order` link. It still lives
+ * in the priced catalog below so the server-side price validation accepts an
+ * order that contains it.
+ */
+export const TEST_PRODUCT: ReadyMadeItem = {
+  id: "test-product",
+  name: "TEST — verificatie (niet zichtbaar)",
+  description: "Testartikel om de bestel- en betaalflow te controleren.",
+  price: 1.0,
+  ingredients: "",
+  tags: [],
+  emoji: "🧪",
+};
+
 const ALL_READY_MADE_ITEMS: ReadyMadeItem[] = [
   ...READY_MADE,
   ...BURRITOS,
@@ -1237,6 +1254,7 @@ const ALL_READY_MADE_ITEMS: ReadyMadeItem[] = [
   ...EXTRAS,
   ...DESSERTEN,
   ...DRANKEN,
+  TEST_PRODUCT,
 ];
 
 let _readyMadeIndex: Map<string, ReadyMadeItem> | null = null;
