@@ -1,13 +1,20 @@
 /**
- * @file Kitchen new-order notification — takeaway-app style marimba chime.
+ * @file Kitchen new-order notification.
  *
- * - Mobile browsers need a user gesture before audio; call
- *   `unlockKitchenAudio()` from the PIN unlock (or any click).
- * - One shared AudioContext for the session; visibility hook re-resumes
- *   after the tab was backgrounded.
- * - Warm, mid-register marimba/bell motif (Takeaway/Just Eat feel) that is
- *   friendly and recognisable instead of a piercing high-pitched siren, so it
- *   grabs attention without being harsh or disturbing.
+ * Reliability model (Android Chrome kitchen tablet, tab kept in foreground for
+ * a whole shift):
+ *
+ * - PRIMARY: an <audio> element playing a pre-rendered marimba chime. A media
+ *   element that was started once from a user gesture keeps working — and can be
+ *   re-played programmatically — for hours in a foreground tab. This sidesteps
+ *   the Web Audio autoplay trap where a mobile browser suspends the shared
+ *   AudioContext after a few idle hours and then refuses `resume()` without a
+ *   fresh gesture (which is why the alarm used to go silent + show the yellow
+ *   "enable sound" button).
+ * - A permanently-looping, near-silent <audio> keep-alive holds the audio
+ *   pipeline open so the alarm fires instantly even after a long quiet period.
+ * - FALLBACK: the original Web Audio synth chime, used when the audio files
+ *   can't be played (e.g. blocked before any gesture).
  * - `navigator.vibrate` runs in parallel on supported phones.
  */
 
@@ -15,6 +22,10 @@ const MUTE_KEY = "roll-bowl-kitchen-mute";
 
 /** How long the alarm keeps ringing (ms) — long enough to be heard in a busy kitchen. */
 const ALARM_WALL_MS = 14_000;
+
+const ALARM_SRC = "/kitchen-alarm.wav";
+const SILENT_SRC = "/kitchen-silent.wav";
+
 /** One chime cycle length (seconds) — matches the last note's offset + duration. */
 const CHIME_CYCLE_S = 1.0;
 /** Gap between cycles — a relaxed "ding … ding" cadence, not a relentless siren. */
@@ -24,10 +35,8 @@ const CHIME_CYCLES = 7;
 const NOTE_PEAK = 0.85;
 
 /**
- * Warm takeaway-app marimba motif: a friendly rising C-major phrase that
- * resolves on the octave (C5 → E5 → G5 → C6). It stays in the mid register
- * instead of climbing to a shrill G6, so it reads as a pleasant "order in!"
- * jingle rather than an alarm.
+ * Warm takeaway-app marimba motif (C5 → E5 → G5 → C6) used by the Web Audio
+ * fallback. The pre-rendered file (`/kitchen-alarm.wav`) uses the same motif.
  */
 const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
   [523.25, 0, 0.42], // C5
@@ -44,6 +53,12 @@ let unlocked = false;
 let visibilityHookInstalled = false;
 let keepAliveHookInstalled = false;
 let silentKeepAlive: { osc: OscillatorNode; gain: GainNode } | null = null;
+
+// Media-element layer (primary).
+let alarmEl: HTMLAudioElement | null = null;
+let silentEl: HTMLAudioElement | null = null;
+let mediaUnlocked = false;
+let alarmStopTimer: number | null = null;
 
 export function isKitchenAlarmMuted(): boolean {
   if (typeof window === "undefined") return true;
@@ -63,6 +78,112 @@ export function setKitchenAlarmMuted(muted: boolean): void {
   }
   if (muted) stopKitchenAlarmLoop();
 }
+
+/* ------------------------------------------------------------------ *
+ * Media-element layer (primary, robust on mobile for a full shift)
+ * ------------------------------------------------------------------ */
+
+function getSilentEl(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+  if (silentEl) return silentEl;
+  try {
+    const el = new Audio(SILENT_SRC);
+    el.loop = true;
+    el.preload = "auto";
+    el.setAttribute("playsinline", "");
+    silentEl = el;
+  } catch {
+    silentEl = null;
+  }
+  return silentEl;
+}
+
+function getAlarmEl(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+  if (alarmEl) return alarmEl;
+  try {
+    const el = new Audio(ALARM_SRC);
+    el.preload = "auto";
+    el.setAttribute("playsinline", "");
+    alarmEl = el;
+  } catch {
+    alarmEl = null;
+  }
+  return alarmEl;
+}
+
+/**
+ * Start the looping keep-alive element and "bless" the alarm element so both can
+ * be (re)played programmatically later. Must be called from a user gesture.
+ */
+function unlockMediaAudio(): void {
+  const silent = getSilentEl();
+  if (silent) {
+    silent.muted = false;
+    // The file itself is near-silent; full volume still keeps the pipeline
+    // "producing audio" (so the browser won't idle it) without being audible.
+    silent.volume = 1;
+    const p = silent.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        mediaUnlocked = true;
+      }).catch(() => {
+        /* needs another gesture — the yellow prompt stays up */
+      });
+    } else {
+      mediaUnlocked = true;
+    }
+  }
+
+  const alarm = getAlarmEl();
+  if (alarm) {
+    alarm.muted = true;
+    const p = alarm.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        try {
+          alarm.pause();
+          alarm.currentTime = 0;
+        } catch {
+          /* ignore */
+        }
+        alarm.muted = false;
+      }).catch(() => {
+        alarm.muted = false;
+      });
+    }
+  }
+}
+
+function resumeMediaAudio(): void {
+  if (!mediaUnlocked) return;
+  const silent = silentEl;
+  if (silent && silent.paused) {
+    void silent.play().catch(() => {
+      /* needs a fresh gesture */
+    });
+  }
+}
+
+function stopMediaAlarm(): void {
+  if (alarmStopTimer !== null) {
+    clearTimeout(alarmStopTimer);
+    alarmStopTimer = null;
+  }
+  if (alarmEl) {
+    try {
+      alarmEl.pause();
+      alarmEl.loop = false;
+      alarmEl.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Web Audio layer (fallback + shared unlock plumbing)
+ * ------------------------------------------------------------------ */
 
 function getSharedCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -86,6 +207,7 @@ function installVisibilityResumeHook(): void {
   visibilityHookInstalled = true;
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
+    resumeMediaAudio();
     const ctx = sharedCtx;
     if (!ctx || ctx.state !== "suspended") return;
     void ctx.resume().catch(() => {
@@ -95,18 +217,15 @@ function installVisibilityResumeHook(): void {
 }
 
 /**
- * Browsers can silently re-suspend an AudioContext after a period of inactivity
- * (or when the tab was backgrounded), even after it was unlocked once. When that
- * happens the next alarm can't start without a fresh user gesture and stays
- * silent. Keep a persistent, passive listener that resumes the context on any
- * interaction with the kitchen board (tapping an order, entering the PIN, etc.),
- * so the alarm is ready the moment a new order lands.
+ * Resume audio on any interaction with the kitchen board (tapping an order,
+ * entering the PIN, etc.) — belt-and-suspenders alongside the media keep-alive.
  */
 function installKeepAliveResumeHook(): void {
   if (keepAliveHookInstalled) return;
   if (typeof window === "undefined") return;
   keepAliveHookInstalled = true;
   const resume = () => {
+    resumeMediaAudio();
     const ctx = sharedCtx;
     if (!ctx || ctx.state !== "suspended") return;
     void ctx.resume().catch(() => {
@@ -120,6 +239,10 @@ function installKeepAliveResumeHook(): void {
 
 export function unlockKitchenAudio(): void {
   if (typeof window === "undefined") return;
+  // Primary: media elements (robust for the whole shift).
+  unlockMediaAudio();
+
+  // Fallback plumbing: unlock + keep the Web Audio context warm too.
   const ctx = getSharedCtx();
   if (!ctx) return;
   try {
@@ -138,17 +261,12 @@ export function unlockKitchenAudio(): void {
   }
 }
 
-/**
- * Keep the AudioContext from being idled-out by the browser when no alarm has
- * played for a while (rare orders!). A permanently-running, fully silent
- * oscillator (gain 0) keeps the context in the "running" state so the very next
- * new-order chime fires instantly without needing another user gesture.
- */
+/** Keep the (fallback) AudioContext from being idled-out during quiet spells. */
 function startSilentKeepAlive(ctx: AudioContext): void {
   if (silentKeepAlive) return;
   try {
     const gain = ctx.createGain();
-    gain.gain.value = 0; // truly inaudible — this only keeps the graph active
+    gain.gain.value = 0;
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.value = 30;
@@ -161,18 +279,26 @@ function startSilentKeepAlive(ctx: AudioContext): void {
   }
 }
 
-/** True once Web Audio has been unlocked by a user gesture this session. */
+/** True once audio has been unlocked by a user gesture this session. */
 export function isKitchenAudioUnlocked(): boolean {
-  return unlocked;
+  return mediaUnlocked || unlocked;
 }
 
 /**
- * True only when audio is unlocked AND the shared context is actually running.
- * The context can be silently re-suspended by the browser after inactivity, so
- * the kitchen board should use this (not `isKitchenAudioUnlocked`) to decide
- * whether to keep prompting the operator to tap "enable sound".
+ * True when the alarm can actually be fired right now. Prefers the media
+ * keep-alive (which the kitchen board polls to decide whether to keep showing
+ * the "enable sound" prompt); falls back to the Web Audio context state.
  */
 export function isKitchenAudioReady(): boolean {
+  if (mediaUnlocked && silentEl) {
+    if (silentEl.paused) {
+      void silentEl.play().catch(() => {
+        /* prompt stays until playback resumes */
+      });
+      return false;
+    }
+    return true;
+  }
   if (!unlocked) return false;
   const ctx = sharedCtx;
   if (!ctx) return false;
@@ -187,10 +313,10 @@ export function isKitchenAudioReady(): boolean {
 
 export function ensureKitchenAudioUnlock(): void {
   if (typeof window === "undefined") return;
-  if (unlocked) return;
+  if (isKitchenAudioUnlocked()) return;
   const handler = () => {
     unlockKitchenAudio();
-    if (unlocked) {
+    if (isKitchenAudioUnlocked()) {
       window.removeEventListener("pointerdown", handler, true);
       window.removeEventListener("touchstart", handler, true);
       window.removeEventListener("keydown", handler, true);
@@ -220,8 +346,6 @@ function buildSoftOutputGraph(ctx: AudioContext): {
   const master = ctx.createGain();
   master.gain.value = 0.95;
 
-  // Compressor evens out the loudness so the chime carries across the kitchen
-  // without the harsh, in-your-face punch of a siren.
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -20;
   comp.knee.value = 28;
@@ -229,8 +353,6 @@ function buildSoftOutputGraph(ctx: AudioContext): {
   comp.attack.value = 0.006;
   comp.release.value = 0.3;
 
-  // Roll off the piercing high end — a marimba/bell timbre lives in the mids,
-  // so this keeps the tone warm and pleasant rather than shrill.
   const lowpass = ctx.createBiquadFilter();
   lowpass.type = "lowpass";
   lowpass.frequency.value = 5200;
@@ -261,15 +383,13 @@ function scheduleNote(
   durS: number,
   peakGain: number
 ): OscillatorNode[] {
-  // Marimba/bell timbre: a sine fundamental plus a softer overtone, struck with
-  // a fast attack and left to ring out with a natural exponential decay.
   const fundamental = ctx.createOscillator();
   fundamental.type = "sine";
   fundamental.frequency.value = freq;
 
   const overtone = ctx.createOscillator();
   overtone.type = "sine";
-  overtone.frequency.value = freq * 4; // 2 octaves up gives the mallet "ping"
+  overtone.frequency.value = freq * 4;
 
   const overtoneGain = ctx.createGain();
   overtoneGain.gain.value = 0.18;
@@ -277,8 +397,6 @@ function scheduleNote(
   const mix = ctx.createGain();
   mix.gain.value = 0.85;
 
-  // Percussive envelope — quick attack then a smooth ring-out (no plateau),
-  // which reads as a friendly marimba tap rather than a sustained beep.
   const env = ctx.createGain();
   env.gain.setValueAtTime(0.0001, t0);
   env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.008);
@@ -298,9 +416,6 @@ function scheduleNote(
   return [fundamental, overtone];
 }
 
-/**
- * Schedule one or more delivery-style chime cycles. Returns stop() for instant mute.
- */
 function scheduleDeliveryChime(
   ctx: AudioContext,
   options: { cycles?: number; cycleGapS?: number } = {}
@@ -341,38 +456,73 @@ function scheduleDeliveryChime(
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Public alarm controls
+ * ------------------------------------------------------------------ */
+
 export function stopKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
-  if (!activeSession) return;
-  try {
-    activeSession.stop();
-  } catch {
-    /* ignore */
-  }
+  const s = activeSession;
   activeSession = null;
+  if (s) {
+    try {
+      s.stop();
+    } catch {
+      /* ignore */
+    }
+  }
+  // Defensive: ensure the media alarm is stopped even if no session was set yet.
+  stopMediaAlarm();
   tryVibrate([0]);
 }
 
-/**
- * New order: 3× delivery chime + gentle vibration. Falls back to a single chime
- * if Web Audio is unavailable.
- */
+/** New order: loop the chime for a while + vibrate. Media first, synth fallback. */
 export function startKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   stopKitchenAlarmLoop();
-
-  const ctx = getSharedCtx();
-  if (!ctx) {
-    playNewOrderChime();
-    return;
-  }
 
   tryVibrate([
     350, 180, 350, 180, 350, 700,
     350, 180, 350, 180, 350, 700,
     350, 180, 350, 180, 350,
   ]);
+
+  const alarm = getAlarmEl();
+  if (alarm) {
+    alarm.loop = true;
+    alarm.muted = false;
+    alarm.volume = 1;
+    try {
+      alarm.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    const p = alarm.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        alarmStopTimer = window.setTimeout(stopMediaAlarm, ALARM_WALL_MS);
+        activeSession = { stop: stopMediaAlarm };
+      }).catch(() => {
+        startWebAudioAlarm();
+      });
+      return;
+    }
+    // Older browsers: play() returned void — assume it started.
+    alarmStopTimer = window.setTimeout(stopMediaAlarm, ALARM_WALL_MS);
+    activeSession = { stop: stopMediaAlarm };
+    return;
+  }
+
+  startWebAudioAlarm();
+}
+
+function startWebAudioAlarm(): void {
+  const ctx = getSharedCtx();
+  if (!ctx) {
+    playNewOrderChime();
+    return;
+  }
 
   let endTimer: number | null = null;
   let scheduled: { stop: () => void } | null = null;
@@ -427,20 +577,39 @@ export function playNewOrderChime(): void {
   }
 }
 
-/** "Test geluid" — one chime cycle; the click also unlocks mobile audio. */
+/** "Test geluid" — one chime; the click also unlocks mobile audio. */
 export function playTestKitchenAlarm(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   unlockKitchenAudio();
-  const ctx = getSharedCtx();
-  if (!ctx) return;
-
   tryVibrate([100]);
 
+  const alarm = getAlarmEl();
+  if (alarm) {
+    alarm.loop = false;
+    alarm.muted = false;
+    alarm.volume = 1;
+    try {
+      alarm.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    const p = alarm.play();
+    if (p && typeof p.then === "function") {
+      p.catch(() => playWebAudioTest());
+    }
+    return;
+  }
+
+  playWebAudioTest();
+}
+
+function playWebAudioTest(): void {
+  const ctx = getSharedCtx();
+  if (!ctx) return;
   const fire = () => {
     scheduleDeliveryChime(ctx, { cycles: 1, cycleGapS: 0 });
   };
-
   if (ctx.state === "suspended") {
     void ctx.resume().then(fire).catch(fire);
   } else {
