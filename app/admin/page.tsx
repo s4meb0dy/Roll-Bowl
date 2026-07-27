@@ -568,6 +568,8 @@ export default function AdminPage() {
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   /** Accepted orders whose ePOS print failed after auto-retries — needs attention. */
   const [failedPrintIds, setFailedPrintIds] = useState<string[]>([]);
+  /** True when receipts print server-side via Epson Server Direct Print. */
+  const [serverPrintEnabled, setServerPrintEnabled] = useState(false);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const printQueueRef = useRef<string[]>([]);
@@ -648,6 +650,26 @@ export default function AdminPage() {
 
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
+      // Server Direct Print: the venue printer pulls jobs from the server, so
+      // (re)printing just (re)queues the receipt — works from any device.
+      if (serverPrintEnabled) {
+        const pin = getStoredAdminPin();
+        void fetch("/api/print/enqueue", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(pin ? { "x-admin-pin": pin } : {}),
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ orderId }),
+        })
+          .then((r) => {
+            setPrintMessage(r.ok ? null : "Kon bon niet naar de printer sturen.");
+          })
+          .catch(() => setPrintMessage("Geen verbinding met de server."));
+        return;
+      }
+
       const order = useStore.getState().orders.find((o) => o.id === orderId);
       if (!order) return;
 
@@ -688,7 +710,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted, queuePrint]
+    [markKitchenPrinted, queuePrint, serverPrintEnabled]
   );
 
   const handleAcceptAndPrint = useCallback(
@@ -696,9 +718,10 @@ export default function AdminPage() {
       acceptOrderWithPrep(orderId, prepMinutes);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      triggerKitchenPrint(orderId);
+      // In SDP mode the accept PATCH already queues the print server-side.
+      if (!serverPrintEnabled) triggerKitchenPrint(orderId);
     },
-    [acceptOrderWithPrep, triggerKitchenPrint]
+    [acceptOrderWithPrep, triggerKitchenPrint, serverPrintEnabled]
   );
 
   const handleAcceptScheduledAndPrint = useCallback(
@@ -706,10 +729,27 @@ export default function AdminPage() {
       acceptScheduledOrder(orderId);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      triggerKitchenPrint(orderId);
+      if (!serverPrintEnabled) triggerKitchenPrint(orderId);
     },
-    [acceptScheduledOrder, triggerKitchenPrint]
+    [acceptScheduledOrder, triggerKitchenPrint, serverPrintEnabled]
   );
+
+  // Discover whether printing is handled server-side (Server Direct Print).
+  useEffect(() => {
+    if (!unlocked) return;
+    const pin = getStoredAdminPin();
+    void fetch("/api/print/config", {
+      credentials: "same-origin",
+      headers: pin ? { "x-admin-pin": pin } : undefined,
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { enabled?: boolean } | null) => {
+        if (data) setServerPrintEnabled(Boolean(data.enabled));
+      })
+      .catch(() => {
+        /* keep client printing as the default */
+      });
+  }, [unlocked]);
 
   useEffect(() => {
     setSoundMuted(isKitchenAlarmMuted());

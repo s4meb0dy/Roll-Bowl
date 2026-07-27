@@ -9,6 +9,10 @@ import {
   patchOrderFields,
   type OrderPatch,
 } from "@/lib/orders/inboxStore";
+import {
+  enqueuePrintJob,
+  isServerDirectPrintEnabled,
+} from "@/lib/orders/printQueueStore";
 
 const VALID_STATUSES: OrderStatus[] = [
   "pending",
@@ -169,6 +173,22 @@ export async function PATCH(
     if (!result) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
+
+    // Server Direct Print: when an order is accepted (→ preparing) queue its
+    // receipt so the venue printer pulls & prints it, regardless of which device
+    // did the accepting (e.g. a phone off-site).
+    if (
+      isServerDirectPrintEnabled() &&
+      checked.patch.status === "preparing" &&
+      !result.order.kitchenPrinted
+    ) {
+      try {
+        await enqueuePrintJob(id);
+      } catch (e) {
+        console.error("[orders/:id] SDP enqueue failed", id, e);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       order: result.order,
