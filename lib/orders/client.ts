@@ -70,17 +70,32 @@ export interface OrderStreamHandlers {
   onSnapshot: (snap: OrderInboxSnapshot) => void;
   /** Incremental update when the server bumps the version. */
   onUpdate: (snap: OrderInboxSnapshot) => void;
-  /** Called when the underlying transport drops (with auto-reconnect coming). */
+  /** Called when polling stops succeeding for a while. */
   onDisconnect?: () => void;
-  /** Called when reconnect attempts continuously fail and we fall back to polling. */
+  /** @deprecated SSE fallback removed — kept for API compatibility. */
   onFallbackToPolling?: () => void;
 }
 
+/** Visible tab: poll every 4 s. Background tab: every 15 s to cut serverless load. */
+const POLL_INTERVAL_VISIBLE_MS = 4_000;
+const POLL_INTERVAL_HIDDEN_MS = 15_000;
+/** Mark disconnected if no successful poll within this window. */
+const DISCONNECT_AFTER_MS = 15_000;
+
+function pollIntervalMs(): number {
+  if (typeof document === "undefined") return POLL_INTERVAL_VISIBLE_MS;
+  return document.visibilityState === "hidden"
+    ? POLL_INTERVAL_HIDDEN_MS
+    : POLL_INTERVAL_VISIBLE_MS;
+}
+
 /**
- * Subscribe to the kitchen order stream. Uses native EventSource (auto-
- * reconnects on transient failures) with a polling fallback if EventSource
- * keeps failing — older Safari versions and corporate proxies sometimes
- * strip the `Content-Type: text/event-stream` upgrade.
+ * Subscribe to kitchen order updates via short polling requests.
+ *
+ * Previously this opened a long-lived SSE connection (~55 s per invocation),
+ * which kept Vercel serverless functions provisioned 24/7 on the kitchen tablet
+ * and burned Fluid memory-hours. Short GET /api/orders/inbox polls (~200 ms each)
+ * deliver the same UX with ~95 % less function memory-time.
  */
 export function subscribeToOrderStream(
   handlers: OrderStreamHandlers
@@ -88,176 +103,90 @@ export function subscribeToOrderStream(
   if (typeof window === "undefined") return () => {};
 
   let cancelled = false;
-  let es: EventSource | null = null;
   let pollTimer: number | null = null;
-  let disconnectTimer: number | null = null;
-  let sseRetryTimer: number | null = null;
-  let consecutiveErrors = 0;
   let lastVersion = -1;
-  let connecting = false;
+  let gotSnapshot = false;
+  let lastSuccessAt = 0;
+  let consecutiveErrors = 0;
 
-  const clearDisconnectTimer = () => {
-    if (disconnectTimer !== null) {
-      window.clearTimeout(disconnectTimer);
-      disconnectTimer = null;
-    }
-  };
-
-  const clearPollTimers = () => {
-    if (pollTimer !== null) {
-      window.clearInterval(pollTimer);
+  const scheduleNext = () => {
+    if (cancelled || pollTimer !== null) return;
+    pollTimer = window.setTimeout(() => {
       pollTimer = null;
-    }
-    if (sseRetryTimer !== null) {
-      window.clearInterval(sseRetryTimer);
-      sseRetryTimer = null;
-    }
+      void tick().finally(scheduleNext);
+    }, pollIntervalMs());
   };
 
-  const cleanup = () => {
-    clearDisconnectTimer();
-    if (es) {
-      es.close();
-      es = null;
-    }
-    clearPollTimers();
-  };
-
-  const startPollingFallback = () => {
+  const tick = async () => {
     if (cancelled) return;
-    if (pollTimer === null) {
-      handlers.onFallbackToPolling?.();
-      const tick = async () => {
-        if (cancelled) return;
-        try {
-          const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
-            cache: "no-store",
-            credentials: "same-origin",
-            headers: adminOrderHeaders(),
-          });
-          if (!res.ok) return;
-          const data = (await res.json()) as OrderInboxSnapshot;
-          if (data.version !== lastVersion) {
-            lastVersion = data.version;
-            handlers.onUpdate(data);
-          }
-        } catch (e) {
-          console.error("[orders/stream] poll fallback", e);
-        }
-      };
-      void tick();
-      pollTimer = window.setInterval(tick, 4_000);
-    }
-    // Keep trying to restore the live SSE link in the background; a recovered
-    // `snapshot` tears the polling fallback back down (see the snapshot handler).
-    if (sseRetryTimer === null) {
-      sseRetryTimer = window.setInterval(() => {
-        if (cancelled || es !== null || connecting) return;
-        consecutiveErrors = 0;
-        connect();
-      }, 20_000);
-    }
-  };
-
-  const connect = () => {
-    if (cancelled || connecting || es !== null) return;
-    connecting = true;
-    void (async () => {
-      // EventSource can only authenticate via the `rb_admin` cookie, which may
-      // be absent or expired. Refresh it from the stored PIN first so the live
-      // link comes up on the very first attempt in every case.
+    try {
       await refreshAdminSessionCookie().catch(() => false);
-      if (cancelled) {
-        connecting = false;
+      if (cancelled) return;
+
+      const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: adminOrderHeaders(),
+      });
+      if (!res.ok) {
+        consecutiveErrors += 1;
+        if (
+          consecutiveErrors >= 3 &&
+          (lastSuccessAt === 0 || Date.now() - lastSuccessAt > DISCONNECT_AFTER_MS)
+        ) {
+          handlers.onDisconnect?.();
+        }
         return;
       }
 
-      let source: EventSource;
-      try {
-        source = new EventSource("/api/orders/stream", { withCredentials: true });
-      } catch (e) {
-        console.error("[orders/stream] cannot open EventSource", e);
-        connecting = false;
-        startPollingFallback();
+      const data = (await res.json()) as OrderInboxSnapshot;
+      consecutiveErrors = 0;
+      lastSuccessAt = Date.now();
+
+      if (!gotSnapshot) {
+        gotSnapshot = true;
+        lastVersion = data.version;
+        handlers.onSnapshot(data);
         return;
       }
-      es = source;
-      connecting = false;
 
-      source.onopen = () => {
-        // A healthy (re)connect: clear the transient "disconnected" grace timer
-        // and reset the error streak so a normal ~55s recycle never trips the
-        // polling fallback.
-        consecutiveErrors = 0;
-        clearDisconnectTimer();
-      };
-
-      source.addEventListener("snapshot", (ev) => {
-        try {
-          const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
-          consecutiveErrors = 0;
-          clearDisconnectTimer();
-          // Live stream is (back) up — retire any polling fallback.
-          clearPollTimers();
-          lastVersion = data.version;
-          handlers.onSnapshot(data);
-        } catch (e) {
-          console.error("[orders/stream] snapshot parse", e);
-        }
-      });
-
-      source.addEventListener("orders", (ev) => {
-        try {
-          const data = JSON.parse((ev as MessageEvent).data) as OrderInboxSnapshot;
-          lastVersion = data.version;
-          handlers.onUpdate(data);
-        } catch (e) {
-          console.error("[orders/stream] orders parse", e);
-        }
-      });
-
-      attachLooseHandlers(source);
-    })();
-  };
-
-  // Default handlers — older Safari ignores `event:` headers entirely and
-  // delivers everything as `message`. Re-dispatch via the body we sent.
-  const attachLooseHandlers = (source: EventSource) => {
-    source.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data) as OrderInboxSnapshot;
+      if (data.version !== lastVersion) {
         lastVersion = data.version;
         handlers.onUpdate(data);
-      } catch {
-        /* ignore non-JSON pings */
       }
-    };
-
-    source.onerror = () => {
+    } catch (e) {
       consecutiveErrors += 1;
-      // Our stream recycles itself every ~55s, which the browser sees as an
-      // error right before it auto-reconnects (a fresh `snapshot` clears this).
-      // Only surface "disconnected" if no reconnect lands within a short grace
-      // window, so the live pill doesn't flicker on every healthy recycle.
-      if (disconnectTimer === null) {
-        disconnectTimer = window.setTimeout(() => {
-          disconnectTimer = null;
-          handlers.onDisconnect?.();
-        }, 4_000);
+      console.error("[orders/poll]", e);
+      if (
+        consecutiveErrors >= 3 &&
+        (lastSuccessAt === 0 || Date.now() - lastSuccessAt > DISCONNECT_AFTER_MS)
+      ) {
+        handlers.onDisconnect?.();
       }
-      // After several back-to-back failures (proxy stripped the stream, etc.)
-      // give up on SSE and fall back to polling so orders keep coming in.
-      if (consecutiveErrors >= 5) {
-        cleanup();
-        startPollingFallback();
-      }
-    };
+    }
   };
 
-  connect();
+  const onVisibility = () => {
+    if (cancelled) return;
+    // Re-poll immediately when the tab becomes visible again.
+    if (document.visibilityState === "visible") {
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      void tick().finally(scheduleNext);
+    }
+  };
+
+  void tick().finally(scheduleNext);
+  document.addEventListener("visibilitychange", onVisibility);
 
   return () => {
     cancelled = true;
-    cleanup();
+    document.removeEventListener("visibilitychange", onVisibility);
+    if (pollTimer !== null) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
   };
 }

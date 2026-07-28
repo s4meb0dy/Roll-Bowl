@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import type {
   InventoryCategoryId,
   InventoryState,
-  InventoryStreamEvent,
   InventoryUpdateRequest,
 } from "./types";
 import { ITEM_TO_CATEGORY, PROTECTED_CATEGORIES } from "./config";
@@ -16,6 +15,10 @@ const EMPTY: InventoryState = {
   lastSynced: null,
   updatedAt: new Date(0).toISOString(),
 };
+
+/** Menu visitors poll every 30 s; admin inventory page every 15 s. */
+const POLL_INTERVAL_MENU_MS = 30_000;
+const POLL_INTERVAL_ADMIN_MS = 15_000;
 
 interface InventoryStore {
   state: InventoryState;
@@ -62,84 +65,56 @@ export function useInventory() {
   };
 }
 
+export interface InventorySyncOptions {
+  /** Shorter interval on the admin inventory page. */
+  admin?: boolean;
+}
+
 /**
- * Mounts an SSE subscription that pushes inventory patches into the client store
- * in real time. Automatically reconnects with polling fallback if the stream
- * drops (e.g. because the page sits behind a proxy that kills long-lived GETs).
+ * Polls /api/inventory on an interval and pushes updates into the client store.
  *
- * Render this ONCE near the top of any tree that cares about inventory — menu
- * root + admin pages — then consume through `useInventory()` elsewhere.
+ * SSE was removed: every menu visitor previously held a long-lived serverless
+ * function open, which dominated Vercel Fluid memory usage. Stock changes are
+ * infrequent, so a 30 s poll is plenty for the public menu.
  */
-export function useInventorySync(): void {
+export function useInventorySync(opts?: InventorySyncOptions): void {
   const setState = useInventoryStore((s) => s.setState);
   const setConnected = useInventoryStore((s) => s.setConnected);
+  const intervalMs = opts?.admin ? POLL_INTERVAL_ADMIN_MS : POLL_INTERVAL_MENU_MS;
 
   useEffect(() => {
-    let source: EventSource | null = null;
     let pollTimer: number | null = null;
     let cancelled = false;
-
-    const applyEvent = (payload: InventoryStreamEvent) => {
-      setState(payload.state);
-    };
+    let consecutiveErrors = 0;
 
     const fetchSnapshot = async () => {
       try {
         const res = await fetch("/api/inventory", { cache: "no-store" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 3) setConnected(false);
+          return;
+        }
         const s = (await res.json()) as InventoryState;
-        if (!cancelled) setState(s);
-      } catch {
-        /* network failure – next poll will retry */
-      }
-    };
-
-    const startPolling = () => {
-      if (pollTimer !== null) return;
-      pollTimer = window.setInterval(fetchSnapshot, 15_000);
-    };
-
-    const stopPolling = () => {
-      if (pollTimer !== null) {
-        window.clearInterval(pollTimer);
-        pollTimer = null;
-      }
-    };
-
-    // Kick off with a one-shot snapshot so the UI shows accurate stock even if
-    // the SSE handshake is still completing.
-    void fetchSnapshot();
-
-    try {
-      source = new EventSource("/api/inventory/stream");
-      source.addEventListener("snapshot", (ev: MessageEvent) => {
-        try { applyEvent(JSON.parse(ev.data) as InventoryStreamEvent); } catch { /* noop */ }
-      });
-      source.addEventListener("patch", (ev: MessageEvent) => {
-        try { applyEvent(JSON.parse(ev.data) as InventoryStreamEvent); } catch { /* noop */ }
-      });
-      source.onopen = () => {
+        if (cancelled) return;
+        consecutiveErrors = 0;
+        setState(s);
         setConnected(true);
-        stopPolling();
-      };
-      source.onerror = () => {
-        setConnected(false);
-        // Browser will auto-reconnect; start polling in the meantime so the
-        // UI doesn't show stale stock for more than ~15 s.
-        startPolling();
-      };
-    } catch {
-      // EventSource not supported – go straight to polling.
-      startPolling();
-    }
+      } catch {
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= 3) setConnected(false);
+      }
+    };
+
+    void fetchSnapshot();
+    pollTimer = window.setInterval(fetchSnapshot, intervalMs);
 
     return () => {
       cancelled = true;
-      source?.close();
-      stopPolling();
+      if (pollTimer !== null) window.clearInterval(pollTimer);
       setConnected(false);
     };
-  }, [setState, setConnected]);
+  }, [setState, setConnected, intervalMs]);
 }
 
 /** Flip a single switch on the server. Returns the new inventory state. */

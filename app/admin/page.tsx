@@ -556,7 +556,6 @@ export default function AdminPage() {
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
   /** Connection state for the SSE stream → drives the live status pill. */
   const [streamConnected, setStreamConnected] = useState(false);
-  const [usingPollingFallback, setUsingPollingFallback] = useState(false);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -925,21 +924,8 @@ export default function AdminPage() {
   }, []);
 
   /**
-   * Real-time link to the kitchen inbox.
-   *
-   * SSE pushes every new order or status change within ~1.5s of the server
-   * write. Polling fallback only kicks in when the EventSource transport
-   * keeps failing (some corporate proxies strip text/event-stream).
-   *
-   * Runs even before the PIN gate is unlocked: that way the kitchen tab can
-   * sit idle on the gate while phones place orders, and the moment the PIN
-   * is entered everything is already loaded.
-   *
-   * Re-subscribes when `unlocked` flips true: EventSource can only authenticate
-   * via the `rb_admin` cookie, which is set when the PIN is verified. A stream
-   * opened on a fresh session (no cookie yet) gets a 401 and falls back to
-   * polling; re-opening it right after unlock establishes the live SSE link
-   * instead of leaving the "kitchen link" stuck on the polling fallback.
+   * Kitchen inbox sync via short polling (every ~4 s). Runs even before the PIN
+   * gate is unlocked so orders are already loaded when the PIN is entered.
    */
   useEffect(() => {
     if (!storeHydrated) return;
@@ -948,7 +934,6 @@ export default function AdminPage() {
         setOrderInboxEnabled(snap.inboxEnabled);
         applyOrdersSnapshot(snap.orders, { prune: snap.inboxEnabled });
         setStreamConnected(true);
-        setUsingPollingFallback(false);
         setLastChecked(new Date());
       },
       onUpdate: (snap) => {
@@ -958,10 +943,6 @@ export default function AdminPage() {
         setLastChecked(new Date());
       },
       onDisconnect: () => {
-        setStreamConnected(false);
-      },
-      onFallbackToPolling: () => {
-        setUsingPollingFallback(true);
         setStreamConnected(false);
       },
     });
@@ -1227,10 +1208,8 @@ export default function AdminPage() {
             {orderInboxEnabled === true && (
               <p className="mt-1 text-xs font-medium text-emerald-800">
                 {streamConnected
-                  ? "Realtime kitchen-stream actief — bestellingen en statuswijzigingen verschijnen direct op alle toestellen."
-                  : usingPollingFallback
-                    ? "Stream niet beschikbaar — terugvallen op polling om de 4s. Bestellingen blijven binnenkomen."
-                    : "Verbinding met de keuken-stream wordt opgezet…"}
+                  ? "Keuken-link actief — bestellingen en statuswijzigingen verschijnen binnen enkele seconden op alle toestellen."
+                  : "Verbinding met de keuken-inbox wordt opgezet…"}
               </p>
             )}
           </div>
@@ -1250,16 +1229,12 @@ export default function AdminPage() {
               className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-sm ${
                 streamConnected
                   ? "border-emerald-200 bg-white"
-                  : usingPollingFallback
-                    ? "border-amber-200 bg-amber-50"
-                    : "border-neutral-200 bg-neutral-50"
+                  : "border-neutral-200 bg-neutral-50"
               }`}
               title={
                 streamConnected
-                  ? "Realtime SSE-stream actief — wijzigingen komen direct binnen"
-                  : usingPollingFallback
-                    ? "Polling-fallback actief — vernieuwt om de 4s"
-                    : "Verbinding met de stream wordt opgezet…"
+                  ? "Keuken-inbox actief — vernieuwt om de 4s"
+                  : "Verbinding wordt opgezet…"
               }
             >
               <span className="relative flex h-2.5 w-2.5">
@@ -1268,38 +1243,22 @@ export default function AdminPage() {
                 )}
                 <span
                   className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                    streamConnected
-                      ? "bg-emerald-500"
-                      : usingPollingFallback
-                        ? "bg-amber-500"
-                        : "bg-neutral-400"
+                    streamConnected ? "bg-emerald-500" : "bg-neutral-400"
                   }`}
                 />
               </span>
               <Radio
                 size={14}
-                className={
-                  streamConnected
-                    ? "text-emerald-600"
-                    : usingPollingFallback
-                      ? "text-amber-600"
-                      : "text-neutral-500"
-                }
+                className={streamConnected ? "text-emerald-600" : "text-neutral-500"}
               />
               <span
                 className={`font-semibold ${
-                  streamConnected
-                    ? "text-emerald-800"
-                    : usingPollingFallback
-                      ? "text-amber-900"
-                      : "text-neutral-600"
+                  streamConnected ? "text-emerald-800" : "text-neutral-600"
                 }`}
               >
                 {streamConnected
                   ? "Kitchen link · live"
-                  : usingPollingFallback
-                    ? "Kitchen link · polling"
-                    : "Kitchen link · connecting…"}
+                  : "Kitchen link · connecting…"}
               </span>
             </div>
             {!kitchenMode && (

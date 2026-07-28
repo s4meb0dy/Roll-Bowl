@@ -243,7 +243,7 @@ function CategoryCard({
 }
 
 export default function InventoryAdminPage() {
-  useInventorySync();
+  useInventorySync({ admin: true });
   const { state, connected } = useInventory();
 
   const [mounted, setMounted] = useState(false);
