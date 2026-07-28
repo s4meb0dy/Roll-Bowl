@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 function LogoMark({ size = 40 }: { size?: number }) {
   return (
     <Image
-      src="/logo.png"
+      src="/logo.webp"
       alt="Roll & Bowl"
       width={size}
       height={size}

@@ -44,7 +44,7 @@ export default function SiteFooter() {
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
               <Image
-                src="/logo.png"
+                src="/logo.webp"
                 alt={BUSINESS.name}
                 width={28}
                 height={28}

@@ -78,7 +78,7 @@ function HeroShowcaseCard({
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-cream-100">
         <Image
-          src="/bowls/delicious-chicken.png"
+          src="/bowls/delicious-chicken.webp"
           alt={t("landing.hero_custom")}
           fill
           sizes="(max-width: 1024px) 85vw, 280px"
@@ -258,7 +258,7 @@ export default function LandingPage() {
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-2.5">
           <Image
-            src="/logo.png"
+            src="/logo.webp"
             alt="Roll & Bowl"
             width={44}
             height={44}

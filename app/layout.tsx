@@ -70,17 +70,17 @@ export const metadata: Metadata = {
     : {}),
   icons: {
     icon: [
-      { url: "/logo.png", type: "image/png" },
+      { url: "/logo.webp", type: "image/webp" },
     ],
     apple: [
-      { url: "/logo.png", sizes: "180x180", type: "image/png" },
+      { url: "/logo.webp", sizes: "180x180", type: "image/webp" },
     ],
-    shortcut: ["/logo.png"],
+    shortcut: ["/logo.webp"],
   },
   openGraph: {
     title: "Roll&Bowl",
     description: "Fresh poké bowls, burritos and sushi delivered in Antwerp.",
-    images: ["/logo.png"],
+    images: ["/logo.webp"],
     type: "website",
   },
 };
