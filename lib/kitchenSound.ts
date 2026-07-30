@@ -340,11 +340,11 @@ function startSilentKeepAlive(ctx: AudioContext): void {
   if (silentKeepAlive) return;
   try {
     const gain = ctx.createGain();
-    // Tiny but non-zero so the context stays "active".
-    gain.gain.value = 0.0008;
+    // Near-zero Web Audio keep-alive (fallback path only).
+    gain.gain.value = 0.00005;
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.value = 55;
+    osc.frequency.value = 28;
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
