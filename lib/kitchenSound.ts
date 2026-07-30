@@ -1,48 +1,40 @@
 /**
  * @file Kitchen new-order notification.
  *
- * Reliability model (Android Chrome kitchen tablet, tab kept in foreground for
- * a whole shift):
+ * Reliability model (Android Chrome kitchen tablet, tab kept in foreground):
  *
- * - PRIMARY: an <audio> element playing a pre-rendered marimba chime. A media
- *   element that was started once from a user gesture keeps working — and can be
- *   re-played programmatically — for hours in a foreground tab. This sidesteps
- *   the Web Audio autoplay trap where a mobile browser suspends the shared
- *   AudioContext after a few idle hours and then refuses `resume()` without a
- *   fresh gesture (which is why the alarm used to go silent + show the yellow
- *   "enable sound" button).
- * - A permanently-looping, near-silent <audio> keep-alive holds the audio
- *   pipeline open so the alarm fires instantly even after a long quiet period.
- * - FALLBACK: the original Web Audio synth chime, used when the audio files
- *   can't be played (e.g. blocked before any gesture).
- * - `navigator.vibrate` runs in parallel on supported phones.
+ * - PRIMARY: HTMLAudioElement playing a pre-rendered marimba chime.
+ * - Keep-alive: a looping *quietly audible* low hum (not digital silence).
+ *   Chrome pauses "silent media" after idle time — that was why the yellow
+ *   button kept coming back mid-shift.
+ * - Heartbeat: every ~2s, if the keep-alive paused, try to restart it.
+ * - Any user gesture re-arms keep-alive + wake lock (no dedicated button needed
+ *   after the first tap).
+ * - FALLBACK: Web Audio synth + navigator.vibrate.
+ *
+ * Hard browser limit: the *first* unlock still needs one gesture. After that
+ * we keep the pipeline warm so alarms can fire without another tap.
  */
 
 const MUTE_KEY = "roll-bowl-kitchen-mute";
 
-/** How long the alarm keeps ringing (ms) — long enough to be heard in a busy kitchen. */
+/** How long the alarm keeps ringing (ms). */
 const ALARM_WALL_MS = 14_000;
+const HEARTBEAT_MS = 2_000;
 
 const ALARM_SRC = "/kitchen-alarm.wav";
 const SILENT_SRC = "/kitchen-silent.wav";
 
-/** One chime cycle length (seconds) — matches the last note's offset + duration. */
 const CHIME_CYCLE_S = 1.0;
-/** Gap between cycles — a relaxed "ding … ding" cadence, not a relentless siren. */
 const CHIME_CYCLE_GAP_S = 1.1;
 const CHIME_CYCLES = 7;
-/** Per-note peak gain — clearly audible over kitchen noise, but warm not shrill. */
 const NOTE_PEAK = 0.85;
 
-/**
- * Warm takeaway-app marimba motif (C5 → E5 → G5 → C6) used by the Web Audio
- * fallback. The pre-rendered file (`/kitchen-alarm.wav`) uses the same motif.
- */
 const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
-  [523.25, 0, 0.42], // C5
-  [659.25, 0.18, 0.42], // E5
-  [783.99, 0.36, 0.46], // G5
-  [1046.5, 0.54, 0.5], // C6
+  [523.25, 0, 0.42],
+  [659.25, 0.18, 0.42],
+  [783.99, 0.36, 0.46],
+  [1046.5, 0.54, 0.5],
 ];
 
 type Session = { stop: () => void };
@@ -52,13 +44,15 @@ let sharedCtx: AudioContext | null = null;
 let unlocked = false;
 let visibilityHookInstalled = false;
 let keepAliveHookInstalled = false;
+let heartbeatTimer: number | null = null;
 let silentKeepAlive: { osc: OscillatorNode; gain: GainNode } | null = null;
 
-// Media-element layer (primary).
 let alarmEl: HTMLAudioElement | null = null;
 let silentEl: HTMLAudioElement | null = null;
 let mediaUnlocked = false;
 let alarmStopTimer: number | null = null;
+/** True once keep-alive has successfully played at least once this session. */
+let keepAliveEverPlayed = false;
 
 export function isKitchenAlarmMuted(): boolean {
   if (typeof window === "undefined") return true;
@@ -80,8 +74,20 @@ export function setKitchenAlarmMuted(muted: boolean): void {
 }
 
 /* ------------------------------------------------------------------ *
- * Media-element layer (primary, robust on mobile for a full shift)
+ * Media-element layer
  * ------------------------------------------------------------------ */
+
+function configureMediaEl(el: HTMLAudioElement): void {
+  el.preload = "auto";
+  el.setAttribute("playsinline", "");
+  el.setAttribute("webkit-playsinline", "");
+  // Hint to mobile browsers this is intentional background media.
+  try {
+    el.setAttribute("controls", "false");
+  } catch {
+    /* ignore */
+  }
+}
 
 function getSilentEl(): HTMLAudioElement | null {
   if (typeof window === "undefined") return null;
@@ -89,8 +95,7 @@ function getSilentEl(): HTMLAudioElement | null {
   try {
     const el = new Audio(SILENT_SRC);
     el.loop = true;
-    el.preload = "auto";
-    el.setAttribute("playsinline", "");
+    configureMediaEl(el);
     silentEl = el;
   } catch {
     silentEl = null;
@@ -103,8 +108,7 @@ function getAlarmEl(): HTMLAudioElement | null {
   if (alarmEl) return alarmEl;
   try {
     const el = new Audio(ALARM_SRC);
-    el.preload = "auto";
-    el.setAttribute("playsinline", "");
+    configureMediaEl(el);
     alarmEl = el;
   } catch {
     alarmEl = null;
@@ -112,57 +116,101 @@ function getAlarmEl(): HTMLAudioElement | null {
   return alarmEl;
 }
 
-/**
- * Start the looping keep-alive element and "bless" the alarm element so both can
- * be (re)played programmatically later. Must be called from a user gesture.
- */
-function unlockMediaAudio(): void {
-  const silent = getSilentEl();
-  if (silent) {
-    silent.muted = false;
-    // The file itself is near-silent; full volume still keeps the pipeline
-    // "producing audio" (so the browser won't idle it) without being audible.
-    silent.volume = 1;
-    const p = silent.play();
-    if (p && typeof p.then === "function") {
-      p.then(() => {
-        mediaUnlocked = true;
-      }).catch(() => {
-        /* needs another gesture — the yellow prompt stays up */
-      });
-    } else {
-      mediaUnlocked = true;
+/** Tear down and recreate media elements (recover from a dead pipeline). */
+function recreateMediaElements(): void {
+  if (silentEl) {
+    try {
+      silentEl.pause();
+      silentEl.removeAttribute("src");
+      silentEl.load();
+    } catch {
+      /* ignore */
     }
+    silentEl = null;
   }
-
-  const alarm = getAlarmEl();
-  if (alarm) {
-    alarm.muted = true;
-    const p = alarm.play();
-    if (p && typeof p.then === "function") {
-      p.then(() => {
-        try {
-          alarm.pause();
-          alarm.currentTime = 0;
-        } catch {
-          /* ignore */
-        }
-        alarm.muted = false;
-      }).catch(() => {
-        alarm.muted = false;
-      });
+  if (alarmEl) {
+    try {
+      alarmEl.pause();
+      alarmEl.removeAttribute("src");
+      alarmEl.load();
+    } catch {
+      /* ignore */
     }
+    alarmEl = null;
   }
 }
 
-function resumeMediaAudio(): void {
-  if (!mediaUnlocked) return;
-  const silent = silentEl;
-  if (silent && silent.paused) {
-    void silent.play().catch(() => {
-      /* needs a fresh gesture */
-    });
+function playSilentKeepAlive(): Promise<boolean> {
+  const silent = getSilentEl();
+  if (!silent) return Promise.resolve(false);
+  silent.loop = true;
+  silent.muted = false;
+  silent.volume = 1;
+  try {
+    if (silent.ended) silent.currentTime = 0;
+  } catch {
+    /* ignore */
   }
+  const p = silent.play();
+  if (p && typeof p.then === "function") {
+    return p
+      .then(() => {
+        mediaUnlocked = true;
+        keepAliveEverPlayed = true;
+        return true;
+      })
+      .catch(() => false);
+  }
+  mediaUnlocked = true;
+  keepAliveEverPlayed = true;
+  return Promise.resolve(true);
+}
+
+/**
+ * Bless both media elements from a user gesture and start the keep-alive loop.
+ */
+function unlockMediaAudio(): void {
+  void playSilentKeepAlive();
+
+  // Don't poke the alarm element while it's ringing — that would interrupt it.
+  const alarmRinging =
+    Boolean(alarmEl && !alarmEl.paused && alarmEl.loop) || Boolean(activeSession);
+  if (!alarmRinging) {
+    const alarm = getAlarmEl();
+    if (alarm) {
+      alarm.muted = true;
+      alarm.volume = 1;
+      const p = alarm.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => {
+          try {
+            alarm.pause();
+            alarm.currentTime = 0;
+          } catch {
+            /* ignore */
+          }
+          alarm.muted = false;
+        }).catch(() => {
+          alarm.muted = false;
+        });
+      } else {
+        alarm.muted = false;
+      }
+    }
+  }
+
+  startHeartbeat();
+}
+
+function resumeMediaAudio(): void {
+  if (!mediaUnlocked && !keepAliveEverPlayed) return;
+  void playSilentKeepAlive().then((ok) => {
+    if (!ok && keepAliveEverPlayed) {
+      // Pipeline died hard — recreate and retry once.
+      recreateMediaElements();
+      void playSilentKeepAlive();
+    }
+  });
 }
 
 function stopMediaAlarm(): void {
@@ -181,8 +229,31 @@ function stopMediaAlarm(): void {
   }
 }
 
+function startHeartbeat(): void {
+  if (typeof window === "undefined") return;
+  if (heartbeatTimer !== null) return;
+  heartbeatTimer = window.setInterval(() => {
+    if (isKitchenAlarmMuted()) return;
+    // Don't interrupt a ringing alarm.
+    if (activeSession && alarmEl && !alarmEl.paused && alarmEl.loop) return;
+    const silent = silentEl;
+    if (!silent) {
+      if (mediaUnlocked || keepAliveEverPlayed) void playSilentKeepAlive();
+      return;
+    }
+    if (silent.paused || silent.ended) {
+      void playSilentKeepAlive().then((ok) => {
+        if (!ok && keepAliveEverPlayed) {
+          recreateMediaElements();
+          void playSilentKeepAlive();
+        }
+      });
+    }
+  }, HEARTBEAT_MS);
+}
+
 /* ------------------------------------------------------------------ *
- * Web Audio layer (fallback + shared unlock plumbing)
+ * Web Audio layer (fallback)
  * ------------------------------------------------------------------ */
 
 function getSharedCtx(): AudioContext | null {
@@ -211,26 +282,31 @@ function installVisibilityResumeHook(): void {
     const ctx = sharedCtx;
     if (!ctx || ctx.state !== "suspended") return;
     void ctx.resume().catch(() => {
-      /* ignore — needs a fresh gesture */
+      /* needs a fresh gesture */
     });
+  });
+  // pageshow covers bfcache / Android tab restore.
+  window.addEventListener("pageshow", () => {
+    resumeMediaAudio();
+  });
+  window.addEventListener("focus", () => {
+    resumeMediaAudio();
   });
 }
 
-/**
- * Resume audio on any interaction with the kitchen board (tapping an order,
- * entering the PIN, etc.) — belt-and-suspenders alongside the media keep-alive.
- */
 function installKeepAliveResumeHook(): void {
   if (keepAliveHookInstalled) return;
   if (typeof window === "undefined") return;
   keepAliveHookInstalled = true;
   const resume = () => {
-    resumeMediaAudio();
+    // Any gesture: re-arm keep-alive (this IS a user gesture → play() allowed).
+    unlockMediaAudio();
     const ctx = sharedCtx;
-    if (!ctx || ctx.state !== "suspended") return;
-    void ctx.resume().catch(() => {
-      /* ignore — will retry on the next gesture */
-    });
+    if (ctx && ctx.state === "suspended") {
+      void ctx.resume().catch(() => {
+        /* ignore */
+      });
+    }
   };
   for (const evt of ["pointerdown", "touchstart", "keydown", "click"] as const) {
     window.addEventListener(evt, resume, { capture: true, passive: true });
@@ -239,10 +315,8 @@ function installKeepAliveResumeHook(): void {
 
 export function unlockKitchenAudio(): void {
   if (typeof window === "undefined") return;
-  // Primary: media elements (robust for the whole shift).
   unlockMediaAudio();
 
-  // Fallback plumbing: unlock + keep the Web Audio context warm too.
   const ctx = getSharedCtx();
   if (!ctx) return;
   try {
@@ -257,19 +331,19 @@ export function unlockKitchenAudio(): void {
     }
     startSilentKeepAlive(ctx);
   } catch {
-    /* ignore — we'll retry on the next gesture */
+    /* ignore */
   }
 }
 
-/** Keep the (fallback) AudioContext from being idled-out during quiet spells. */
 function startSilentKeepAlive(ctx: AudioContext): void {
   if (silentKeepAlive) return;
   try {
     const gain = ctx.createGain();
-    gain.gain.value = 0;
+    // Tiny but non-zero so the context stays "active".
+    gain.gain.value = 0.0008;
     const osc = ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.value = 30;
+    osc.frequency.value = 55;
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
@@ -279,32 +353,32 @@ function startSilentKeepAlive(ctx: AudioContext): void {
   }
 }
 
-/** True once audio has been unlocked by a user gesture this session. */
 export function isKitchenAudioUnlocked(): boolean {
-  return mediaUnlocked || unlocked;
+  return mediaUnlocked || unlocked || keepAliveEverPlayed;
 }
 
 /**
- * True when the alarm can actually be fired right now. Prefers the media
- * keep-alive (which the kitchen board polls to decide whether to keep showing
- * the "enable sound" prompt); falls back to the Web Audio context state.
+ * True when the alarm can fire right now. Prefer media keep-alive state.
  */
 export function isKitchenAudioReady(): boolean {
-  if (mediaUnlocked && silentEl) {
-    if (silentEl.paused) {
-      void silentEl.play().catch(() => {
-        /* prompt stays until playback resumes */
-      });
-      return false;
-    }
+  if (silentEl && !silentEl.paused && !silentEl.ended) {
+    mediaUnlocked = true;
+    keepAliveEverPlayed = true;
     return true;
+  }
+  if (mediaUnlocked || keepAliveEverPlayed) {
+    // Try to resume immediately; report not-ready until it actually plays
+    // so the UI can still nudge if needed — but heartbeat + gesture hooks
+    // usually recover without the yellow button.
+    void playSilentKeepAlive();
+    return Boolean(silentEl && !silentEl.paused);
   }
   if (!unlocked) return false;
   const ctx = sharedCtx;
   if (!ctx) return false;
   if (ctx.state === "suspended") {
     void ctx.resume().catch(() => {
-      /* needs a fresh gesture; the prompt will stay visible */
+      /* needs gesture */
     });
     return false;
   }
@@ -313,7 +387,12 @@ export function isKitchenAudioReady(): boolean {
 
 export function ensureKitchenAudioUnlock(): void {
   if (typeof window === "undefined") return;
-  if (isKitchenAudioUnlocked()) return;
+  installVisibilityResumeHook();
+  installKeepAliveResumeHook();
+  if (isKitchenAudioUnlocked()) {
+    unlockKitchenAudio();
+    return;
+  }
   const handler = () => {
     unlockKitchenAudio();
     if (isKitchenAudioUnlocked()) {
@@ -471,12 +550,24 @@ export function stopKitchenAlarmLoop(): void {
       /* ignore */
     }
   }
-  // Defensive: ensure the media alarm is stopped even if no session was set yet.
   stopMediaAlarm();
   tryVibrate([0]);
+  // Resume keep-alive after the alarm stops.
+  resumeMediaAudio();
 }
 
-/** New order: loop the chime for a while + vibrate. Media first, synth fallback. */
+function beginMediaAlarm(el: HTMLAudioElement): void {
+  el.loop = true;
+  el.muted = false;
+  el.volume = 1;
+  try {
+    el.currentTime = 0;
+  } catch {
+    /* ignore */
+  }
+}
+
+/** New order: loop the chime + vibrate. Media first, recreate on failure, synth fallback. */
 export function startKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
@@ -488,29 +579,50 @@ export function startKitchenAlarmLoop(): void {
     350, 180, 350, 180, 350,
   ]);
 
-  const alarm = getAlarmEl();
-  if (alarm) {
-    alarm.loop = true;
-    alarm.muted = false;
-    alarm.volume = 1;
-    try {
-      alarm.currentTime = 0;
-    } catch {
-      /* ignore */
+  // Nudge keep-alive so the pipeline is warm before/while alarm plays.
+  void playSilentKeepAlive();
+
+  const armSession = (el: HTMLAudioElement) => {
+    if (alarmStopTimer !== null) {
+      clearTimeout(alarmStopTimer);
+      alarmStopTimer = null;
     }
-    const p = alarm.play();
-    if (p && typeof p.then === "function") {
-      p.then(() => {
-        alarmStopTimer = window.setTimeout(stopMediaAlarm, ALARM_WALL_MS);
-        activeSession = { stop: stopMediaAlarm };
-      }).catch(() => {
-        startWebAudioAlarm();
-      });
-      return;
-    }
-    // Older browsers: play() returned void — assume it started.
     alarmStopTimer = window.setTimeout(stopMediaAlarm, ALARM_WALL_MS);
     activeSession = { stop: stopMediaAlarm };
+    void el; // el already playing
+  };
+
+  const tryPlay = (el: HTMLAudioElement): Promise<boolean> => {
+    beginMediaAlarm(el);
+    const p = el.play();
+    if (p && typeof p.then === "function") {
+      return p
+        .then(() => {
+          armSession(el);
+          return true;
+        })
+        .catch(() => false);
+    }
+    armSession(el);
+    return Promise.resolve(true);
+  };
+
+  const alarm = getAlarmEl();
+  if (alarm) {
+    void tryPlay(alarm).then((ok) => {
+      if (ok) return;
+      // Dead element — recreate and retry once.
+      recreateMediaElements();
+      const retry = getAlarmEl();
+      if (!retry) {
+        startWebAudioAlarm();
+        return;
+      }
+      void tryPlay(retry).then((ok2) => {
+        if (!ok2) startWebAudioAlarm();
+        else void playSilentKeepAlive();
+      });
+    });
     return;
   }
 
@@ -560,7 +672,6 @@ function startWebAudioAlarm(): void {
   };
 }
 
-/** Single chime — fallback when the full graph cannot be built. */
 export function playNewOrderChime(): void {
   if (typeof window === "undefined" || isKitchenAlarmMuted()) return;
   const ctx = getSharedCtx();
@@ -596,7 +707,17 @@ export function playTestKitchenAlarm(): void {
     }
     const p = alarm.play();
     if (p && typeof p.then === "function") {
-      p.catch(() => playWebAudioTest());
+      p.catch(() => {
+        recreateMediaElements();
+        const retry = getAlarmEl();
+        if (!retry) {
+          playWebAudioTest();
+          return;
+        }
+        retry.loop = false;
+        retry.muted = false;
+        void retry.play().catch(() => playWebAudioTest());
+      });
     }
     return;
   }

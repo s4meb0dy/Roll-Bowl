@@ -551,7 +551,8 @@ export default function AdminPage() {
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
   const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
-  const [audioArmed, setAudioArmed] = useState(false);
+  /** Once true this session, never show the yellow arm button again. */
+  const [audioEverArmed, setAudioEverArmed] = useState(false);
   /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
   /** Connection state for the SSE stream → drives the live status pill. */
@@ -792,8 +793,15 @@ export default function AdminPage() {
   }, [orders, storeHydrated, unlocked]);
 
   const acknowledgeAlarm = useCallback(() => {
+    // This tap is a user gesture — re-arm audio so the next order can ring
+    // even if the keep-alive had died during a long quiet spell.
+    unlockKitchenAudio();
+    void requestScreenWakeLock();
     stopKitchenAlarmLoop();
     setAlarmOrderId(null);
+    if (isKitchenAudioReady()) {
+      setAudioEverArmed(true);
+    }
   }, []);
 
   const handleDeleteOrder = useCallback(
@@ -824,24 +832,23 @@ export default function AdminPage() {
   }, [soundMuted]);
 
   /**
-   * Browsers only allow audio after a user gesture, and can silently re-suspend
-   * the audio context after inactivity even once unlocked. Poll the *real*
-   * readiness (unlocked AND context running) continuously so the "enable sound"
-   * button reappears whenever the alarm would otherwise fail silently — tapping
-   * it re-arms the audio.
+   * Poll real audio readiness. Yellow prompt only until the first successful
+   * arm this session — after that any tap re-arms in the background.
    */
   useEffect(() => {
     if (!unlocked) return;
-    const check = () => setAudioArmed(isKitchenAudioReady());
+    const check = () => {
+      if (isKitchenAudioReady()) setAudioEverArmed(true);
+    };
     check();
-    const id = window.setInterval(check, 1000);
+    const id = window.setInterval(check, 1500);
     return () => window.clearInterval(id);
   }, [unlocked]);
 
   const armKitchenAudio = useCallback(() => {
     unlockKitchenAudio();
     void requestScreenWakeLock();
-    setAudioArmed(true);
+    setAudioEverArmed(true);
     if (!isKitchenAlarmMuted()) playTestKitchenAlarm();
   }, []);
 
@@ -854,17 +861,18 @@ export default function AdminPage() {
     return () => releaseScreenWakeLock();
   }, [unlocked]);
 
-  // Browsers require one user gesture before audio/wake-lock can start. Rather
-  // than force the operator to hit the dedicated "enable sound" button, treat
-  // ANY interaction with the board (tap, scroll, key) as that gesture — so in
-  // practice sound arms itself the first time the kitchen touches the screen
-  // and then stays alive all shift (silent keep-alive + wake lock). The button
-  // remains only as a visible fallback until that first touch happens.
+  // First unlock needs a gesture. After that, EVERY tap/key re-arms keep-alive
+  // so the yellow button is only needed once at the start of a shift (or never,
+  // if they already unlocked via the PIN pad).
   useEffect(() => {
     if (!unlocked) return;
+    ensureKitchenAudioUnlock();
     const arm = () => {
       unlockKitchenAudio();
       void requestScreenWakeLock();
+      window.setTimeout(() => {
+        if (isKitchenAudioReady()) setAudioEverArmed(true);
+      }, 120);
     };
     const opts = { capture: true, passive: true } as const;
     window.addEventListener("pointerdown", arm, opts);
@@ -1157,14 +1165,14 @@ export default function AdminPage() {
       )}
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        {!soundMuted && !audioArmed && (
+        {!soundMuted && !audioEverArmed && (
           <button
             type="button"
             onClick={armKitchenAudio}
             className="no-print mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.99]"
           >
             <Bell size={18} className="animate-pulse text-amber-600" />
-            Tik hier om het meldingsgeluid aan te zetten
+            Tik één keer om meldingsgeluid te activeren (blijft aan)
           </button>
         )}
         {failedPrintIds.length > 0 && (

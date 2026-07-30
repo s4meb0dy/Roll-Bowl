@@ -1,7 +1,13 @@
+/**
+ * Synthesizes the kitchen alarm + a quiet keep-alive as mono WAV files.
+ * Run: `node scripts/generate-kitchen-audio.mjs`
+ *
+ * Keep-alive must NOT be near-digital-silence: Android Chrome detects
+ * "silent media" and pauses the element after a while, which is what made
+ * the yellow "enable sound" button reappear mid-shift.
+ */
 import fs from "fs";
 
-// Synthesizes the kitchen alarm + a near-silent keep-alive as small mono WAV
-// files. Run once: `node scripts/generate-kitchen-audio.mjs`.
 const SR = 22050;
 
 function writeWav(path, samples) {
@@ -34,7 +40,7 @@ const notes = [
   [783.99, 0.36, 0.46],
   [1046.5, 0.54, 0.55],
 ];
-const cycleLen = 1.7; // seconds incl. trailing gap → relaxed "ding … ding" when looped
+const cycleLen = 1.7;
 const N = Math.floor(SR * cycleLen);
 const alarm = new Float32Array(N);
 for (const [freq, off, dur] of notes) {
@@ -42,7 +48,7 @@ for (const [freq, off, dur] of notes) {
   const len = Math.floor(dur * SR);
   for (let i = 0; i < len; i++) {
     const t = i / SR;
-    const env = Math.exp(-t * 4.5); // percussive ring-out
+    const env = Math.exp(-t * 4.5);
     const fund = Math.sin(2 * Math.PI * freq * t);
     const over = 0.18 * Math.sin(2 * Math.PI * freq * 4 * t);
     const idx = start + i;
@@ -54,10 +60,19 @@ for (const v of alarm) peak = Math.max(peak, Math.abs(v));
 if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.9;
 writeWav("public/kitchen-alarm.wav", alarm);
 
-// --- Keep-alive: 1s of essentially-inaudible tone (nonzero so the browser
-// treats the media element as actively producing audio and won't idle it). ---
-const S = new Float32Array(SR * 1);
-for (let i = 0; i < S.length; i++) S[i] = 0.0003 * Math.sin((2 * Math.PI * 1 * i) / SR);
-writeWav("public/kitchen-silent.wav", S);
+// --- Keep-alive: 2s loop of a quiet low hum + tiny noise.
+// Loud enough that Chrome won't classify it as silent media (~ -36 dBFS),
+// quiet enough that kitchen staff won't notice it on a tablet at normal volume.
+const KEEP_S = Math.floor(SR * 2);
+const keep = new Float32Array(KEEP_S);
+for (let i = 0; i < KEEP_S; i++) {
+  const t = i / SR;
+  const hum = 0.012 * Math.sin(2 * Math.PI * 55 * t);
+  const hum2 = 0.004 * Math.sin(2 * Math.PI * 110 * t);
+  // Deterministic soft noise (LCG) so the file is stable across regenerations.
+  const noise = 0.003 * ((((i * 1103515245 + 12345) >>> 0) / 0xffffffff) * 2 - 1);
+  keep[i] = hum + hum2 + noise;
+}
+writeWav("public/kitchen-silent.wav", keep);
 
 console.log("wrote public/kitchen-alarm.wav and public/kitchen-silent.wav");
