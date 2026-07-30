@@ -145,7 +145,8 @@ function playSilentKeepAlive(): Promise<boolean> {
   if (!silent) return Promise.resolve(false);
   silent.loop = true;
   silent.muted = false;
-  silent.volume = 1;
+  // Keep-alive must stay inaudible; alarm volume is separate.
+  silent.volume = 0.05;
   try {
     if (silent.ended) silent.currentTime = 0;
   } catch {

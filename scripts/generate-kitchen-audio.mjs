@@ -60,18 +60,15 @@ for (const v of alarm) peak = Math.max(peak, Math.abs(v));
 if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.9;
 writeWav("public/kitchen-alarm.wav", alarm);
 
-// --- Keep-alive: 2s loop of a quiet low hum + tiny noise.
-// Loud enough that Chrome won't classify it as silent media (~ -36 dBFS),
-// quiet enough that kitchen staff won't notice it on a tablet at normal volume.
+// --- Keep-alive: inaudible on typical tablet speakers.
+// Pure sub-bass (~28 Hz) at very low level — no noise/hiss (that was audible).
+// Still non-zero PCM so Chrome is less likely to treat it as digital silence;
+// heartbeat + any kitchen tap re-arms if the browser pauses it anyway.
 const KEEP_S = Math.floor(SR * 2);
 const keep = new Float32Array(KEEP_S);
 for (let i = 0; i < KEEP_S; i++) {
   const t = i / SR;
-  const hum = 0.012 * Math.sin(2 * Math.PI * 55 * t);
-  const hum2 = 0.004 * Math.sin(2 * Math.PI * 110 * t);
-  // Deterministic soft noise (LCG) so the file is stable across regenerations.
-  const noise = 0.003 * ((((i * 1103515245 + 12345) >>> 0) / 0xffffffff) * 2 - 1);
-  keep[i] = hum + hum2 + noise;
+  keep[i] = 0.0006 * Math.sin(2 * Math.PI * 28 * t);
 }
 writeWav("public/kitchen-silent.wav", keep);
 
