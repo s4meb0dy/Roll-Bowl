@@ -33,7 +33,11 @@ import {
 import Header from "@/components/Header";
 import EposPrinterSettings from "@/components/admin/EposPrinterSettings";
 import KitchenReceipt80 from "@/components/KitchenReceipt80";
-import { loadEposConfig } from "@/lib/epos/config";
+import {
+  loadEposConfig,
+  eposPrinterWebUrl,
+  isPrinterCertError,
+} from "@/lib/epos/config";
 import { printKitchenOrderEpos } from "@/lib/epos/printOrder";
 import { useStore } from "@/lib/store/useStore";
 import {
@@ -570,6 +574,12 @@ export default function AdminPage() {
   const [failedPrintIds, setFailedPrintIds] = useState<string[]>([]);
   /** True when receipts print server-side via Epson Server Direct Print. */
   const [serverPrintEnabled, setServerPrintEnabled] = useState(false);
+  /**
+   * Self-signed printer SSL blocked by the browser. Show a one-tap "open
+   * printer IP" recovery instead of a vague red error.
+   */
+  const [printerCertBlocked, setPrinterCertBlocked] = useState(false);
+  const [printerCertUrl, setPrinterCertUrl] = useState<string | null>(null);
 
   const printFlightRef = useRef<{ id: string } | null>(null);
   const printQueueRef = useRef<string[]>([]);
@@ -615,6 +625,7 @@ export default function AdminPage() {
         setFailedPrintIds((ids) => ids.filter((id) => id !== orderId));
         markKitchenPrinted(orderId);
         setPrintMessage(null);
+        setPrinterCertBlocked(false);
         processPrintQueue();
         return;
       }
@@ -622,6 +633,17 @@ export default function AdminPage() {
       const attempts = (printAttemptsRef.current.get(orderId) ?? 0) + 1;
       printAttemptsRef.current.set(orderId, attempts);
       setPrintMessage(result.error);
+
+      // Cert / network block: stop hammering the printer and show recovery UI.
+      if (isPrinterCertError(result.error)) {
+        const url = eposPrinterWebUrl(eposConfig);
+        setPrinterCertBlocked(true);
+        setPrinterCertUrl(url);
+        printQueueRef.current = printQueueRef.current.filter((id) => id !== orderId);
+        setFailedPrintIds((ids) => (ids.includes(orderId) ? ids : [...ids, orderId]));
+        processPrintQueue();
+        return;
+      }
 
       if (attempts < MAX_PRINT_ATTEMPTS) {
         // Keep it at the head and retry after a short backoff.
@@ -964,6 +986,8 @@ export default function AdminPage() {
   // focus, so a receipt is never permanently lost without the operator acting.
   useEffect(() => {
     if (failedPrintIds.length === 0) return;
+    // While waiting for the operator to accept the SSL cert, don't spam retries.
+    if (printerCertBlocked) return;
     const retry = () => {
       for (const id of printQueueRef.current.length ? [] : failedPrintIds) {
         queuePrint(id);
@@ -978,6 +1002,34 @@ export default function AdminPage() {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
+  }, [failedPrintIds, queuePrint, printerCertBlocked]);
+
+  // After the operator accepts the printer SSL cert in another tab, retry
+  // every failed receipt as soon as this kitchen tab is focused again.
+  useEffect(() => {
+    if (!printerCertBlocked || failedPrintIds.length === 0) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      setPrinterCertBlocked(false);
+      setPrintMessage(null);
+      for (const id of [...failedPrintIds]) {
+        queuePrint(id);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [printerCertBlocked, failedPrintIds, queuePrint]);
+
+  const retryAfterCertAccepted = useCallback(() => {
+    setPrinterCertBlocked(false);
+    setPrintMessage(null);
+    for (const id of [...failedPrintIds]) {
+      queuePrint(id);
+    }
   }, [failedPrintIds, queuePrint]);
 
   const toggleKitchenMode = (on: boolean) => {
@@ -1175,7 +1227,39 @@ export default function AdminPage() {
             Tik één keer om meldingsgeluid te activeren (blijft aan)
           </button>
         )}
-        {failedPrintIds.length > 0 && (
+        {printerCertBlocked && (
+          <div className="no-print mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-4 shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-bold text-amber-950">
+              <Printer size={18} className="text-amber-700" />
+              Printer-certificaat geblokkeerd — bonnen printen niet
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-amber-900">
+              Open de printer in deze browser, tik op{" "}
+              <strong>Advanced → Proceed / Doorgaan</strong>, kom terug naar dit
+              scherm — dan printen we automatisch opnieuw.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {printerCertUrl && (
+                <a
+                  href={printerCertUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400 bg-amber-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700"
+                >
+                  1. Open printer ({printerCertUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")})
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={retryAfterCertAccepted}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-bold text-amber-950 shadow-sm hover:bg-amber-100"
+              >
+                2. Certificaat geaccepteerd — opnieuw printen
+              </button>
+            </div>
+          </div>
+        )}
+        {failedPrintIds.length > 0 && !printerCertBlocked && (
           <div className="no-print mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 px-4 py-3 shadow-sm">
             <div className="flex items-center gap-2 text-sm font-bold text-rose-900">
               <Printer size={18} className="text-rose-600" />
@@ -1489,7 +1573,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {printMessage && (
+        {printMessage && !printerCertBlocked && (
           <div className="no-print mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-800">
             {printMessage}
           </div>

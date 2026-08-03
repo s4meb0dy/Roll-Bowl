@@ -100,27 +100,39 @@ export async function claimNextPrintJob(): Promise<string | null> {
 /**
  * Record the result the printer reported for a job. On success the in-flight
  * slot is cleared; on failure the job is re-queued (bounded by MAX attempts).
+ * Returns the order id that was completed (or null).
  */
 export async function completePrintJob(
   orderId: string,
   success: boolean
-): Promise<void> {
+): Promise<string | null> {
   const redis = getInboxRedis();
 
   const inflight = await readInflight();
-  if (inflight && inflight.orderId === orderId) {
+  // Prefer the in-flight id (source of truth) when the printer echoes it back.
+  const resolvedId =
+    inflight && (inflight.orderId === orderId || !orderId)
+      ? inflight.orderId
+      : orderId || inflight?.orderId || null;
+
+  if (inflight && (!orderId || inflight.orderId === orderId)) {
+    await redis.del(KEY_INFLIGHT);
+  } else if (inflight && resolvedId === inflight.orderId) {
     await redis.del(KEY_INFLIGHT);
   }
 
+  if (!resolvedId) return null;
+
   if (success) {
-    await redis.del(KEY_ATTEMPTS(orderId));
-    await redis.del(KEY_SEEN(orderId));
-    return;
+    await redis.del(KEY_ATTEMPTS(resolvedId));
+    await redis.del(KEY_SEEN(resolvedId));
+    return resolvedId;
   }
 
-  const attempts = (await redis.incr(KEY_ATTEMPTS(orderId))) as number;
-  await redis.expire(KEY_ATTEMPTS(orderId), ATTEMPTS_TTL_S);
+  const attempts = (await redis.incr(KEY_ATTEMPTS(resolvedId))) as number;
+  await redis.expire(KEY_ATTEMPTS(resolvedId), ATTEMPTS_TTL_S);
   if (attempts < MAX_PRINT_ATTEMPTS) {
-    await redis.rpush(KEY_QUEUE, orderId);
+    await redis.rpush(KEY_QUEUE, resolvedId);
   }
+  return resolvedId;
 }

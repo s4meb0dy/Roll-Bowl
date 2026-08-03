@@ -51,10 +51,12 @@ export default function EposPrinterSettings() {
       </p>
       <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
         <strong>Belangrijk (HTTPS):</strong> rollnbowl.be is beveiligd, dus de
-        printer moet via <strong>SSL</strong> bereikbaar zijn. Open eenmalig{" "}
-        <strong>https://[printer-IP]</strong> op de iPad en accepteer het
-        certificaat. Daarna werkt de bon. Zet SSL uit alleen bij testen op een
-        lokale http-pagina.
+        printer moet via <strong>SSL</strong> bereikbaar zijn. Open{" "}
+        <strong>https://[printer-IP]</strong> op de keuken-tablet en accepteer het
+        certificaat (<em>Advanced → Proceed</em>). Android Chrome vergeet dit
+        soms na een update — dan verschijnt een gele banner met een knop om het
+        opnieuw te doen. Voor een permanente oplossing zonder certificaat: Epson
+        Server Direct Print (zie Vercel env <code className="rounded bg-amber-100 px-1">SERVER_DIRECT_PRINT_ID</code>).
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">

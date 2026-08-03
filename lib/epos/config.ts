@@ -62,3 +62,30 @@ export function eposServiceUrl(config: EposPrinterConfig): string | null {
   const scheme = config.useSsl ? "https" : "http";
   return `${scheme}://${host}/cgi-bin/epos/service.cgi?devid=${devid}&timeout=${timeout}`;
 }
+
+/** Web Config / cert-accept URL for the printer (open once in the kitchen browser). */
+export function eposPrinterWebUrl(config: EposPrinterConfig): string | null {
+  const host = config.host.trim();
+  if (!host) return null;
+  const scheme = config.useSsl !== false ? "https" : "http";
+  return `${scheme}://${host}/`;
+}
+
+/**
+ * True when the print error is almost certainly a blocked self-signed SSL
+ * certificate (browser refuses the request until the operator opens the
+ * printer IP and taps "Advanced → Proceed").
+ */
+export function isPrinterCertError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("certificaat") ||
+    m.includes("certificate") ||
+    m.includes("netwerk/cors") ||
+    m.includes("kan printer niet bereiken") ||
+    m.includes("geen verbinding met printer") ||
+    m.includes("failed to fetch") ||
+    m.includes("load failed") ||
+    m.includes("networkerror")
+  );
+}

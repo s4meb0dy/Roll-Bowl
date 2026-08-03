@@ -1,7 +1,7 @@
 import "@/lib/orders/ensureKvEnv";
 import { NextResponse } from "next/server";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
-import { getOrderById } from "@/lib/orders/inboxStore";
+import { getOrderById, patchOrderFields } from "@/lib/orders/inboxStore";
 import {
   claimNextPrintJob,
   completePrintJob,
@@ -14,16 +14,12 @@ import { buildEposPrintXml } from "@/lib/epos/eposXml";
  * Epson **Server Direct Print** endpoint. The TM-m30III at the venue POSTs here
  * (application/x-www-form-urlencoded) on its polling interval:
  *
- *   - ConnectionType=GetRequest  → we answer with the next receipt as
- *     ePOS-Print XML wrapped in <PrintRequestInfo>, or an empty body if nothing
- *     is queued.
- *   - ConnectionType=SetResponse → the printer reports the result of the last
- *     job (ResponseFile contains the printjobid + success flag); we mark it
- *     printed or re-queue it.
+ *   - ConnectionType=GetRequest  → next receipt as ePOS-Print XML, or empty
+ *   - ConnectionType=SetResponse → printer reports result; we mark printed
  *
- * Configure the printer (Web Config → Server Direct Print) to poll
- *   https://www.rollnbowl.be/api/print/poll
- * with the ID set to the value of the SERVER_DIRECT_PRINT_ID env var.
+ * Configure (Web Config → Server Direct Print):
+ *   URL = https://www.rollnbowl.be/api/print/poll
+ *   ID  = same value as Vercel env SERVER_DIRECT_PRINT_ID
  */
 
 function xml(body: string): NextResponse {
@@ -36,16 +32,36 @@ function xml(body: string): NextResponse {
   });
 }
 
-const empty = () => xml("");
+/** Epson expects Content-Length: 0 when there is nothing to print. */
+function empty(): NextResponse {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      "Content-Length": "0",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/** Epson printjobid: 1–30 chars, alphanumeric / _ - . only. */
+function toPrintJobId(orderId: string): string {
+  const cleaned = orderId.replace(/[^a-zA-Z0-9._-]/g, "");
+  return (cleaned || "job").slice(0, 30);
+}
 
 function escapeId(id: string): string {
   return id.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Access Test in Web Config often hits GET — answer 200 empty so the test passes. */
+export async function GET() {
+  return empty();
+}
+
 export async function POST(req: Request) {
   const configuredId = serverDirectPrintId();
   if (!configuredId || !isOrderInboxConfigured()) {
-    // SDP not enabled — nothing to print.
     return empty();
   }
 
@@ -59,17 +75,21 @@ export async function POST(req: Request) {
   const connectionType = params.get("ConnectionType") ?? "";
   const id = params.get("ID") ?? "";
 
-  // Only serve the configured printer.
+  // Only serve the configured printer (exact ID match).
   if (id !== configuredId) return empty();
 
-  // The printer confirming the result of the previous job.
   if (connectionType === "SetResponse") {
     const responseFile = params.get("ResponseFile") ?? "";
-    const jobId = (responseFile.match(/<printjobid>([^<]*)<\/printjobid>/i)?.[1] ?? "").trim();
+    const jobId = (
+      responseFile.match(/<printjobid>([^<]*)<\/printjobid>/i)?.[1] ?? ""
+    ).trim();
     const success = /success\s*=\s*["']?(true|1)["']?/i.test(responseFile);
     if (jobId) {
       try {
-        await completePrintJob(jobId, success);
+        const completedId = await completePrintJob(jobId, success);
+        if (success && completedId) {
+          await patchOrderFields(completedId, { kitchenPrinted: true });
+        }
       } catch (e) {
         console.error("[print/poll] completePrintJob", e);
       }
@@ -84,6 +104,7 @@ export async function POST(req: Request) {
     while (orderId && guard++ < 25) {
       const order = await getOrderById(orderId);
       if (order && !order.kitchenPrinted) {
+        const jobId = toPrintJobId(orderId);
         const eposXml = buildEposPrintXml(buildKitchenReceiptLines(order));
         const body =
           `<?xml version="1.0" encoding="utf-8"?>` +
@@ -92,14 +113,13 @@ export async function POST(req: Request) {
           `<Parameter>` +
           `<devid>local_printer</devid>` +
           `<timeout>10000</timeout>` +
-          `<printjobid>${escapeId(orderId)}</printjobid>` +
+          `<printjobid>${escapeId(jobId)}</printjobid>` +
           `</Parameter>` +
           `<PrintData>${eposXml}</PrintData>` +
           `</ePOSPrint>` +
           `</PrintRequestInfo>`;
         return xml(body);
       }
-      // Already printed or vanished — release the slot and try the next one.
       await completePrintJob(orderId, true);
       orderId = await claimNextPrintJob();
     }
