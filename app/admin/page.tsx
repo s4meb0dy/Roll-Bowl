@@ -574,6 +574,11 @@ export default function AdminPage() {
   const [failedPrintIds, setFailedPrintIds] = useState<string[]>([]);
   /** True when receipts print server-side via Epson Server Direct Print. */
   const [serverPrintEnabled, setServerPrintEnabled] = useState(false);
+  /** Printer is actively polling (only then skip local ePOS). */
+  const [serverPrintHealthy, setServerPrintHealthy] = useState(false);
+  const [sdpHint, setSdpHint] = useState<string | null>(null);
+  const [sdpLastPollSecAgo, setSdpLastPollSecAgo] = useState<number | null>(null);
+  const [sdpLastIdMatch, setSdpLastIdMatch] = useState<boolean | null>(null);
   /**
    * Self-signed printer SSL blocked by the browser. Show a one-tap "open
    * printer IP" recovery instead of a vague red error.
@@ -672,8 +677,9 @@ export default function AdminPage() {
 
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
-      // Server Direct Print: the venue printer pulls jobs from the server, so
-      // (re)printing just (re)queues the receipt — works from any device.
+      // When SDP is healthy the venue printer pulls jobs — just (re)queue.
+      // If SDP is configured but the printer is NOT polling, also print locally
+      // so a misconfigured ID/URL never silently kills kitchen receipts.
       if (serverPrintEnabled) {
         const pin = getStoredAdminPin();
         void fetch("/api/print/enqueue", {
@@ -684,12 +690,14 @@ export default function AdminPage() {
           },
           credentials: "same-origin",
           body: JSON.stringify({ orderId }),
-        })
-          .then((r) => {
-            setPrintMessage(r.ok ? null : "Kon bon niet naar de printer sturen.");
-          })
-          .catch(() => setPrintMessage("Geen verbinding met de server."));
-        return;
+        }).catch(() => {
+          /* local path below may still work */
+        });
+        if (serverPrintHealthy) {
+          setPrintMessage(null);
+          return;
+        }
+        // Fall through to local ePOS / browser print.
       }
 
       const order = useStore.getState().orders.find((o) => o.id === orderId);
@@ -732,7 +740,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted, queuePrint, serverPrintEnabled]
+    [markKitchenPrinted, queuePrint, serverPrintEnabled, serverPrintHealthy]
   );
 
   const handleAcceptAndPrint = useCallback(
@@ -740,10 +748,11 @@ export default function AdminPage() {
       acceptOrderWithPrep(orderId, prepMinutes);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      // In SDP mode the accept PATCH already queues the print server-side.
-      if (!serverPrintEnabled) triggerKitchenPrint(orderId);
+      // Always trigger client print path: SDP-healthy → enqueue only;
+      // SDP-unhealthy / local → ePOS. Server PATCH also enqueues when SDP on.
+      triggerKitchenPrint(orderId);
     },
-    [acceptOrderWithPrep, triggerKitchenPrint, serverPrintEnabled]
+    [acceptOrderWithPrep, triggerKitchenPrint]
   );
 
   const handleAcceptScheduledAndPrint = useCallback(
@@ -751,26 +760,51 @@ export default function AdminPage() {
       acceptScheduledOrder(orderId);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      if (!serverPrintEnabled) triggerKitchenPrint(orderId);
+      triggerKitchenPrint(orderId);
     },
-    [acceptScheduledOrder, triggerKitchenPrint, serverPrintEnabled]
+    [acceptScheduledOrder, triggerKitchenPrint]
   );
 
-  // Discover whether printing is handled server-side (Server Direct Print).
+  // Discover SDP status; refresh so we notice when the printer starts/stops polling.
   useEffect(() => {
     if (!unlocked) return;
     const pin = getStoredAdminPin();
-    void fetch("/api/print/config", {
-      credentials: "same-origin",
-      headers: pin ? { "x-admin-pin": pin } : undefined,
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { enabled?: boolean } | null) => {
-        if (data) setServerPrintEnabled(Boolean(data.enabled));
+    const load = () => {
+      void fetch("/api/print/config", {
+        credentials: "same-origin",
+        headers: pin ? { "x-admin-pin": pin } : undefined,
       })
-      .catch(() => {
-        /* keep client printing as the default */
-      });
+        .then((r) => (r.ok ? r.json() : null))
+        .then(
+          (
+            data: {
+              enabled?: boolean;
+              useServerPrint?: boolean;
+              healthy?: boolean;
+              hint?: string;
+              lastPollSecAgo?: number | null;
+              lastIdMatch?: boolean | null;
+            } | null
+          ) => {
+            if (!data) return;
+            setServerPrintEnabled(Boolean(data.enabled));
+            setServerPrintHealthy(Boolean(data.useServerPrint ?? data.healthy));
+            setSdpHint(typeof data.hint === "string" ? data.hint : null);
+            setSdpLastPollSecAgo(
+              typeof data.lastPollSecAgo === "number" ? data.lastPollSecAgo : null
+            );
+            setSdpLastIdMatch(
+              typeof data.lastIdMatch === "boolean" ? data.lastIdMatch : null
+            );
+          }
+        )
+        .catch(() => {
+          /* keep client printing as the default */
+        });
+    };
+    load();
+    const id = window.setInterval(load, 20_000);
+    return () => window.clearInterval(id);
   }, [unlocked]);
 
   useEffect(() => {
@@ -1226,6 +1260,77 @@ export default function AdminPage() {
             <Bell size={18} className="animate-pulse text-amber-600" />
             Tik één keer om meldingsgeluid te activeren (blijft aan)
           </button>
+        )}
+        {serverPrintEnabled && (
+          <div
+            className={`no-print mb-4 rounded-2xl border-2 px-4 py-3 shadow-sm ${
+              serverPrintHealthy
+                ? "border-emerald-300 bg-emerald-50"
+                : "border-amber-300 bg-amber-50"
+            }`}
+          >
+            <div
+              className={`text-sm font-bold ${
+                serverPrintHealthy ? "text-emerald-900" : "text-amber-950"
+              }`}
+            >
+              Server Direct Print:{" "}
+              {serverPrintHealthy
+                ? "printer verbonden — geen certificaat nodig"
+                : "nog niet verbonden — lokaal printen blijft actief"}
+            </div>
+            <p
+              className={`mt-1 text-xs leading-relaxed ${
+                serverPrintHealthy ? "text-emerald-800" : "text-amber-900"
+              }`}
+            >
+              {sdpHint === "printer_never_polled" && (
+                <>
+                  De printer heeft de server nog nooit bereikt. Controleer in Web
+                  Config: URL{" "}
+                  <code className="rounded bg-white/70 px-1">
+                    https://www.rollnbowl.be/api/print/poll
+                  </code>
+                  , ID = exact dezelfde waarde als Vercel{" "}
+                  <code className="rounded bg-white/70 px-1">SERVER_DIRECT_PRINT_ID</code>
+                  , Access Test = OK, internet op de printer.
+                </>
+              )}
+              {sdpHint === "id_mismatch" && (
+                <>
+                  Printer bereikt de server, maar het <strong>ID klopt niet</strong>
+                  {sdpLastPollSecAgo != null ? ` (laatste poging ${sdpLastPollSecAgo}s geleden)` : ""}
+                  . Zet in Web Config → Server Direct Print → <strong>ID</strong>{" "}
+                  exact gelijk aan Vercel <code className="rounded bg-white/70 px-1">SERVER_DIRECT_PRINT_ID</code>{" "}
+                  (niet het veld Name).
+                </>
+              )}
+              {sdpHint === "printer_stale" && (
+                <>
+                  Laatste poll was{" "}
+                  {sdpLastPollSecAgo != null ? `${sdpLastPollSecAgo}s` : "lang"} geleden.
+                  Printer staat mogelijk uit of heeft geen internet — we printen
+                  lokaal via ePOS tot hij weer pollt.
+                </>
+              )}
+              {sdpHint === "ok" && (
+                <>
+                  Printer pollt elke paar seconden
+                  {sdpLastPollSecAgo != null ? ` (laatst ${sdpLastPollSecAgo}s geleden)` : ""}.
+                  Bonnen worden server-side afgedrukt.
+                </>
+              )}
+              {sdpHint &&
+                !["printer_never_polled", "id_mismatch", "printer_stale", "ok"].includes(
+                  sdpHint
+                ) && (
+                  <>Status: {sdpHint}. Lokale ePOS blijft beschikbaar als fallback.</>
+                )}
+              {sdpLastIdMatch === false && sdpHint !== "id_mismatch" && (
+                <> ID-mismatch gedetecteerd — controleer het ID-veld.</>
+              )}
+            </p>
+          </div>
         )}
         {printerCertBlocked && (
           <div className="no-print mb-4 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-4 shadow-sm">

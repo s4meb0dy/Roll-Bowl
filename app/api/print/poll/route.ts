@@ -5,21 +5,22 @@ import { getOrderById, patchOrderFields } from "@/lib/orders/inboxStore";
 import {
   claimNextPrintJob,
   completePrintJob,
+  idsMatch,
+  recordJobServed,
+  recordPrinterPoll,
   serverDirectPrintId,
 } from "@/lib/orders/printQueueStore";
 import { buildKitchenReceiptLines } from "@/lib/epos/receiptContent";
 import { buildEposPrintXml } from "@/lib/epos/eposXml";
 
 /**
- * Epson **Server Direct Print** endpoint. The TM-m30III at the venue POSTs here
- * (application/x-www-form-urlencoded) on its polling interval:
- *
- *   - ConnectionType=GetRequest  → next receipt as ePOS-Print XML, or empty
- *   - ConnectionType=SetResponse → printer reports result; we mark printed
+ * Epson **Server Direct Print** endpoint.
  *
  * Configure (Web Config → Server Direct Print):
  *   URL = https://www.rollnbowl.be/api/print/poll
- *   ID  = same value as Vercel env SERVER_DIRECT_PRINT_ID
+ *   ID  = same value as Vercel env SERVER_DIRECT_PRINT_ID (case-insensitive)
+ *   Server Authentication = Disable
+ *   URL Encode = Enable
  */
 
 function xml(body: string): NextResponse {
@@ -74,9 +75,25 @@ export async function POST(req: Request) {
   const params = new URLSearchParams(raw);
   const connectionType = params.get("ConnectionType") ?? "";
   const id = params.get("ID") ?? "";
+  const matched = idsMatch(id, configuredId);
 
-  // Only serve the configured printer (exact ID match).
-  if (id !== configuredId) return empty();
+  // Always record the poll so the kitchen can see "printer never reached us"
+  // vs "ID mismatch" vs "healthy".
+  try {
+    await recordPrinterPoll({ id, connectionType, matched });
+  } catch (e) {
+    console.error("[print/poll] telemetry", e);
+  }
+
+  if (!matched) {
+    console.warn(
+      "[print/poll] ID mismatch — printer sent",
+      JSON.stringify(id),
+      "expected",
+      JSON.stringify(configuredId)
+    );
+    return empty();
+  }
 
   if (connectionType === "SetResponse") {
     const responseFile = params.get("ResponseFile") ?? "";
@@ -118,6 +135,7 @@ export async function POST(req: Request) {
           `<PrintData>${eposXml}</PrintData>` +
           `</ePOSPrint>` +
           `</PrintRequestInfo>`;
+        await recordJobServed(orderId);
         return xml(body);
       }
       await completePrintJob(orderId, true);

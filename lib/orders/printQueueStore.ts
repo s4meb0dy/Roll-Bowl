@@ -4,28 +4,47 @@ import { getInboxRedis } from "./inboxRedis";
 /**
  * Server-side print queue for Epson **Server Direct Print** (SDP).
  *
- * The TM-m30III at the venue periodically polls `/api/print/poll`; this queue
- * holds the order ids waiting to be printed. Because the printer pulls the jobs
- * itself, an order can be accepted from *any* device (e.g. the owner's phone,
- * off-site) and the receipt still prints at the restaurant — no direct
- * browser→printer connection, no self-signed-certificate prompt.
- *
- * Single printer ⇒ single FIFO queue + one in-flight slot. The in-flight job is
- * only cleared when the printer reports its result (SetResponse), or re-queued
- * after a timeout if the printer never answers.
+ * The TM-m30III periodically polls `/api/print/poll`. We also store lightweight
+ * telemetry (last poll / last ID mismatch) so the kitchen UI can fall back to
+ * local ePOS when the printer is not actually reaching the server — that was
+ * the silent failure mode when SDP was "configured" but nothing printed.
  */
+
 const KEY_QUEUE = "print:queue";
 const KEY_INFLIGHT = "print:inflight";
 const KEY_SEEN = (id: string) => `print:seen:${id}`;
 const KEY_ATTEMPTS = (id: string) => `print:attempts:${id}`;
+const KEY_TELEMETRY = "print:telemetry";
 
 /** Re-send an in-flight job if the printer hasn't reported a result in this long. */
 const INFLIGHT_TIMEOUT_MS = 60_000;
 const MAX_PRINT_ATTEMPTS = 6;
 const SEEN_TTL_S = 3600;
 const ATTEMPTS_TTL_S = 3600;
+/** Printer is considered "live" if it polled within this window. */
+export const SDP_HEALTHY_MS = 120_000;
 
 type Inflight = { orderId: string; sentAt: number };
+
+export type PrintTelemetry = {
+  lastPollAt: number | null;
+  lastPollId: string | null;
+  lastIdMatch: boolean | null;
+  lastConnectionType: string | null;
+  lastJobServedAt: number | null;
+  lastJobOrderId: string | null;
+  pollCount: number;
+};
+
+const EMPTY_TELEMETRY: PrintTelemetry = {
+  lastPollAt: null,
+  lastPollId: null,
+  lastIdMatch: null,
+  lastConnectionType: null,
+  lastJobServedAt: null,
+  lastJobOrderId: null,
+  pollCount: 0,
+};
 
 /** True when Server Direct Print is enabled (the printer ID env is configured). */
 export function isServerDirectPrintEnabled(): boolean {
@@ -36,6 +55,11 @@ export function isServerDirectPrintEnabled(): boolean {
 export function serverDirectPrintId(): string | null {
   const id = process.env.SERVER_DIRECT_PRINT_ID?.trim();
   return id || null;
+}
+
+/** Case-insensitive, trimmed ID compare — common Web Config typos. */
+export function idsMatch(received: string, configured: string): boolean {
+  return received.trim().toLowerCase() === configured.trim().toLowerCase();
 }
 
 async function readInflight(): Promise<Inflight | null> {
@@ -52,6 +76,69 @@ async function readInflight(): Promise<Inflight | null> {
   return raw as Inflight;
 }
 
+export async function readPrintTelemetry(): Promise<PrintTelemetry> {
+  try {
+    const redis = getInboxRedis();
+    const raw = await redis.get(KEY_TELEMETRY);
+    if (!raw) return { ...EMPTY_TELEMETRY };
+    if (typeof raw === "string") {
+      return { ...EMPTY_TELEMETRY, ...(JSON.parse(raw) as Partial<PrintTelemetry>) };
+    }
+    return { ...EMPTY_TELEMETRY, ...(raw as Partial<PrintTelemetry>) };
+  } catch {
+    return { ...EMPTY_TELEMETRY };
+  }
+}
+
+async function writePrintTelemetry(patch: Partial<PrintTelemetry>): Promise<void> {
+  try {
+    const redis = getInboxRedis();
+    const prev = await readPrintTelemetry();
+    await redis.set(KEY_TELEMETRY, { ...prev, ...patch });
+  } catch (e) {
+    console.error("[print] telemetry write failed", e);
+  }
+}
+
+/** Record every printer poll (matched or not) so the kitchen can diagnose SDP. */
+export async function recordPrinterPoll(opts: {
+  id: string;
+  connectionType: string;
+  matched: boolean;
+}): Promise<void> {
+  const prev = await readPrintTelemetry();
+  await writePrintTelemetry({
+    lastPollAt: Date.now(),
+    lastPollId: opts.id.slice(0, 64),
+    lastIdMatch: opts.matched,
+    lastConnectionType: opts.connectionType.slice(0, 40),
+    pollCount: (prev.pollCount ?? 0) + 1,
+  });
+}
+
+export async function recordJobServed(orderId: string): Promise<void> {
+  await writePrintTelemetry({
+    lastJobServedAt: Date.now(),
+    lastJobOrderId: orderId,
+  });
+}
+
+export async function getPrintQueueDepth(): Promise<number> {
+  try {
+    const redis = getInboxRedis();
+    const n = await redis.llen(KEY_QUEUE);
+    return typeof n === "number" ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** True when the venue printer has polled recently with a matching ID. */
+export function isSdpHealthy(telemetry: PrintTelemetry): boolean {
+  if (!telemetry.lastPollAt || !telemetry.lastIdMatch) return false;
+  return Date.now() - telemetry.lastPollAt < SDP_HEALTHY_MS;
+}
+
 /**
  * Queue an order for printing. De-duplicated for a short window so a retried
  * "accept" PATCH doesn't enqueue twice. Pass `force` for a manual re-print.
@@ -63,6 +150,7 @@ export async function enqueuePrintJob(
   const redis = getInboxRedis();
   if (opts?.force) {
     await redis.del(KEY_ATTEMPTS(orderId));
+    await redis.del(KEY_SEEN(orderId));
   } else {
     const fresh = (await redis.set(KEY_SEEN(orderId), 1, {
       nx: true,
@@ -109,7 +197,6 @@ export async function completePrintJob(
   const redis = getInboxRedis();
 
   const inflight = await readInflight();
-  // Prefer the in-flight id (source of truth) when the printer echoes it back.
   const resolvedId =
     inflight && (inflight.orderId === orderId || !orderId)
       ? inflight.orderId
