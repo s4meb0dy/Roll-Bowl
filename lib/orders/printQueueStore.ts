@@ -38,6 +38,11 @@ export type PrintTelemetry = {
   lastJobServedAt: number | null;
   lastJobOrderId: string | null;
   pollCount: number;
+  /** Last SetResponse from the printer (print result). */
+  lastSetResponseAt: number | null;
+  lastSetResponseSuccess: boolean | null;
+  lastSetResponseCode: string | null;
+  lastSetResponseJobId: string | null;
 };
 
 const EMPTY_TELEMETRY: PrintTelemetry = {
@@ -48,6 +53,10 @@ const EMPTY_TELEMETRY: PrintTelemetry = {
   lastJobServedAt: null,
   lastJobOrderId: null,
   pollCount: 0,
+  lastSetResponseAt: null,
+  lastSetResponseSuccess: null,
+  lastSetResponseCode: null,
+  lastSetResponseJobId: null,
 };
 
 /** True when Server Direct Print is enabled (the printer ID env is configured). */
@@ -141,6 +150,20 @@ export async function recordJobServed(orderId: string): Promise<void> {
   await writePrintTelemetry({
     lastJobServedAt: Date.now(),
     lastJobOrderId: orderId,
+  });
+}
+
+/** Persist the printer's SetResponse so the kitchen UI can show EX_BADPORT etc. */
+export async function recordSetResponse(opts: {
+  success: boolean;
+  code: string;
+  jobId: string;
+}): Promise<void> {
+  await writePrintTelemetry({
+    lastSetResponseAt: Date.now(),
+    lastSetResponseSuccess: opts.success,
+    lastSetResponseCode: opts.code.slice(0, 80) || (opts.success ? "OK" : "FAILED"),
+    lastSetResponseJobId: opts.jobId.slice(0, 40),
   });
 }
 

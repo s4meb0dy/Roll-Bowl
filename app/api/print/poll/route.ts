@@ -8,6 +8,7 @@ import {
   idsMatch,
   recordJobServed,
   recordPrinterPoll,
+  recordSetResponse,
   rememberPrintJobMapping,
   resolveOrderIdFromPrintJobId,
   serverDirectPrintId,
@@ -114,11 +115,34 @@ export async function POST(req: Request) {
   }
 
   if (connectionType === "SetResponse") {
-    const responseFile = params.get("ResponseFile") ?? urlParams.get("ResponseFile") ?? "";
+    let responseFile =
+      params.get("ResponseFile") ?? urlParams.get("ResponseFile") ?? "";
+    // Some firmwares double-encode ResponseFile when URL Encode = Enable.
+    if (responseFile.includes("%3C") || responseFile.includes("%3c")) {
+      try {
+        responseFile = decodeURIComponent(responseFile);
+      } catch {
+        /* keep raw */
+      }
+    }
     const jobId = (
       responseFile.match(/<printjobid>([^<]*)<\/printjobid>/i)?.[1] ?? ""
     ).trim();
     const success = /success\s*=\s*["']?(true|1)["']?/i.test(responseFile);
+    const code =
+      responseFile.match(/\bcode\s*=\s*["']([^"']*)["']/i)?.[1]?.trim() ??
+      (success ? "" : "UNKNOWN");
+    try {
+      await recordSetResponse({ success, code, jobId });
+    } catch (e) {
+      console.error("[print/poll] recordSetResponse", e);
+    }
+    if (!success) {
+      console.warn(
+        "[print/poll] SetResponse FAILED",
+        JSON.stringify({ jobId, code, snippet: responseFile.slice(0, 300) })
+      );
+    }
     if (jobId) {
       try {
         const orderId = (await resolveOrderIdFromPrintJobId(jobId)) ?? jobId;
@@ -130,7 +154,6 @@ export async function POST(req: Request) {
         console.error("[print/poll] completePrintJob", e);
       }
     } else {
-      // No job id in response — still clear in-flight if present.
       try {
         await completePrintJob("", success);
       } catch (e) {

@@ -63,6 +63,12 @@ export async function GET(req: Request) {
         ? Math.round((Date.now() - telemetry.lastJobServedAt) / 1000)
         : null,
     pollCount: telemetry?.pollCount ?? 0,
+    lastSetResponseSecAgo:
+      telemetry?.lastSetResponseAt != null
+        ? Math.round((Date.now() - telemetry.lastSetResponseAt) / 1000)
+        : null,
+    lastSetResponseSuccess: telemetry?.lastSetResponseSuccess ?? null,
+    lastSetResponseCode: telemetry?.lastSetResponseCode ?? null,
     hint: !enabled
       ? "sdp_disabled"
       : !inboxOk

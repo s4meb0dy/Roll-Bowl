@@ -580,6 +580,10 @@ export default function AdminPage() {
   const [sdpLastPollSecAgo, setSdpLastPollSecAgo] = useState<number | null>(null);
   const [sdpLastIdMatch, setSdpLastIdMatch] = useState<boolean | null>(null);
   const [sdpLastPollId, setSdpLastPollId] = useState<string | null>(null);
+  const [sdpLastSetCode, setSdpLastSetCode] = useState<string | null>(null);
+  const [sdpLastSetSuccess, setSdpLastSetSuccess] = useState<boolean | null>(
+    null
+  );
   /**
    * Self-signed printer SSL blocked by the browser. Show a one-tap "open
    * printer IP" recovery instead of a vague red error.
@@ -690,9 +694,9 @@ export default function AdminPage() {
         return false;
       };
 
-      // Always try local ePOS immediately when configured — SDP alone has been
-      // silently dropping jobs while showing a green "connected" banner.
-      // Also enqueue SDP so cloud/off-site accept still reaches the printer.
+      // SDP-only when the printer is actively polling. Do NOT also print via
+      // local ePOS at the same time — Epson reports EX_BADPORT when another
+      // control path (browser ePOS) holds the device.
       if (serverPrintEnabled) {
         const pin = getStoredAdminPin();
         void fetch("/api/print/enqueue", {
@@ -703,9 +707,17 @@ export default function AdminPage() {
           },
           credentials: "same-origin",
           body: JSON.stringify({ orderId }),
-        }).catch(() => {
-          /* local path below still runs */
-        });
+        })
+          .then((r) => {
+            if (!r.ok && !serverPrintHealthy) printLocally();
+          })
+          .catch(() => {
+            if (!serverPrintHealthy) printLocally();
+          });
+        if (serverPrintHealthy) {
+          setPrintMessage(null);
+          return;
+        }
       }
 
       if (printLocally()) return;
@@ -743,7 +755,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted, queuePrint, serverPrintEnabled]
+    [markKitchenPrinted, queuePrint, serverPrintEnabled, serverPrintHealthy]
   );
 
   const handleAcceptAndPrint = useCallback(
@@ -788,6 +800,8 @@ export default function AdminPage() {
               lastPollSecAgo?: number | null;
               lastIdMatch?: boolean | null;
               lastPollIdReceived?: string | null;
+              lastSetResponseCode?: string | null;
+              lastSetResponseSuccess?: boolean | null;
             } | null
           ) => {
             if (!data) return;
@@ -803,6 +817,16 @@ export default function AdminPage() {
             setSdpLastPollId(
               typeof data.lastPollIdReceived === "string"
                 ? data.lastPollIdReceived
+                : null
+            );
+            setSdpLastSetCode(
+              typeof data.lastSetResponseCode === "string"
+                ? data.lastSetResponseCode
+                : null
+            );
+            setSdpLastSetSuccess(
+              typeof data.lastSetResponseSuccess === "boolean"
+                ? data.lastSetResponseSuccess
                 : null
             );
           }
@@ -1335,8 +1359,24 @@ export default function AdminPage() {
                 <>
                   Printer pollt elke paar seconden
                   {sdpLastPollSecAgo != null ? ` (laatst ${sdpLastPollSecAgo}s geleden)` : ""}
-                  . Lokale ePOS + SDP draaien samen zodat bonnen niet stil uitvallen.
+                  . Bonnen gaan via <strong>Server Direct Print</strong> (geen
+                  lokaal ePOS — dat conflicteert met SDP).
                 </>
+              )}
+              {sdpLastSetSuccess === false && sdpLastSetCode && (
+                <span className="mt-1 block font-semibold text-rose-800">
+                  Laatste SDP-fout van printer: {sdpLastSetCode}
+                  {sdpLastSetCode === "EX_BADPORT"
+                    ? " — zet Services → ePOS-Print op Enable, en zet lokale ePOS-druk UIT in Keuken-setup."
+                    : sdpLastSetCode.toLowerCase().includes("not activated")
+                      ? " — zet Services → ePOS-Print op Enable + Restart."
+                      : ""}
+                </span>
+              )}
+              {sdpLastSetSuccess === true && (
+                <span className="mt-1 block text-emerald-800">
+                  Laatste SDP-job: OK
+                </span>
               )}
               {serverPrintEnabled && (
                 <button
@@ -1355,7 +1395,7 @@ export default function AdminPage() {
                     }).then((r) => {
                       setPrintMessage(
                         r.ok
-                          ? "SDP testbon in wachtrij — wacht ±5s"
+                          ? "SDP testbon in wachtrij — wacht ±5s, kijk of er een foutcode verschijnt"
                           : "SDP testbon mislukt"
                       );
                     });
