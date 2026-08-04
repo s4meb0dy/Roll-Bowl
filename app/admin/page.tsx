@@ -743,7 +743,7 @@ export default function AdminPage() {
       window.addEventListener("afterprint", finish, { once: true });
       fallbackTimer = window.setTimeout(finish, 4000);
     },
-    [markKitchenPrinted, queuePrint, serverPrintEnabled, serverPrintHealthy]
+    [markKitchenPrinted, queuePrint, serverPrintEnabled]
   );
 
   const handleAcceptAndPrint = useCallback(
