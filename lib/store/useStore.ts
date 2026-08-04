@@ -230,6 +230,11 @@ export const useStore = create<AppState>()(
         items: itemsArg,
       }) => {
         const state = get();
+        // Idempotent: double-submit with the same id must not create a second local order.
+        if (orderIdArg) {
+          const existing = state.orders.find((o) => o.id === orderIdArg);
+          if (existing) return existing;
+        }
         const lineItems = itemsArg ?? state.cart;
         const subtotal = lineItems.reduce(
           (sum, item) => sum + item.price * item.quantity,

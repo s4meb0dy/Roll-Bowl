@@ -63,6 +63,8 @@ export default function CartPage() {
   const [mounted, setMounted] = useState(false);
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+  /** Sync lock — React `placing` state alone can miss a double-tap before re-render. */
+  const placingRef = useRef(false);
   const [generalNote, setGeneralNote] = useState("");
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
     name: "",
@@ -314,13 +316,21 @@ export default function CartPage() {
 
   const finishOrder = (order: ReturnType<typeof placeOrder>) => {
     const id = order.id;
-    setPlacing(false);
+    // Keep placingRef locked through navigation so a second tap cannot fire.
+    setPlacing(true);
+    placingRef.current = true;
     router.push(`/order-confirmed?id=${id}`);
     // Inbox/POS retry from order-confirmed — navigation can abort fetches from /cart.
     void postOrderToInbox(order);
   };
 
+  const releasePlacing = () => {
+    placingRef.current = false;
+    setPlacing(false);
+  };
+
   const handlePlaceOrder = async () => {
+    if (placingRef.current || placing) return;
     if (deliveryZipMissing) return;
     if (!validate() || belowMinimum) return;
     if (paymentMethod === "cash" && (cashDenomination === null || cashDenomination < total)) return;
@@ -350,6 +360,7 @@ export default function CartPage() {
 
     if (paymentMethod === "online" && stripeEnabled) {
       if (!stripeClientSecret || !stripeOrderId) return;
+      placingRef.current = true;
       setPaymentError(null);
       setPlacing(true);
 
@@ -378,7 +389,7 @@ export default function CartPage() {
       });
       if (!savePendingRes.ok) {
         setPaymentError(t("payment.stripe_error"));
-        setPlacing(false);
+        releasePlacing();
         return;
       }
 
@@ -386,7 +397,7 @@ export default function CartPage() {
       const result = await stripePaymentRef.current?.confirmPayment(returnUrl);
       if (!result?.ok) {
         setPaymentError(result?.error ?? t("payment.stripe_error"));
-        setPlacing(false);
+        releasePlacing();
         return;
       }
 
@@ -401,7 +412,7 @@ export default function CartPage() {
       });
       if (!verifyRes.ok) {
         setPaymentError(t("payment.stripe_error"));
-        setPlacing(false);
+        releasePlacing();
         return;
       }
 
@@ -420,7 +431,11 @@ export default function CartPage() {
       return;
     }
 
+    // Cash / non-Stripe: lock immediately and reuse one id so a double-tap
+    // cannot create two kitchen orders during the short UX delay.
+    placingRef.current = true;
     setPlacing(true);
+    const cashOrderId = generateOrderId();
     await new Promise((r) => setTimeout(r, 900));
 
     const order = placeOrder({
@@ -430,6 +445,7 @@ export default function CartPage() {
       cashDenomination: cashDenomination ?? undefined,
       orderType,
       fulfillmentTime,
+      orderId: cashOrderId,
     });
     finishOrder(order);
   };

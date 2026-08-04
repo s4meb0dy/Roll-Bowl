@@ -47,6 +47,7 @@ function ConfirmedContent() {
   const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
   const posPushDone = useRef(false);
+  const posPushInFlight = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -210,17 +211,22 @@ function ConfirmedContent() {
     if (!orderId || typeof window === "undefined") return;
 
     const tryPush = () => {
-      if (posPushDone.current) return;
+      if (posPushDone.current || posPushInFlight.current) return;
       const o = useStore.getState().orders.find((x) => x.id === orderId);
       if (!o) return;
       if (!shouldRetryPosPush(o.lightspeed)) {
         posPushDone.current = true;
         return;
       }
-      void pushOrderToPos(o, setOrderLightspeed).then(() => {
-        const latest = useStore.getState().orders.find((x) => x.id === orderId);
-        if (!shouldRetryPosPush(latest?.lightspeed)) posPushDone.current = true;
-      });
+      posPushInFlight.current = true;
+      void pushOrderToPos(o, setOrderLightspeed)
+        .then(() => {
+          const latest = useStore.getState().orders.find((x) => x.id === orderId);
+          if (!shouldRetryPosPush(latest?.lightspeed)) posPushDone.current = true;
+        })
+        .finally(() => {
+          posPushInFlight.current = false;
+        });
     };
 
     tryPush();

@@ -35,6 +35,11 @@ export async function POST(req: Request) {
     if (!existing && order.paymentMethod === "cash") {
       return NextResponse.json({ error: "order_not_in_inbox" }, { status: 404 });
     }
+    // Already accepted by POS — do not push a second sale (webhook + client race).
+    const ls = existing?.lightspeed;
+    if (ls && (ls.state === "success" || ls.state === "skipped")) {
+      return NextResponse.json(ls);
+    }
   }
 
   try {
