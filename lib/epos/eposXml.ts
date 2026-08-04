@@ -43,6 +43,15 @@ export type BuildEposXmlOptions = {
   sdpSafe?: boolean;
 };
 
+/**
+ * Epson ePOS-Print XML has no wrapping `<align>` element. Alignment is a
+ * modal empty `<text align="…"/>` directive (same as the official JS SDK
+ * `addTextAlign`). Wrapping children in `<align>` yields SchemaError on SDP.
+ */
+function alignDirective(align: "left" | "center" | "right"): string {
+  return `<text align="${align}"/>`;
+}
+
 function textNode(line: ReceiptTextLine, opts: BuildEposXmlOptions): string {
   if (line.qr) {
     if (opts.sdpSafe) {
@@ -87,20 +96,23 @@ export function buildEposPrintXml(
     body.push(`<command>${EPOS_FINE_PRINT_MODE_HEX}</command>`);
   }
 
-  let currentAlign: "left" | "center" | "right" | null = null;
+  // Official schema uses lang="en" (not "nl") — unknown lang → SchemaError on some firmwares.
+  body.push('<text lang="en"/>');
+
+  let currentAlign: "left" | "center" | "right" = "left";
 
   for (const line of lines) {
     const align = line.align ?? "left";
     if (align !== currentAlign) {
-      if (currentAlign !== null) body.push("</align>");
-      if (align !== "left") {
-        body.push(`<align align="${align}">`);
-      }
-      currentAlign = align === "left" ? null : align;
+      body.push(alignDirective(align));
+      currentAlign = align;
     }
     body.push(textNode(line, opts));
   }
-  if (currentAlign !== null) body.push("</align>");
+
+  if (currentAlign !== "left") {
+    body.push(alignDirective("left"));
+  }
 
   body.push('<cut type="feed"/>');
 
@@ -116,12 +128,11 @@ export function buildSdpTestPrintXml(printJobId = "sdptest"): string {
   const jobId = printJobId.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 30) || "sdptest";
   const epos =
     `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">` +
-    `<text lang="nl"/>` +
-    `<align align="center">` +
+    `<text lang="en"/>` +
+    `<text align="center"/>` +
     `<text em="true">ROLL &amp; BOWL&#10;</text>` +
     `<text>SDP TEST OK&#10;</text>` +
-    `</align>` +
-    `<text>&#10;</text>` +
+    `<text align="left"/>` +
     `<cut type="feed"/>` +
     `</epos-print>`;
   return (

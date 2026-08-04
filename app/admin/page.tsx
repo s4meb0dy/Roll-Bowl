@@ -1368,9 +1368,11 @@ export default function AdminPage() {
                   Laatste SDP-fout van printer: {sdpLastSetCode}
                   {sdpLastSetCode === "EX_BADPORT"
                     ? " — zet Services → ePOS-Print op Enable, en zet lokale ePOS-druk UIT in Keuken-setup."
-                    : sdpLastSetCode.toLowerCase().includes("not activated")
-                      ? " — zet Services → ePOS-Print op Enable + Restart."
-                      : ""}
+                    : sdpLastSetCode === "SchemaError"
+                      ? " — print-XML werd afgewezen; probeer opnieuw na deploy (align/lang-fix)."
+                      : sdpLastSetCode.toLowerCase().includes("not activated")
+                        ? " — zet Services → ePOS-Print op Enable + Restart."
+                        : ""}
                 </span>
               )}
               {sdpLastSetSuccess === true && (
