@@ -29,8 +29,28 @@ function symbolNode(data: string): string {
   );
 }
 
-function textNode(line: ReceiptTextLine): string {
-  if (line.qr) return symbolNode(line.qr);
+export type BuildEposXmlOptions = {
+  /**
+   * Prefix GS ( K Fine-mode density command. Safe for local ePOS/SDK;
+   * omit for Server Direct Print — some firmwares reject `<command>` in
+   * SDP PrintData and then never print the job.
+   */
+  densityCommand?: boolean;
+  /**
+   * SDP-safe subset: skip `color`, QR symbols, and reverse (those have caused
+   * silent job drops on some TM-m30III firmwares).
+   */
+  sdpSafe?: boolean;
+};
+
+function textNode(line: ReceiptTextLine, opts: BuildEposXmlOptions): string {
+  if (line.qr) {
+    if (opts.sdpSafe) {
+      // Print the URL as plain text instead of a QR symbol over SDP.
+      return `<text width="1" height="1" em="false">${escapeXml(line.qr)}&#10;</text>`;
+    }
+    return symbolNode(line.qr);
+  }
   // ePOS-Print XML text attributes are modal: they stay in effect for every
   // following <text> until changed. So we must set the full style explicitly
   // on each line, otherwise a single reverse/bold/large line would carry over
@@ -41,24 +61,20 @@ function textNode(line: ReceiptTextLine): string {
     `width="${width}"`,
     `height="${height}"`,
     `em="${line.bold ? "true" : "false"}"`,
-    `color="color_1"`,
-    `reverse="${line.reverse ? "true" : "false"}"`,
   ];
+  if (!opts.sdpSafe) {
+    attrs.push(`color="color_1"`);
+    attrs.push(`reverse="${line.reverse ? "true" : "false"}"`);
+  } else if (line.reverse) {
+    // Emphasize instead of reverse for SDP-safe path.
+    attrs[2] = `em="true"`;
+  }
   const attrStr = ` ${attrs.join(" ")}`;
   const content = escapeXml(line.text).replace(/\n/g, "&#10;");
   // Every logical line gets its own feed — including centered/right lines,
   // otherwise consecutive aligned lines (e.g. the header) print on one row.
   return `<text${attrStr}>${content}&#10;</text>`;
 }
-
-export type BuildEposXmlOptions = {
-  /**
-   * Prefix GS ( K Fine-mode density command. Safe for local ePOS/SDK;
-   * omit for Server Direct Print — some firmwares reject `<command>` in
-   * SDP PrintData and then never print the job.
-   */
-  densityCommand?: boolean;
-};
 
 /** Build ePOS-Print XML body (inside SOAP / SDP PrintData). */
 export function buildEposPrintXml(
@@ -82,7 +98,7 @@ export function buildEposPrintXml(
       }
       currentAlign = align === "left" ? null : align;
     }
-    body.push(textNode(line));
+    body.push(textNode(line, opts));
   }
   if (currentAlign !== null) body.push("</align>");
 
@@ -92,6 +108,34 @@ export function buildEposPrintXml(
     `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">` +
     body.join("") +
     `</epos-print>`
+  );
+}
+
+/** Minimal known-good SDP payload for connectivity tests. */
+export function buildSdpTestPrintXml(printJobId = "sdptest"): string {
+  const jobId = printJobId.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 30) || "sdptest";
+  const epos =
+    `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">` +
+    `<text lang="nl"/>` +
+    `<align align="center">` +
+    `<text em="true">ROLL &amp; BOWL&#10;</text>` +
+    `<text>SDP TEST OK&#10;</text>` +
+    `</align>` +
+    `<text>&#10;</text>` +
+    `<cut type="feed"/>` +
+    `</epos-print>`;
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<PrintRequestInfo Version="2.00">` +
+    `<ePOSPrint>` +
+    `<Parameter>` +
+    `<devid>local_printer</devid>` +
+    `<timeout>10000</timeout>` +
+    `<printjobid>${jobId}</printjobid>` +
+    `</Parameter>` +
+    `<PrintData>${epos}</PrintData>` +
+    `</ePOSPrint>` +
+    `</PrintRequestInfo>`
   );
 }
 

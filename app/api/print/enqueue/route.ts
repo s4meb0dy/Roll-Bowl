@@ -6,9 +6,10 @@ import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
 import {
   enqueuePrintJob,
   isServerDirectPrintEnabled,
+  SDP_TEST_JOB_ID,
 } from "@/lib/orders/printQueueStore";
 
-/** Manually (re)queue an order for the venue printer to pull via SDP. */
+/** Manually (re)queue an order — or `{ test: true }` for a minimal SDP test ticket. */
 export async function POST(req: Request) {
   const auth = requireAdminAuth(req);
   if (auth) return auth;
@@ -23,8 +24,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-  const orderId =
-    typeof (body as { orderId?: unknown }).orderId === "string"
+
+  const isTest = (body as { test?: unknown }).test === true;
+  const orderId = isTest
+    ? SDP_TEST_JOB_ID
+    : typeof (body as { orderId?: unknown }).orderId === "string"
       ? (body as { orderId: string }).orderId.trim()
       : "";
   if (!orderId) {
@@ -33,7 +37,7 @@ export async function POST(req: Request) {
 
   try {
     await enqueuePrintJob(orderId, { force: true });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, test: isTest });
   } catch (e) {
     if (isInboxUnreachableError(e)) {
       return NextResponse.json({ error: "inbox_unreachable" }, { status: 503 });

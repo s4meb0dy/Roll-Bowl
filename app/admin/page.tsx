@@ -690,9 +690,9 @@ export default function AdminPage() {
         return false;
       };
 
-      // When SDP is healthy the venue printer pulls jobs — enqueue server-side.
-      // If enqueue fails, or SDP never confirms the print, fall back to local
-      // ePOS so a green SDP banner can never silently kill kitchen receipts.
+      // Always try local ePOS immediately when configured — SDP alone has been
+      // silently dropping jobs while showing a green "connected" banner.
+      // Also enqueue SDP so cloud/off-site accept still reaches the printer.
       if (serverPrintEnabled) {
         const pin = getStoredAdminPin();
         void fetch("/api/print/enqueue", {
@@ -703,26 +703,9 @@ export default function AdminPage() {
           },
           credentials: "same-origin",
           body: JSON.stringify({ orderId }),
-        })
-          .then((r) => {
-            if (!r.ok) printLocally();
-          })
-          .catch(() => {
-            printLocally();
-          });
-        if (serverPrintHealthy) {
-          setPrintMessage(null);
-          window.setTimeout(() => {
-            const order = useStore
-              .getState()
-              .orders.find((o) => o.id === orderId);
-            if (order && !order.kitchenPrinted) {
-              printLocally();
-            }
-          }, 15_000);
-          return;
-        }
-        // Fall through to local ePOS / browser print.
+        }).catch(() => {
+          /* local path below still runs */
+        });
       }
 
       if (printLocally()) return;
@@ -1351,9 +1334,36 @@ export default function AdminPage() {
               {sdpHint === "ok" && (
                 <>
                   Printer pollt elke paar seconden
-                  {sdpLastPollSecAgo != null ? ` (laatst ${sdpLastPollSecAgo}s geleden)` : ""}.
-                  Bonnen worden server-side afgedrukt.
+                  {sdpLastPollSecAgo != null ? ` (laatst ${sdpLastPollSecAgo}s geleden)` : ""}
+                  . Lokale ePOS + SDP draaien samen zodat bonnen niet stil uitvallen.
                 </>
+              )}
+              {serverPrintEnabled && (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-current/20 bg-white/70 px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-white"
+                  onClick={() => {
+                    const pin = getStoredAdminPin();
+                    void fetch("/api/print/enqueue", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        ...(pin ? { "x-admin-pin": pin } : {}),
+                      },
+                      credentials: "same-origin",
+                      body: JSON.stringify({ test: true }),
+                    }).then((r) => {
+                      setPrintMessage(
+                        r.ok
+                          ? "SDP testbon in wachtrij — wacht ±5s"
+                          : "SDP testbon mislukt"
+                      );
+                    });
+                  }}
+                >
+                  <Printer size={14} />
+                  SDP testbon
+                </button>
               )}
               {sdpHint &&
                 !["printer_never_polled", "id_mismatch", "printer_stale", "ok"].includes(

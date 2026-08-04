@@ -14,10 +14,14 @@ const KEY_QUEUE = "print:queue";
 const KEY_INFLIGHT = "print:inflight";
 const KEY_SEEN = (id: string) => `print:seen:${id}`;
 const KEY_ATTEMPTS = (id: string) => `print:attempts:${id}`;
+const KEY_JOBMAP = (jobId: string) => `print:jobmap:${jobId}`;
 const KEY_TELEMETRY = "print:telemetry";
 
+/** Special queue sentinel — poll serves a minimal SDP test ticket. */
+export const SDP_TEST_JOB_ID = "__sdp_test__";
+
 /** Re-send an in-flight job if the printer hasn't reported a result in this long. */
-const INFLIGHT_TIMEOUT_MS = 60_000;
+const INFLIGHT_TIMEOUT_MS = 45_000;
 const MAX_PRINT_ATTEMPTS = 6;
 const SEEN_TTL_S = 3600;
 const ATTEMPTS_TTL_S = 3600;
@@ -168,6 +172,8 @@ export async function enqueuePrintJob(
   if (opts?.force) {
     await redis.del(KEY_ATTEMPTS(orderId));
     await redis.del(KEY_SEEN(orderId));
+    // A forced re-print must not wait behind a stuck in-flight job.
+    await redis.del(KEY_INFLIGHT);
   } else {
     const fresh = (await redis.set(KEY_SEEN(orderId), 1, {
       nx: true,
@@ -176,6 +182,33 @@ export async function enqueuePrintJob(
     if (fresh !== "OK") return; // already enqueued recently
   }
   await redis.rpush(KEY_QUEUE, orderId);
+}
+
+/** Map Epson printjobid → order id (SetResponse only returns the printjobid). */
+export async function rememberPrintJobMapping(
+  printJobId: string,
+  orderId: string
+): Promise<void> {
+  try {
+    const redis = getInboxRedis();
+    await redis.set(KEY_JOBMAP(printJobId), orderId, { ex: ATTEMPTS_TTL_S });
+  } catch (e) {
+    console.error("[print] jobmap write failed", e);
+  }
+}
+
+export async function resolveOrderIdFromPrintJobId(
+  printJobId: string
+): Promise<string | null> {
+  if (!printJobId) return null;
+  try {
+    const redis = getInboxRedis();
+    const mapped = await redis.get(KEY_JOBMAP(printJobId));
+    if (typeof mapped === "string" && mapped) return mapped;
+  } catch {
+    /* fall through */
+  }
+  return printJobId;
 }
 
 /**
