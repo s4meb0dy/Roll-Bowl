@@ -4,10 +4,10 @@ import { getInboxRedis } from "./inboxRedis";
 /**
  * Server-side print queue for Epson **Server Direct Print** (SDP).
  *
- * The TM-m30III periodically polls `/api/print/poll`. We also store lightweight
- * telemetry (last poll / last ID mismatch) so the kitchen UI can fall back to
- * local ePOS when the printer is not actually reaching the server — that was
- * the silent failure mode when SDP was "configured" but nothing printed.
+ * The TM-m30III periodically polls `/api/print/poll`. Telemetry (last poll /
+ * ID match / SetResponse codes) lets the kitchen UI prefer SDP when healthy
+ * and fall back to local ePOS only when the printer is not reaching the server.
+ * Do not run local ePOS and SDP at the same time — Epson returns EX_BADPORT.
  */
 
 const KEY_QUEUE = "print:queue";

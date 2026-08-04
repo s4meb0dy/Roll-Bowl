@@ -108,9 +108,11 @@ export default function EposPrinterSettings() {
         </span>
       </label>
       <p className="mt-1 pl-6 text-xs leading-relaxed text-neutral-500">
-        De keukenbon wordt automatisch afgedrukt zodra je bij een nieuwe
-        bestelling de bereidingstijd kiest. De verwachte tijd staat dan meteen op
-        de bon.
+        Zet dit <strong>UIT</strong> als Server Direct Print groen staat — lokale
+        ePOS en SDP tegelijk geven op de printer vaak{" "}
+        <code className="rounded bg-neutral-100 px-1">EX_BADPORT</code>. SDP
+        print dan zelf; lokale ePOS blijft alleen als fallback als SDP offline
+        is. Anders: bon bij keuze bereidingstijd.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
