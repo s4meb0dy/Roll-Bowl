@@ -579,6 +579,7 @@ export default function AdminPage() {
   const [sdpHint, setSdpHint] = useState<string | null>(null);
   const [sdpLastPollSecAgo, setSdpLastPollSecAgo] = useState<number | null>(null);
   const [sdpLastIdMatch, setSdpLastIdMatch] = useState<boolean | null>(null);
+  const [sdpLastPollId, setSdpLastPollId] = useState<string | null>(null);
   /**
    * Self-signed printer SSL blocked by the browser. Show a one-tap "open
    * printer IP" recovery instead of a vague red error.
@@ -784,6 +785,7 @@ export default function AdminPage() {
               hint?: string;
               lastPollSecAgo?: number | null;
               lastIdMatch?: boolean | null;
+              lastPollIdReceived?: string | null;
             } | null
           ) => {
             if (!data) return;
@@ -795,6 +797,11 @@ export default function AdminPage() {
             );
             setSdpLastIdMatch(
               typeof data.lastIdMatch === "boolean" ? data.lastIdMatch : null
+            );
+            setSdpLastPollId(
+              typeof data.lastPollIdReceived === "string"
+                ? data.lastPollIdReceived
+                : null
             );
           }
         )
@@ -1300,8 +1307,15 @@ export default function AdminPage() {
                 <>
                   Printer bereikt de server, maar het <strong>ID klopt niet</strong>
                   {sdpLastPollSecAgo != null ? ` (laatste poging ${sdpLastPollSecAgo}s geleden)` : ""}
+                  {sdpLastPollId ? (
+                    <>
+                      . Printer stuurde ID{" "}
+                      <code className="rounded bg-white/70 px-1">{sdpLastPollId}</code>
+                    </>
+                  ) : null}
                   . Zet in Web Config → Server Direct Print → <strong>ID</strong>{" "}
-                  exact gelijk aan Vercel <code className="rounded bg-white/70 px-1">SERVER_DIRECT_PRINT_ID</code>{" "}
+                  exact gelijk aan Vercel{" "}
+                  <code className="rounded bg-white/70 px-1">SERVER_DIRECT_PRINT_ID</code>{" "}
                   (niet het veld Name).
                 </>
               )}
@@ -1310,7 +1324,9 @@ export default function AdminPage() {
                   Laatste poll was{" "}
                   {sdpLastPollSecAgo != null ? `${sdpLastPollSecAgo}s` : "lang"} geleden.
                   Printer staat mogelijk uit of heeft geen internet — we printen
-                  lokaal via ePOS tot hij weer pollt.
+                  lokaal via ePOS tot hij weer pollt. Tip: Web Config → Server
+                  Direct Print → <strong>Access Test</strong>, daarna Apply &amp;
+                  Restart.
                 </>
               )}
               {sdpHint === "ok" && (

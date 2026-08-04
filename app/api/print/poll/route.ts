@@ -72,9 +72,20 @@ export async function POST(req: Request) {
   } catch {
     return empty();
   }
+
+  // Epson sends application/x-www-form-urlencoded. Also accept query-string
+  // duplicates and a few key-name variants seen across firmware revisions.
   const params = new URLSearchParams(raw);
-  const connectionType = params.get("ConnectionType") ?? "";
-  const id = params.get("ID") ?? "";
+  const urlParams = new URL(req.url).searchParams;
+  const pick = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = params.get(k) ?? urlParams.get(k);
+      if (v != null && v !== "") return v;
+    }
+    return "";
+  };
+  const connectionType = pick("ConnectionType", "Connectiontype", "connectionType");
+  const id = pick("ID", "Id", "id");
   const matched = idsMatch(id, configuredId);
 
   // Always record the poll so the kitchen can see "printer never reached us"

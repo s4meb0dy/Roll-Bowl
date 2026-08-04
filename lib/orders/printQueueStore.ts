@@ -22,7 +22,7 @@ const MAX_PRINT_ATTEMPTS = 6;
 const SEEN_TTL_S = 3600;
 const ATTEMPTS_TTL_S = 3600;
 /** Printer is considered "live" if it polled within this window. */
-export const SDP_HEALTHY_MS = 120_000;
+export const SDP_HEALTHY_MS = 300_000;
 
 type Inflight = { orderId: string; sentAt: number };
 
@@ -51,15 +51,32 @@ export function isServerDirectPrintEnabled(): boolean {
   return Boolean(process.env.SERVER_DIRECT_PRINT_ID?.trim());
 }
 
+/** Normalize IDs from Vercel / Web Config (quotes, BOM, zero-width chars). */
+export function normalizePrintId(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let s = raw.replace(/^\uFEFF/, "").trim();
+  // Accidental wrapping quotes when pasting into Vercel env UI.
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/[\u200B-\u200D\uFEFF]/g, "");
+}
+
 /** The shared secret / printer ID the TM printer sends in every SDP request. */
 export function serverDirectPrintId(): string | null {
-  const id = process.env.SERVER_DIRECT_PRINT_ID?.trim();
+  const id = normalizePrintId(process.env.SERVER_DIRECT_PRINT_ID);
   return id || null;
 }
 
-/** Case-insensitive, trimmed ID compare — common Web Config typos. */
+/** Case-insensitive ID compare — common Web Config / env typos. */
 export function idsMatch(received: string, configured: string): boolean {
-  return received.trim().toLowerCase() === configured.trim().toLowerCase();
+  return (
+    normalizePrintId(received).toLowerCase() ===
+    normalizePrintId(configured).toLowerCase()
+  );
 }
 
 async function readInflight(): Promise<Inflight | null> {
