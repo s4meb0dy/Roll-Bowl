@@ -1,7 +1,11 @@
 import type { Order } from "@/lib/types";
 import type { EposPrinterConfig } from "./config";
 import { eposServiceUrl } from "./config";
-import { buildEposPrintXml, wrapSoapEnvelope } from "./eposXml";
+import {
+  buildEposPrintXml,
+  EPOS_FINE_PRINT_MODE_BIN,
+  wrapSoapEnvelope,
+} from "./eposXml";
 import { buildKitchenReceiptLines } from "./receiptContent";
 
 export type EposPrintResult =
@@ -29,6 +33,7 @@ interface EposBuilder {
     em?: boolean,
     color?: string
   ): EposBuilder;
+  addCommand(data: string): EposBuilder;
   addFeedLine(lines: number): EposBuilder;
   addCut(type: number): EposBuilder;
   addSymbol(
@@ -47,6 +52,7 @@ interface EposBuilder {
   CUT_FEED: number;
   SYMBOL_QRCODE_MODEL_2: number;
   LEVEL_M: number;
+  COLOR_1: string;
 }
 
 interface EposPrint {
@@ -90,6 +96,9 @@ function buildSdkDocument(order: Order): string | null {
 
   const Builder = e.ePOSBuilder;
   const b = new Builder();
+  // Fine mode = darker solid black on TM-m30III (vs washed-out high-speed).
+  // Bold/weight stays as designed per line — only print density changes.
+  b.addCommand(EPOS_FINE_PRINT_MODE_BIN);
   b.addTextLang("nl");
   b.addTextFont(b.FONT_A);
 
@@ -110,10 +119,15 @@ function buildSdkDocument(order: Order): string | null {
     // Epson SDK signature is positional: addTextStyle(reverse, ul, em, color).
     // Passing an object made every argument truthy, so `reverse` stayed on for
     // the whole receipt and it printed white-on-black (a fully black ticket).
-    b.addTextStyle(line.reverse ?? false, false, line.bold ?? false);
+    b.addTextStyle(
+      line.reverse ?? false,
+      false,
+      line.bold ?? false,
+      b.COLOR_1 ?? "color_1"
+    );
     b.addText(`${line.text}\n`);
     b.addTextSize(1, 1);
-    b.addTextStyle(false, false, false);
+    b.addTextStyle(false, false, false, b.COLOR_1 ?? "color_1");
     b.addTextAlign(b.ALIGN_LEFT);
   }
 
@@ -258,7 +272,9 @@ export async function printEposTest(config: EposPrinterConfig): Promise<EposPrin
   const sdkReady = await loadEposSdk();
   if (sdkReady && window.epson?.ePOSPrint) {
     const b = new window.epson.ePOSBuilder();
+    b.addCommand(EPOS_FINE_PRINT_MODE_BIN);
     b.addTextAlign(b.ALIGN_CENTER);
+    b.addTextStyle(false, false, true, b.COLOR_1 ?? "color_1");
     b.addTextSize(2, 2);
     b.addText("Roll&Bowl\n");
     b.addTextSize(1, 1);

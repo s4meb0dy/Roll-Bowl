@@ -1,5 +1,17 @@
 import type { ReceiptTextLine } from "./receiptContent";
 
+/**
+ * ESC/POS: GS ( K fn=48 m=50 — "Fine" print control mode on TM-m30 / m30II / m30III.
+ * Caps speed at ~100 mm/s so the thermal head burns darker solid black
+ * instead of the default high-speed pale gray.
+ * Hex: 1D 28 4B 02 00 30 32
+ */
+export const EPOS_FINE_PRINT_MODE_HEX = "1d284b02003032";
+
+/** Same command as a binary string for the Epson JS SDK `addCommand()`. */
+export const EPOS_FINE_PRINT_MODE_BIN =
+  "\x1d\x28\x4b\x02\x00\x30\x32";
+
 function escapeXml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -29,6 +41,7 @@ function textNode(line: ReceiptTextLine): string {
     `width="${width}"`,
     `height="${height}"`,
     `em="${line.bold ? "true" : "false"}"`,
+    `color="color_1"`,
     `reverse="${line.reverse ? "true" : "false"}"`,
   ];
   const attrStr = ` ${attrs.join(" ")}`;
@@ -41,6 +54,9 @@ function textNode(line: ReceiptTextLine): string {
 /** Build ePOS-Print XML body (inside SOAP). */
 export function buildEposPrintXml(lines: ReceiptTextLine[]): string {
   const body: string[] = [];
+
+  // Darker thermal output before any text (does not change bold/weight).
+  body.push(`<command>${EPOS_FINE_PRINT_MODE_HEX}</command>`);
 
   let currentAlign: "left" | "center" | "right" | null = null;
 
