@@ -55,10 +55,10 @@ export const PREP_LEAD_MINUTES = 30;
 export const STORE_TIMEZONE = "Europe/Brussels";
 
 /**
- * Same-day scheduling only — never tomorrow or later.
- * (Hard-coded; the storefront must not expose future-day slots.)
+ * How many calendar days ahead (after today) customers may schedule.
+ * 0 = today only; 1 = today + tomorrow.
  */
-export const MAX_SCHEDULE_DAYS = 0;
+export const MAX_SCHEDULE_DAYS = 1;
 
 export interface TimeSlot {
   /** ISO datetime of the slot. */
@@ -67,7 +67,7 @@ export interface TimeSlot {
   hour: number;
   /** Local minute (0-59) of the slot. */
   minute: number;
-  /** Always 0 — same-day scheduling only. */
+  /** 0 = today, 1 = tomorrow, … */
   dayOffset: number;
   /** Raw local Date object for display formatting. */
   date: Date;
@@ -90,6 +90,13 @@ function previousDateKey(dateKey: string): string {
   const [y, m, d] = dateKey.split("-").map(Number);
   const probe = new Date(Date.UTC(y, m - 1, d));
   probe.setUTCDate(probe.getUTCDate() - 1);
+  return probe.toISOString().slice(0, 10);
+}
+
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  probe.setUTCDate(probe.getUTCDate() + days);
   return probe.toISOString().slice(0, 10);
 }
 
@@ -215,76 +222,69 @@ export function isInOvernightBlackout(now: Date = new Date()): boolean {
 }
 
 /**
- * Returns schedulable time-slots for **today only** (Europe/Brussels).
- * Never includes tomorrow or later calendar days.
+ * Returns schedulable time-slots for today and up to `maxDays` days ahead
+ * (Europe/Brussels). Tomorrow’s full open windows are included so customers
+ * can place a next-day order today.
  */
 export function getAvailableTimeSlots(
   now: Date = new Date(),
-  _maxDays: number = MAX_SCHEDULE_DAYS
+  maxDays: number = MAX_SCHEDULE_DAYS
 ): TimeSlot[] {
-  void _maxDays;
   const interval = SLOT_INTERVAL_MINUTES;
   const todayKey = dateKeyInTimeZone(now);
-
-  if (isInOvernightBlackout(now)) return [];
-
   const earliest = roundUpUtc(
     new Date(now.getTime() + PREP_LEAD_MINUTES * 60_000),
     interval
   );
-
-  if (dateKeyInTimeZone(earliest) !== todayKey) return [];
-
-  const weekday = weekdayInTimeZone(now);
-  const dayWindows = OPENING_HOURS[weekday];
-  if (!dayWindows?.length) return [];
-
   const result: TimeSlot[] = [];
+  const todayInBlackout = isInOvernightBlackout(now);
 
-  for (const hrs of dayWindows) {
-    const open = openInstantForWindow(todayKey, hrs);
-    const close = closeInstantForWindow(todayKey, hrs);
+  for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
+    // After close / before open: skip today’s remaining slots, but still offer
+    // tomorrow (and further) when MAX_SCHEDULE_DAYS allows it.
+    if (dayOffset === 0 && todayInBlackout) continue;
 
-    let slot = roundUpUtc(
-      new Date(Math.max(open.getTime(), earliest.getTime())),
-      interval
-    );
+    const dayKey = addDaysToDateKey(todayKey, dayOffset);
+    const weekday = weekdayInTimeZone(wallClockToDate(dayKey, 12, 0));
+    const dayWindows = OPENING_HOURS[weekday];
+    if (!dayWindows?.length) continue;
 
-    while (slot.getTime() <= close.getTime()) {
-      if (dateKeyInTimeZone(slot) !== todayKey) break;
+    for (const hrs of dayWindows) {
+      const open = openInstantForWindow(dayKey, hrs);
+      const close = closeInstantForWindow(dayKey, hrs);
+      const startMs =
+        dayOffset === 0
+          ? Math.max(open.getTime(), earliest.getTime())
+          : open.getTime();
 
-      const { hour, minute } = brusselsHourMinute(slot);
-      result.push({
-        value: slot.toISOString(),
-        hour,
-        minute,
-        dayOffset: 0,
-        date: new Date(slot),
-      });
-      slot = new Date(slot.getTime() + interval * 60_000);
+      let slot = roundUpUtc(new Date(startMs), interval);
+
+      while (slot.getTime() <= close.getTime()) {
+        if (dateKeyInTimeZone(slot) !== dayKey) break;
+
+        const { hour, minute } = brusselsHourMinute(slot);
+        result.push({
+          value: slot.toISOString(),
+          hour,
+          minute,
+          dayOffset,
+          date: new Date(slot),
+        });
+        slot = new Date(slot.getTime() + interval * 60_000);
+      }
     }
   }
 
   return result;
 }
 
-/** Reject scheduled orders outside today's allowed slot list (same-day only). */
+/** Reject scheduled orders outside the allowed slot list (today + ahead days). */
 export function validateScheduledFulfillment(
   scheduledFor: string,
   now: Date = new Date()
 ): { ok: true } | { ok: false; reason: string } {
   if (!scheduledFor?.trim() || Number.isNaN(Date.parse(scheduledFor))) {
     return { ok: false, reason: "invalid_scheduled_time" };
-  }
-
-  const scheduled = new Date(scheduledFor);
-  const todayKey = dateKeyInTimeZone(now);
-  if (dateKeyInTimeZone(scheduled) !== todayKey) {
-    return { ok: false, reason: "scheduled_not_same_day" };
-  }
-
-  if (isInOvernightBlackout(now)) {
-    return { ok: false, reason: "scheduled_overnight_blackout" };
   }
 
   const allowed = getAvailableTimeSlots(now);

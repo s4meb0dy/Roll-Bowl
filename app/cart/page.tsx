@@ -288,7 +288,18 @@ export default function CartPage() {
   const formatSlotLabel = (slot: TimeSlot): string => {
     const hh = String(slot.hour).padStart(2, "0");
     const mm = String(slot.minute).padStart(2, "0");
-    return `${hh}:${mm}`;
+    const time = `${hh}:${mm}`;
+    if (slot.dayOffset === 1) return `${t("time.tomorrow")} ${time}`;
+    if (slot.dayOffset > 1) {
+      const day = slot.date.toLocaleDateString("nl-BE", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "Europe/Brussels",
+      });
+      return `${day} ${time}`;
+    }
+    return time;
   };
 
   const validate = (): boolean => {
