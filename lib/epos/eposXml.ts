@@ -21,6 +21,7 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/** Same QR attributes as the official JS SDK `addSymbol(..., MODEL_2, LEVEL_M, 6, 6, 0)`. */
 function symbolNode(data: string): string {
   return (
     `<symbol type="qrcode_model_2" level="level_m" width="6" height="6" size="0">` +
@@ -37,8 +38,9 @@ export type BuildEposXmlOptions = {
    */
   densityCommand?: boolean;
   /**
-   * SDP-safe subset: skip `color`, QR symbols, and reverse (those have caused
-   * silent job drops on some TM-m30III firmwares).
+   * SDP-safe subset: skip `color` and `reverse` attributes that some
+   * TM-m30III firmwares reject in Server Direct Print PrintData.
+   * QR symbols stay enabled (same as local ePOS).
    */
   sdpSafe?: boolean;
 };
@@ -54,10 +56,6 @@ function alignDirective(align: "left" | "center" | "right"): string {
 
 function textNode(line: ReceiptTextLine, opts: BuildEposXmlOptions): string {
   if (line.qr) {
-    if (opts.sdpSafe) {
-      // Print the URL as plain text instead of a QR symbol over SDP.
-      return `<text width="1" height="1" em="false">${escapeXml(line.qr)}&#10;</text>`;
-    }
     return symbolNode(line.qr);
   }
   // ePOS-Print XML text attributes are modal: they stay in effect for every
