@@ -135,9 +135,11 @@ export function describeCartItemForKitchen(item: CartItem): KitchenLine[] {
       break;
     }
 
-    case "ready-made": {
-      // Fixed recipe — kitchen only needs size/base; name is already on the
-      // receipt header. Do not dump the full ingredient list.
+    case "ready-made":
+    case "burrito": {
+      // Fixed recipe (signature bowls / burritos) — kitchen only needs
+      // size/base; name is already on the receipt header. Do not dump the
+      // full ingredient list. BYO burrito-builder still lists picks above.
       if (item.selectedSize?.label)
         lines.push({ label: "Maat", value: item.selectedSize.label });
       if (item.selectedBase?.name)
@@ -145,7 +147,6 @@ export function describeCartItemForKitchen(item: CartItem): KitchenLine[] {
       break;
     }
 
-    case "burrito":
     case "smoothie":
     case "item": {
       if (item.selectedSize?.label)
