@@ -220,7 +220,9 @@ export async function printKitchenOrderEpos(
     return { ok: false, error: "Geen printer IP — stel ePOS in bij Keuken-setup" };
   }
 
-  const xml = buildEposPrintXml(buildKitchenReceiptLines(order));
+  const xml = buildEposPrintXml(buildKitchenReceiptLines(order), {
+    densityCommand: true,
+  });
   const soap = wrapSoapEnvelope(xml);
 
   const sdkReady = await loadEposSdk();
@@ -262,11 +264,14 @@ export async function printEposTest(config: EposPrinterConfig): Promise<EposPrin
     createdAt: new Date().toISOString(),
   });
 
-  const xml = buildEposPrintXml([
-    { text: "Roll&Bowl", align: "center", bold: true, width: 2, height: 2 },
-    { text: "ePOS TEST OK", align: "center", bold: true },
-    ...testLines.slice(0, 4),
-  ]);
+  const xml = buildEposPrintXml(
+    [
+      { text: "Roll&Bowl", align: "center", bold: true, width: 2, height: 2 },
+      { text: "ePOS TEST OK", align: "center", bold: true },
+      ...testLines.slice(0, 4),
+    ],
+    { densityCommand: true }
+  );
   const soap = wrapSoapEnvelope(xml);
 
   const sdkReady = await loadEposSdk();

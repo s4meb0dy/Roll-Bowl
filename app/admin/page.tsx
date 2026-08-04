@@ -678,9 +678,21 @@ export default function AdminPage() {
 
   const triggerKitchenPrint = useCallback(
     (orderId: string) => {
-      // When SDP is healthy the venue printer pulls jobs — just (re)queue.
-      // If SDP is configured but the printer is NOT polling, also print locally
-      // so a misconfigured ID/URL never silently kills kitchen receipts.
+      const printLocally = () => {
+        const order = useStore.getState().orders.find((o) => o.id === orderId);
+        if (!order) return false;
+        const eposConfig = loadEposConfig();
+        if (eposConfig.enabled && eposConfig.host.trim()) {
+          setPrintMessage(null);
+          queuePrint(orderId);
+          return true;
+        }
+        return false;
+      };
+
+      // When SDP is healthy the venue printer pulls jobs — enqueue server-side.
+      // If enqueue fails, or SDP never confirms the print, fall back to local
+      // ePOS so a green SDP banner can never silently kill kitchen receipts.
       if (serverPrintEnabled) {
         const pin = getStoredAdminPin();
         void fetch("/api/print/enqueue", {
@@ -691,25 +703,32 @@ export default function AdminPage() {
           },
           credentials: "same-origin",
           body: JSON.stringify({ orderId }),
-        }).catch(() => {
-          /* local path below may still work */
-        });
+        })
+          .then((r) => {
+            if (!r.ok) printLocally();
+          })
+          .catch(() => {
+            printLocally();
+          });
         if (serverPrintHealthy) {
           setPrintMessage(null);
+          window.setTimeout(() => {
+            const order = useStore
+              .getState()
+              .orders.find((o) => o.id === orderId);
+            if (order && !order.kitchenPrinted) {
+              printLocally();
+            }
+          }, 15_000);
           return;
         }
         // Fall through to local ePOS / browser print.
       }
 
+      if (printLocally()) return;
+
       const order = useStore.getState().orders.find((o) => o.id === orderId);
       if (!order) return;
-
-      const eposConfig = loadEposConfig();
-      if (eposConfig.enabled && eposConfig.host.trim()) {
-        setPrintMessage(null);
-        queuePrint(orderId);
-        return;
-      }
 
       // Browser-print fallback (no ePOS configured): one-shot via window.print().
       if (printFlightRef.current) return;

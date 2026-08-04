@@ -133,13 +133,19 @@ export async function POST(req: Request) {
       const order = await getOrderById(orderId);
       if (order && !order.kitchenPrinted) {
         const jobId = toPrintJobId(orderId);
-        const eposXml = buildEposPrintXml(buildKitchenReceiptLines(order));
+        // No density <command> here — TM-m30 SDP has been observed to drop
+        // the whole job when PrintData includes raw ESC/POS command nodes.
+        const eposXml = buildEposPrintXml(buildKitchenReceiptLines(order), {
+          densityCommand: false,
+        });
+        const devid =
+          process.env.SERVER_DIRECT_PRINT_DEVICE_ID?.trim() || "local_printer";
         const body =
           `<?xml version="1.0" encoding="utf-8"?>` +
           `<PrintRequestInfo Version="2.00">` +
           `<ePOSPrint>` +
           `<Parameter>` +
-          `<devid>local_printer</devid>` +
+          `<devid>${escapeId(devid)}</devid>` +
           `<timeout>10000</timeout>` +
           `<printjobid>${escapeId(jobId)}</printjobid>` +
           `</Parameter>` +

@@ -51,12 +51,25 @@ function textNode(line: ReceiptTextLine): string {
   return `<text${attrStr}>${content}&#10;</text>`;
 }
 
-/** Build ePOS-Print XML body (inside SOAP). */
-export function buildEposPrintXml(lines: ReceiptTextLine[]): string {
+export type BuildEposXmlOptions = {
+  /**
+   * Prefix GS ( K Fine-mode density command. Safe for local ePOS/SDK;
+   * omit for Server Direct Print — some firmwares reject `<command>` in
+   * SDP PrintData and then never print the job.
+   */
+  densityCommand?: boolean;
+};
+
+/** Build ePOS-Print XML body (inside SOAP / SDP PrintData). */
+export function buildEposPrintXml(
+  lines: ReceiptTextLine[],
+  opts: BuildEposXmlOptions = {}
+): string {
   const body: string[] = [];
 
-  // Darker thermal output before any text (does not change bold/weight).
-  body.push(`<command>${EPOS_FINE_PRINT_MODE_HEX}</command>`);
+  if (opts.densityCommand) {
+    body.push(`<command>${EPOS_FINE_PRINT_MODE_HEX}</command>`);
+  }
 
   let currentAlign: "left" | "center" | "right" | null = null;
 
