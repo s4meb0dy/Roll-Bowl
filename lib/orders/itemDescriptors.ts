@@ -44,7 +44,9 @@ function joinNames(opts: Array<BuilderOption | null | undefined>): string {
  * Returns a structured breakdown of a built/customized cart item so the
  * kitchen knows exactly what to put in the bowl/burrito/roll/smoothie.
  *
- * For ready-made items, returns at most a single line for size/base when set.
+ * Ready-made bowls only list size/base (and any note on the receipt) — the
+ * recipe ingredients are not printed; kitchen knows Garlic Chicken etc. by
+ * name. Paid extras added as separate cart lines still print on their own.
  * For unrecognized item types, returns an empty array.
  */
 export function describeCartItemForKitchen(item: CartItem): KitchenLine[] {
@@ -133,7 +135,16 @@ export function describeCartItemForKitchen(item: CartItem): KitchenLine[] {
       break;
     }
 
-    case "ready-made":
+    case "ready-made": {
+      // Fixed recipe — kitchen only needs size/base; name is already on the
+      // receipt header. Do not dump the full ingredient list.
+      if (item.selectedSize?.label)
+        lines.push({ label: "Maat", value: item.selectedSize.label });
+      if (item.selectedBase?.name)
+        lines.push({ label: "Basis", value: item.selectedBase.name });
+      break;
+    }
+
     case "burrito":
     case "smoothie":
     case "item": {
