@@ -154,6 +154,14 @@ export default function CartPage() {
       ? { mode: "asap" }
       : { mode: "scheduled", scheduledFor: scheduledSlot };
 
+  const stripeDeliveryZip = isTakeaway ? "" : zipCode ?? "";
+
+  /** Only amount-affecting inputs — typing name/phone must not recreate the PI. */
+  const stripeAmountCents = useMemo(() => {
+    if (cart.length === 0) return null;
+    return computeOrderAmounts(cart, orderType, stripeDeliveryZip).amountCents;
+  }, [cart, orderType, stripeDeliveryZip]);
+
   const stripeCustomerInfo = useMemo((): CustomerInfo => {
     if (isTakeaway) {
       return {
@@ -194,18 +202,22 @@ export default function CartPage() {
     }
   }, [timeSlots, timeMode, scheduledSlot]);
 
+  // Create / refresh the Stripe PaymentIntent only when the payable amount changes.
   useEffect(() => {
-    if (!mounted || !stripeEnabled || paymentMethod !== "online" || cart.length === 0) {
-      setStripeClientSecret(null);
+    if (
+      !mounted ||
+      !stripeEnabled ||
+      paymentMethod !== "online" ||
+      cart.length === 0 ||
+      placing
+    ) {
+      if (!placing) setStripeClientSecret(null);
       return;
     }
 
     const subtotalNow = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const isTakeawayNow = orderType === "takeaway";
-    const minNow = isTakeawayNow
-      ? TAKEAWAY_MIN_ORDER
-      : zipCodeConfig?.minOrder ?? 0;
-    if (subtotalNow < minNow) {
+    const minNow = isTakeaway ? TAKEAWAY_MIN_ORDER : zipCodeConfig?.minOrder ?? 0;
+    if (subtotalNow < minNow || stripeAmountCents == null) {
       setStripeClientSecret(null);
       setStripeFormReady(false);
       setStripeLoading(false);
@@ -216,56 +228,112 @@ export default function CartPage() {
     if (!stripeOrderId) setStripeOrderId(orderId);
 
     const ac = new AbortController();
-    setStripeLoading(true);
-    setStripeError(null);
-    setStripeFormReady(false);
+    const debounce = window.setTimeout(() => {
+      setStripeLoading(true);
+      setStripeError(null);
+      setStripeFormReady(false);
 
-    void (async () => {
-      try {
-        const res = await fetch("/api/stripe/create-payment-intent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId,
-            items: cart,
-            orderType,
-            zipCode: isTakeaway ? "" : stripeCustomerInfo.zipCode,
-            customerInfo: stripeCustomerInfo,
-            generalNote,
-            fulfillmentTime: buildFulfillmentTime(),
-          }),
-          signal: ac.signal,
-        });
-        const data = (await res.json()) as {
-          clientSecret?: string;
-          error?: string;
-        };
-        if (!res.ok || !data.clientSecret) {
-          throw new Error(data.error ?? "stripe_error");
+      void (async () => {
+        try {
+          const res = await fetch("/api/stripe/create-payment-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId,
+              items: cart,
+              orderType,
+              zipCode: isTakeaway ? "" : stripeCustomerInfo.zipCode,
+              customerInfo: stripeCustomerInfo,
+              generalNote,
+              fulfillmentTime: buildFulfillmentTime(),
+            }),
+            signal: ac.signal,
+          });
+          const data = (await res.json()) as {
+            clientSecret?: string;
+            error?: string;
+          };
+          if (!res.ok || !data.clientSecret) {
+            throw new Error(data.error ?? "stripe_error");
+          }
+          setStripeClientSecret(data.clientSecret);
+        } catch (e) {
+          if ((e as Error).name === "AbortError") return;
+          setStripeClientSecret(null);
+          setStripeError(t("payment.stripe_error"));
+        } finally {
+          if (!ac.signal.aborted) setStripeLoading(false);
         }
-        setStripeClientSecret(data.clientSecret);
-      } catch (e) {
-        if ((e as Error).name === "AbortError") return;
-        setStripeClientSecret(null);
-        setStripeError(t("payment.stripe_error"));
-      } finally {
-        if (!ac.signal.aborted) setStripeLoading(false);
-      }
-    })();
+      })();
+    }, 400);
 
-    return () => ac.abort();
+    return () => {
+      window.clearTimeout(debounce);
+      ac.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     mounted,
     stripeEnabled,
     paymentMethod,
+    placing,
     cart,
     orderType,
     isTakeaway,
+    stripeAmountCents,
+    zipCodeConfig?.minOrder,
+    stripeOrderId,
+  ]);
+
+  /** Keep the Redis pending snapshot fresh without touching Stripe (name, notes, slot). */
+  useEffect(() => {
+    if (
+      !mounted ||
+      !stripeEnabled ||
+      paymentMethod !== "online" ||
+      !stripeOrderId ||
+      cart.length === 0 ||
+      placing
+    ) {
+      return;
+    }
+
+    const subtotalNow = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const minNow = isTakeaway ? TAKEAWAY_MIN_ORDER : zipCodeConfig?.minOrder ?? 0;
+    if (subtotalNow < minNow) return;
+
+    const timer = window.setTimeout(() => {
+      void fetch("/api/stripe/save-pending-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: stripeOrderId,
+          items: cart,
+          customerInfo: stripeCustomerInfo,
+          generalNote,
+          orderType,
+          fulfillmentTime: buildFulfillmentTime(),
+          zipCode: isTakeaway ? "" : stripeCustomerInfo.zipCode || zipCode,
+        }),
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mounted,
+    stripeEnabled,
+    paymentMethod,
+    placing,
+    stripeOrderId,
+    cart,
     stripeCustomerInfo,
     generalNote,
+    orderType,
     timeMode,
     scheduledSlot,
+    isTakeaway,
+    zipCode,
     zipCodeConfig?.minOrder,
   ]);
 
@@ -705,6 +773,7 @@ export default function CartPage() {
                       onChange={(v) => updateQuantity(item.cartId, v)}
                       min={0}
                       max={999}
+                      disabled={placing}
                     />
                     <span className="text-xs tabular-nums text-ink-400">
                       €{item.price.toFixed(2)} {t("cart.each")}
@@ -714,19 +783,21 @@ export default function CartPage() {
                   <div className="flex w-full min-w-0 items-center justify-end gap-1 min-[400px]:w-auto min-[400px]:justify-end">
                     <button
                       type="button"
+                      disabled={placing}
                       onClick={() =>
                         setExpandedNote(
                           expandedNote === item.cartId ? null : item.cartId
                         )
                       }
-                      className="btn-ghost min-w-0 text-xs text-ink-500"
+                      className="btn-ghost min-w-0 text-xs text-ink-500 disabled:opacity-50"
                     >
                       {t("cart.note_btn")}
                     </button>
                     <button
                       type="button"
+                      disabled={placing}
                       onClick={() => removeFromCart(item.cartId)}
-                      className="btn-ghost shrink-0 text-ink-400 hover:text-red-500"
+                      className="btn-ghost shrink-0 text-ink-400 hover:text-red-500 disabled:opacity-50"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -741,6 +812,7 @@ export default function CartPage() {
                       onChange={(e) => updateNote(item.cartId, e.target.value)}
                       placeholder={t("cart.item_note_ph")}
                       className="input-field text-sm"
+                      disabled={placing}
                     />
                   </div>
                 )}
@@ -758,6 +830,7 @@ export default function CartPage() {
                 placeholder={t("cart.general_note_ph")}
                 rows={2}
                 className="input-field resize-none text-sm"
+                disabled={placing}
               />
             </div>
           </div>

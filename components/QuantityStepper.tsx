@@ -45,6 +45,7 @@ type Props = {
   size?: Size;
   className?: string;
   inputAriaLabel?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -58,6 +59,7 @@ export default function QuantityStepper({
   size = "lg",
   className = "",
   inputAriaLabel = "Aantal",
+  disabled = false,
 }: Props) {
   const s = SIZE_STYLES[size];
   const [text, setText] = useState(String(value));
@@ -88,9 +90,12 @@ export default function QuantityStepper({
   };
 
   return (
-    <div className={`flex items-center ${s.gap} ${className}`.trim()}>
+    <div
+      className={`flex items-center ${s.gap} ${disabled ? "pointer-events-none opacity-60" : ""} ${className}`.trim()}
+    >
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onChange(Math.max(min, value - 1))}
         className={s.btn}
         aria-label="Minder"
@@ -101,6 +106,7 @@ export default function QuantityStepper({
         type="text"
         inputMode="numeric"
         autoComplete="off"
+        disabled={disabled}
         value={text}
         onChange={(e) => {
           const t = e.target.value.replace(/\D/g, "");
@@ -120,6 +126,7 @@ export default function QuantityStepper({
       />
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onChange(Math.min(max, value + 1))}
         className={s.btn}
         aria-label="Meer"
