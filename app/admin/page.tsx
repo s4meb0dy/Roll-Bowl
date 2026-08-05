@@ -40,6 +40,7 @@ import {
 } from "@/lib/epos/config";
 import { printKitchenOrderEpos } from "@/lib/epos/printOrder";
 import { useStore } from "@/lib/store/useStore";
+import { rehydrateStore, useStoreHydrated } from "@/lib/store/hydration";
 import {
   isKitchenAlarmMuted,
   setKitchenAlarmMuted,
@@ -550,7 +551,7 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [kitchenMode, setKitchenMode] = useState(false);
   const [setupVisible, setSetupVisible] = useState(true);
-  const [storeHydrated, setStoreHydrated] = useState(false);
+  const storeHydrated = useStoreHydrated();
   const [lastChecked, setLastChecked] = useState<Date>(() => new Date());
   const [printTargetId, setPrintTargetId] = useState<string | null>(null);
   const [alarmOrderId, setAlarmOrderId] = useState<string | null>(null);
@@ -992,17 +993,10 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    void useStore.persist.rehydrate();
-    const unsub = useStore.persist.onFinishHydration(() => setStoreHydrated(true));
-    if (useStore.persist.hasHydrated()) setStoreHydrated(true);
-    return unsub;
-  }, []);
-
-  useEffect(() => {
     if (!mounted || !storeHydrated) return;
     const tick = () => {
       setLastChecked(new Date());
-      void useStore.persist.rehydrate();
+      rehydrateStore();
     };
     const id = window.setInterval(tick, 2_000);
     return () => window.clearInterval(id);
@@ -1012,7 +1006,7 @@ export default function AdminPage() {
     if (typeof window === "undefined") return;
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
-        void useStore.persist.rehydrate();
+        rehydrateStore();
         setLastChecked(new Date());
       }
     };
@@ -1853,7 +1847,7 @@ export default function AdminPage() {
             <button
               onClick={() => {
                 setLastChecked(new Date());
-                void useStore.persist.rehydrate();
+                rehydrateStore();
               }}
               className="btn-ghost text-neutral-400"
             >

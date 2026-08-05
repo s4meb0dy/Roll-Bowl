@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 import { useStore } from "@/lib/store/useStore";
+import { useStoreHydrated } from "@/lib/store/hydration";
 import { TEST_PRODUCT } from "@/lib/menu";
 
 /**
@@ -16,10 +17,15 @@ export default function TestOrderPage() {
   const router = useRouter();
   const addToCart = useStore((s) => s.addToCart);
   const startTakeawaySession = useStore((s) => s.startTakeawaySession);
+  const storeHydrated = useStoreHydrated();
   const done = useRef(false);
   const [msg, setMsg] = useState("Testbestelling voorbereiden…");
 
   useEffect(() => {
+    // Add only after the persisted store has hydrated, otherwise the rehydrate
+    // merge would overwrite our freshly-added cart line.
+    if (!storeHydrated) return;
+
     const run = () => {
       if (done.current) return;
       done.current = true;
@@ -36,21 +42,8 @@ export default function TestOrderPage() {
       window.setTimeout(() => router.push("/cart"), 500);
     };
 
-    // Add only after the persisted store has hydrated, otherwise the rehydrate
-    // merge would overwrite our freshly-added cart line.
-    if (useStore.persist.hasHydrated()) {
-      run();
-      return;
-    }
-    void useStore.persist.rehydrate();
-    const unsub = useStore.persist.onFinishHydration(run);
-    // Safety net if hydration already settled between the check and subscribe.
-    const t = window.setTimeout(run, 800);
-    return () => {
-      unsub();
-      window.clearTimeout(t);
-    };
-  }, [addToCart, startTakeawaySession, router]);
+    run();
+  }, [storeHydrated, addToCart, startTakeawaySession, router]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-6 text-center">
