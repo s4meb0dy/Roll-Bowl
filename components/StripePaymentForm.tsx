@@ -62,6 +62,13 @@ const PaymentFields = forwardRef<
         if (paymentIntent?.status === "succeeded") {
           return { ok: true, paymentIntentId: paymentIntent.id };
         }
+        // Bancontact / iDEAL may return "processing" before redirect completes.
+        if (
+          paymentIntent?.status === "processing" &&
+          paymentIntent.id
+        ) {
+          return { ok: true, paymentIntentId: paymentIntent.id, processing: true };
+        }
         return { ok: false, error: "Betaling niet voltooid" };
       },
     }),

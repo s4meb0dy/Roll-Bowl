@@ -364,70 +364,75 @@ export default function CartPage() {
       setPaymentError(null);
       setPlacing(true);
 
-      savePendingStripeCheckout({
-        orderId: stripeOrderId,
-        items: cart,
-        customerInfo: finalCustomerInfo,
-        generalNote,
-        orderType,
-        fulfillmentTime,
-        amountCents,
-      });
-
-      const savePendingRes = await fetch("/api/stripe/save-pending-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let finished = false;
+      try {
+        savePendingStripeCheckout({
           orderId: stripeOrderId,
           items: cart,
           customerInfo: finalCustomerInfo,
           generalNote,
           orderType,
           fulfillmentTime,
-          zipCode: isTakeaway ? "" : finalCustomerInfo.zipCode || zipCode,
-        }),
-      });
-      if (!savePendingRes.ok) {
-        setPaymentError(t("payment.stripe_error"));
-        releasePlacing();
-        return;
-      }
-
-      const returnUrl = `${window.location.origin}/order-confirmed?id=${stripeOrderId}&stripe_return=1`;
-      const result = await stripePaymentRef.current?.confirmPayment(returnUrl);
-      if (!result?.ok) {
-        setPaymentError(result?.error ?? t("payment.stripe_error"));
-        releasePlacing();
-        return;
-      }
-
-      const verifyRes = await fetch("/api/stripe/verify-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentIntentId: result.paymentIntentId,
-          orderId: stripeOrderId,
           amountCents,
-        }),
-      });
-      if (!verifyRes.ok) {
-        setPaymentError(t("payment.stripe_error"));
-        releasePlacing();
-        return;
-      }
+        });
 
-      const order = placeOrder({
-        customerInfo: finalCustomerInfo,
-        generalNote,
-        paymentMethod: "online",
-        orderType,
-        fulfillmentTime,
-        orderId: stripeOrderId,
-        stripePaymentIntentId: result.paymentIntentId,
-        status: "paid",
-      });
-      clearPendingStripeCheckout(stripeOrderId);
-      finishOrder(order);
+        const savePendingRes = await fetch("/api/stripe/save-pending-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: stripeOrderId,
+            items: cart,
+            customerInfo: finalCustomerInfo,
+            generalNote,
+            orderType,
+            fulfillmentTime,
+            zipCode: isTakeaway ? "" : finalCustomerInfo.zipCode || zipCode,
+          }),
+        });
+        if (!savePendingRes.ok) {
+          setPaymentError(t("payment.stripe_error"));
+          return;
+        }
+
+        const returnUrl = `${window.location.origin}/order-confirmed?id=${stripeOrderId}&stripe_return=1`;
+        const result = await stripePaymentRef.current?.confirmPayment(returnUrl);
+        if (!result?.ok) {
+          setPaymentError(result?.error ?? t("payment.stripe_error"));
+          return;
+        }
+
+        const verifyRes = await fetch("/api/stripe/verify-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentIntentId: result.paymentIntentId,
+            orderId: stripeOrderId,
+            amountCents,
+          }),
+        });
+        if (!verifyRes.ok) {
+          setPaymentError(t("payment.stripe_error"));
+          return;
+        }
+
+        const order = placeOrder({
+          customerInfo: finalCustomerInfo,
+          generalNote,
+          paymentMethod: "online",
+          orderType,
+          fulfillmentTime,
+          orderId: stripeOrderId,
+          stripePaymentIntentId: result.paymentIntentId,
+          status: "paid",
+        });
+        clearPendingStripeCheckout(stripeOrderId);
+        finishOrder(order);
+        finished = true;
+      } catch {
+        setPaymentError(t("payment.stripe_error"));
+      } finally {
+        if (!finished) releasePlacing();
+      }
       return;
     }
 

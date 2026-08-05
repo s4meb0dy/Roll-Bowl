@@ -1,6 +1,8 @@
 import type { CartItem, CustomerInfo, FulfillmentTime, OrderType } from "@/lib/types";
 
 const KEY_PREFIX = "rollenbowl_stripe_pending_";
+/** localStorage survives some in-app browsers that wipe sessionStorage on bank redirect. */
+const LS_KEY_PREFIX = "rollenbowl_stripe_pending_ls_";
 
 export interface PendingStripeCheckout {
   orderId: string;
@@ -13,15 +15,27 @@ export interface PendingStripeCheckout {
 }
 
 export function savePendingStripeCheckout(data: PendingStripeCheckout): void {
-  if (typeof sessionStorage === "undefined") return;
-  sessionStorage.setItem(KEY_PREFIX + data.orderId, JSON.stringify(data));
+  if (typeof window === "undefined") return;
+  const json = JSON.stringify(data);
+  try {
+    sessionStorage.setItem(KEY_PREFIX + data.orderId, json);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(LS_KEY_PREFIX + data.orderId, json);
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 export function loadPendingStripeCheckout(
   orderId: string
 ): PendingStripeCheckout | null {
-  if (typeof sessionStorage === "undefined") return null;
-  const raw = sessionStorage.getItem(KEY_PREFIX + orderId);
+  if (typeof window === "undefined") return null;
+  const raw =
+    sessionStorage.getItem(KEY_PREFIX + orderId) ??
+    localStorage.getItem(LS_KEY_PREFIX + orderId);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as PendingStripeCheckout;
@@ -31,6 +45,15 @@ export function loadPendingStripeCheckout(
 }
 
 export function clearPendingStripeCheckout(orderId: string): void {
-  if (typeof sessionStorage === "undefined") return;
-  sessionStorage.removeItem(KEY_PREFIX + orderId);
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(KEY_PREFIX + orderId);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(LS_KEY_PREFIX + orderId);
+  } catch {
+    /* ignore */
+  }
 }

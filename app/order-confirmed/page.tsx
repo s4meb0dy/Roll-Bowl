@@ -12,6 +12,7 @@ import type { Order } from "@/lib/types";
 import {
   loadPendingStripeCheckout,
   clearPendingStripeCheckout,
+  type PendingStripeCheckout,
 } from "@/lib/stripe/pendingOrder";
 import { postOrderToInbox } from "@/lib/orders/postInboxClient";
 import { pushOrderToPos, shouldRetryPosPush } from "@/lib/orders/pushPosClient";
@@ -35,15 +36,20 @@ function ConfirmedContent() {
   const orderId = params.get("id");
   const stripeReturn = params.get("stripe_return");
   const paymentIntentId = params.get("payment_intent");
+  const redirectStatus = params.get("redirect_status");
   const [dots, setDots] = useState(".");
   const t = useT();
   const orders = useStore((s) => s.orders);
   const sessionOrderType = useStore((s) => s.sessionOrderType);
   const placeOrder = useStore((s) => s.placeOrder);
+  const mergeOrderFromInbox = useStore((s) => s.mergeOrderFromInbox);
   const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
   const [mounted, setMounted] = useState(false);
+  const [storeHydrated, setStoreHydrated] = useState(false);
   const [stripeCompleting, setStripeCompleting] = useState(false);
   const [stripeError, setStripeError] = useState(false);
+  const [paymentFailed, setPaymentFailed] = useState(false);
+  const [stripePaidButFailed, setStripePaidButFailed] = useState(false);
   const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
   const posPushDone = useRef(false);
@@ -51,7 +57,17 @@ function ConfirmedContent() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  const order = mounted ? orders.find((o) => o.id === orderId) : undefined;
+  useEffect(() => {
+    void useStore.persist.rehydrate();
+    const unsub = useStore.persist.onFinishHydration(() => setStoreHydrated(true));
+    if (useStore.persist.hasHydrated()) setStoreHydrated(true);
+    return unsub;
+  }, []);
+
+  const order =
+    mounted && storeHydrated
+      ? orders.find((o) => o.id === orderId)
+      : undefined;
   const isTakeaway =
     order?.orderType === "takeaway" ||
     (!order && sessionOrderType === "takeaway");
@@ -61,13 +77,25 @@ function ConfirmedContent() {
   useEffect(() => {
     if (
       !mounted ||
+      !storeHydrated ||
       !orderId ||
       stripeReturn !== "1" ||
-      !paymentIntentId ||
       stripeReturnHandled.current
     ) {
       return;
     }
+
+    if (redirectStatus === "failed") {
+      stripeReturnHandled.current = true;
+      setPaymentFailed(true);
+      setStripeError(true);
+      return;
+    }
+
+    if (!paymentIntentId) {
+      return;
+    }
+
     const existing = useStore.getState().orders.find((o) => o.id === orderId);
     if (existing) {
       stripeReturnHandled.current = true;
@@ -75,20 +103,58 @@ function ConfirmedContent() {
       return;
     }
 
-    const pending = loadPendingStripeCheckout(orderId);
-    if (!pending) {
-      // Redirected back from Stripe but the checkout snapshot is gone: we can't
-      // safely reconstruct the order. Surface an error instead of a fake success.
-      stripeReturnHandled.current = true;
-      setStripeError(true);
-      return;
-    }
-
     stripeReturnHandled.current = true;
     setStripeCompleting(true);
 
     void (async () => {
+      let paymentVerified = false;
       try {
+        let pending = loadPendingStripeCheckout(orderId);
+
+        if (!pending) {
+          const recoverRes = await fetch("/api/stripe/recover-checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId, paymentIntentId }),
+          });
+          const recoverData = (await recoverRes.json()) as {
+            ok?: boolean;
+            pending?: PendingStripeCheckout;
+            order?: Order;
+            minimal?: boolean;
+            paid?: boolean;
+          };
+
+          if (!recoverRes.ok) {
+            setPaymentFailed(recoverRes.status === 402);
+            setStripeError(true);
+            return;
+          }
+
+          paymentVerified = true;
+
+          if (recoverData.order) {
+            mergeOrderFromInbox(recoverData.order);
+            clearPendingStripeCheckout(orderId);
+            await postOrderToInbox(recoverData.order);
+            void pushOrderToPos(recoverData.order, setOrderLightspeed);
+            return;
+          }
+
+          if (recoverData.pending) {
+            pending = recoverData.pending;
+          } else if (recoverData.minimal || recoverData.paid) {
+            clearPendingStripeCheckout(orderId);
+            return;
+          }
+        }
+
+        if (!pending) {
+          setStripePaidButFailed(paymentVerified);
+          setStripeError(true);
+          return;
+        }
+
         await fetch("/api/stripe/save-pending-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,18 +172,21 @@ function ConfirmedContent() {
           }),
         });
 
-        const verifyRes = await fetch("/api/stripe/verify-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            paymentIntentId,
-            orderId,
-            amountCents: pending.amountCents,
-          }),
-        });
-        if (!verifyRes.ok) {
-          setStripeError(true);
-          return;
+        if (!paymentVerified) {
+          const verifyRes = await fetch("/api/stripe/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              paymentIntentId,
+              orderId,
+              amountCents: pending.amountCents,
+            }),
+          });
+          if (!verifyRes.ok) {
+            setStripeError(true);
+            return;
+          }
+          paymentVerified = true;
         }
 
         const placed = placeOrder({
@@ -135,6 +204,7 @@ function ConfirmedContent() {
         await postOrderToInbox(placed);
         void pushOrderToPos(placed, setOrderLightspeed);
       } catch {
+        setStripePaidButFailed(paymentVerified);
         setStripeError(true);
       } finally {
         setStripeCompleting(false);
@@ -142,10 +212,13 @@ function ConfirmedContent() {
     })();
   }, [
     mounted,
+    storeHydrated,
     orderId,
     stripeReturn,
     paymentIntentId,
+    redirectStatus,
     placeOrder,
+    mergeOrderFromInbox,
     setOrderLightspeed,
   ]);
 
@@ -246,6 +319,17 @@ function ConfirmedContent() {
     return () => clearInterval(t);
   }, []);
 
+  if (!mounted || !storeHydrated) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 pb-28 pt-10 text-center sm:px-6 sm:pb-8 sm:pt-12">
+        <div className="flex w-full max-w-md flex-col items-center gap-3">
+          <Clock size={28} className="animate-pulse text-sage-600" />
+          <p className="text-sm text-neutral-600">{t("order.confirmed.loading")}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (stripeError && !order) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 pb-28 pt-10 text-center sm:px-6 sm:pb-8 sm:pt-12">
@@ -256,8 +340,20 @@ function ConfirmedContent() {
           <h1 className="font-display mb-2 text-2xl font-bold text-neutral-800 sm:text-3xl">
             {t("order.confirmed.error_title")}
           </h1>
+          {orderId && (
+            <p className="mb-3 text-sm text-neutral-500">
+              {t("order.confirmed.order_id")}:{" "}
+              <span className="font-mono font-semibold text-neutral-700">
+                #{shortOrderCode(orderId)}
+              </span>
+            </p>
+          )}
           <p className="mb-6 max-w-sm text-[15px] leading-relaxed text-neutral-600 sm:text-base">
-            {t("order.confirmed.error_body")}
+            {paymentFailed
+              ? t("order.confirmed.error_body")
+              : stripePaidButFailed
+                ? t("order.confirmed.error_paid_body")
+                : t("order.confirmed.error_body")}
           </p>
           <Link
             href="/cart"
@@ -462,7 +558,13 @@ function ConfirmedContent() {
 
 export default function OrderConfirmedPage() {
   return (
-    <Suspense>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-cream">
+          <Clock size={28} className="animate-pulse text-sage-600" />
+        </div>
+      }
+    >
       <ConfirmedContent />
     </Suspense>
   );

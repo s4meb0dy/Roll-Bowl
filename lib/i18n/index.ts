@@ -210,8 +210,10 @@ const nl: Dict = {
   "order.confirmed.expected": "Verwacht",
   "order.confirmed.expected_ready": "Rond {time}",
   "order.confirmed.stripe_completing": "Bevestigen van je betaling…",
+  "order.confirmed.loading": "Je bestelling laden…",
   "order.confirmed.error_title": "We konden je bestelling niet bevestigen",
   "order.confirmed.error_body": "Er ging iets mis bij het afronden van je betaling. Er is (nog) geen betaling in rekening gebracht. Probeer opnieuw te bestellen of neem contact met ons op.",
+  "order.confirmed.error_paid_body": "Je betaling is ontvangen, maar we konden de bevestiging niet afmaken op dit apparaat. Noteer je bestelnummer en neem contact met ons op als de keuken je bestelling niet ziet.",
   "order.confirmed.order_again": "Opnieuw bestellen",
 
   // order type + fulfillment time
@@ -567,8 +569,10 @@ const en: Dict = {
   "order.confirmed.expected": "Expected",
   "order.confirmed.expected_ready": "Around {time}",
   "order.confirmed.stripe_completing": "Confirming your payment…",
+  "order.confirmed.loading": "Loading your order…",
   "order.confirmed.error_title": "We couldn't confirm your order",
   "order.confirmed.error_body": "Something went wrong while completing your payment. You have not been charged (yet). Please try ordering again or contact us.",
+  "order.confirmed.error_paid_body": "Your payment was received, but we couldn't finish confirmation on this device. Save your order number and contact us if the kitchen doesn't see your order.",
   "order.confirmed.order_again": "Order again",
 
   // order type + fulfillment time
@@ -914,8 +918,10 @@ const fr: Dict = {
   "order.confirmed.expected": "Prévu",
   "order.confirmed.expected_ready": "Vers {time}",
   "order.confirmed.stripe_completing": "Confirmation de votre paiement…",
+  "order.confirmed.loading": "Chargement de votre commande…",
   "order.confirmed.error_title": "Nous n'avons pas pu confirmer votre commande",
   "order.confirmed.error_body": "Une erreur s'est produite lors de la finalisation de votre paiement. Vous n'avez (pas encore) été débité. Veuillez réessayer de commander ou nous contacter.",
+  "order.confirmed.error_paid_body": "Votre paiement a été reçu, mais nous n'avons pas pu terminer la confirmation sur cet appareil. Notez votre numéro de commande et contactez-nous si la cuisine ne voit pas votre commande.",
   "order.confirmed.order_again": "Commander à nouveau",
 
   // order type + fulfillment time
