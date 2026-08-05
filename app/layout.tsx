@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import StoreHydration from "@/components/StoreHydration";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -103,6 +104,7 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <MobileBottomNav />
+        <Analytics />
       </body>
     </html>
   );
