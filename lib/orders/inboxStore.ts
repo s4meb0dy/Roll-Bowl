@@ -19,6 +19,13 @@ const KEY_BY_ID = (id: string) => `order:byId:${id}`;
 const KEY_RECENT = "order:recent";
 const KEY_VERSION = "order:version";
 const KEY_LEGACY_LIST = "order:inbox";
+/**
+ * Tombstone for an order the kitchen removed. Customers' confirmation pages
+ * re-POST their order for a while to survive dropped requests, and without a
+ * marker that retry happily re-creates a deleted order as a brand-new (and
+ * unpaid) ticket. Outlives the order body so a stale tab can never revive it.
+ */
+const KEY_REMOVED = (id: string) => `order:removed:${id}`;
 
 /**
  * How many recent ids the kitchen keeps in the `order:recent` ZSET. With ~200
@@ -34,6 +41,9 @@ const RECENT_KEEP = 5_000;
  * any patch effectively "touches" the order and resets the clock.
  */
 const ORDER_TTL_S = 90 * 24 * 60 * 60;
+
+/** Tombstones live longer than the order body they replace. */
+const REMOVED_TTL_S = 180 * 24 * 60 * 60;
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v);
@@ -116,21 +126,46 @@ async function drainLegacyList(): Promise<void> {
   await bumpVersion();
 }
 
+/** Was this order removed from the board by the kitchen? */
+export async function isOrderRemoved(id: string): Promise<boolean> {
+  const redis = getInboxRedis();
+  return Boolean(await redis.get(KEY_REMOVED(id)));
+}
+
+async function tombstoneOrders(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const redis = getInboxRedis();
+  for (const id of ids) {
+    try {
+      await redis.set(KEY_REMOVED(id), 1, { ex: REMOVED_TTL_S });
+    } catch (e) {
+      console.error("[orders] tombstone failed", id, e);
+    }
+  }
+}
+
 /**
  * Idempotent create: stores the order only if a record with this id does not
  * already exist (so retries from flaky mobile networks never overwrite a
  * server-updated copy with the original snapshot).
  *
  * Returns:
- *   `{ created: true }`  — fresh insert
- *   `{ created: false }` — id already existed; nothing changed
+ *   `{ created: true }`                  — fresh insert
+ *   `{ created: false }`                 — id already existed; nothing changed
+ *   `{ created: false, blocked: true }`  — the kitchen removed this order, so
+ *                                          a late retry must not revive it
  */
 export async function storeNewOrder(
   order: Order
-): Promise<{ created: boolean; version: number }> {
+): Promise<{ created: boolean; version: number; blocked?: boolean }> {
   await drainLegacyList();
   const redis = getInboxRedis();
   const ms = createdAtMs(order);
+
+  if (await isOrderRemoved(order.id)) {
+    return { created: false, blocked: true, version: await getVersion() };
+  }
+
   const enriched: Order = {
     ...order,
     updatedAt: order.updatedAt ?? new Date().toISOString(),
@@ -272,6 +307,7 @@ export async function deleteOrderById(
   } catch {
     /* index entry may already be gone */
   }
+  await tombstoneOrders([id]);
 
   const version = await bumpVersion();
   return { deleted: existed, version };
@@ -308,6 +344,7 @@ export async function clearAllOrders(): Promise<{ deleted: number; version: numb
       const chunk = keys.slice(i, i + CHUNK);
       if (chunk.length > 0) await redis.del(...chunk);
     }
+    await tombstoneOrders(ids);
   }
 
   try {

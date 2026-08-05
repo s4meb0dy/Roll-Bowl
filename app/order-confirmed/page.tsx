@@ -32,6 +32,21 @@ const TAKEAWAY_PROGRESS_STEPS = [
   { icon: "🏪", labelKey: "order.confirmed.status.picked_up" },
 ] as const;
 
+/**
+ * The inbox/POS retries below exist to cover a request dropped during the
+ * hand-off from /cart, which is a matter of seconds. Re-opening this page
+ * later (back button, "order again", a tab restored the next morning) must
+ * never re-send the order: the kitchen may have finished or removed it, and
+ * a resend would land as a fresh, unpaid ticket.
+ */
+const RESEND_WINDOW_MS = 30 * 60_000;
+
+function isFreshOrder(order: Order): boolean {
+  const createdAt = Date.parse(order.createdAt);
+  if (!Number.isFinite(createdAt)) return false;
+  return Date.now() - createdAt < RESEND_WINDOW_MS;
+}
+
 interface RecoverResponse {
   ok?: boolean;
   pending?: PendingStripeCheckout;
@@ -257,6 +272,7 @@ function ConfirmedContent() {
     if (!orderId || typeof window === "undefined") return;
 
     const post = async (o: Order) => {
+      if (!isFreshOrder(o)) return;
       if (inboxPostOk.current) return;
       const url = `${window.location.origin}/api/orders/inbox`;
       let body: string;
@@ -314,6 +330,10 @@ function ConfirmedContent() {
       if (posPushDone.current || posPushInFlight.current) return;
       const o = useStore.getState().orders.find((x) => x.id === orderId);
       if (!o) return;
+      if (!isFreshOrder(o)) {
+        posPushDone.current = true;
+        return;
+      }
       if (!shouldRetryPosPush(o.lightspeed)) {
         posPushDone.current = true;
         return;

@@ -1,6 +1,11 @@
 import type { Order } from "@/lib/types";
 
-type PostOutcome = "stored" | "not_configured" | "unavailable" | "error";
+type PostOutcome =
+  | "stored"
+  | "not_configured"
+  | "removed"
+  | "unavailable"
+  | "error";
 
 /**
  * Inspect an inbox POST response. A HTTP 200 is NOT enough: when Redis is not
@@ -22,6 +27,7 @@ async function readOutcome(res: Response): Promise<PostOutcome> {
     if (!data) return "stored";
     if (data.stored === true) return "stored";
     if (data.reason === "inbox_not_configured") return "not_configured";
+    if (data.reason === "order_removed") return "removed";
     return "unavailable";
   }
 
@@ -59,7 +65,11 @@ export async function postOrderToInbox(order: Order): Promise<boolean> {
     });
     outcome = await readOutcome(first);
 
-    if (outcome !== "stored" && outcome !== "not_configured") {
+    if (
+      outcome !== "stored" &&
+      outcome !== "not_configured" &&
+      outcome !== "removed"
+    ) {
       const retry = await fetch(inboxUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,6 +92,10 @@ export async function postOrderToInbox(order: Order): Promise<boolean> {
     console.warn(
       "[orders/inbox] Redis niet geconfigureerd — bestelling niet naar de keuken gesynchroniseerd."
     );
+    return false;
+  }
+  if (outcome === "removed") {
+    // The kitchen took this order off the board; resending would revive it.
     return false;
   }
   if (outcome === "unavailable") {

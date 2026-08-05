@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { pushOrderToLightspeed } from "@/lib/lightspeed/pushOrder";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
-import { getOrderById, patchOrderFields } from "@/lib/orders/inboxStore";
+import {
+  getOrderById,
+  isOrderRemoved,
+  patchOrderFields,
+} from "@/lib/orders/inboxStore";
 import { validateOrderSubmission } from "@/lib/orders/validateOrderSubmission";
 
 /**
@@ -32,6 +36,13 @@ export async function POST(req: Request) {
 
   if (isOrderInboxConfigured()) {
     const existing = await getOrderById(order.id);
+    if (!existing && (await isOrderRemoved(order.id))) {
+      // Removed from the board — a late client retry must not ring up a sale.
+      return NextResponse.json(
+        { state: "skipped" as const, pushedAt: new Date().toISOString() },
+        { status: 200 }
+      );
+    }
     if (!existing && order.paymentMethod === "cash") {
       return NextResponse.json({ error: "order_not_in_inbox" }, { status: 404 });
     }

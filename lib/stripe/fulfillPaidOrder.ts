@@ -90,7 +90,17 @@ export async function fulfillPaidStripeOrder(
   }
 
   try {
-    const { created } = await storeNewOrder(order);
+    const { created, blocked } = await storeNewOrder(order);
+
+    if (blocked) {
+      // Removed by the kitchen — drop the snapshot so webhook retries stop
+      // instead of re-creating the order behind their back.
+      await deletePendingStripeOrder(orderId);
+      console.warn("[stripe/fulfill] order was removed, not re-created", {
+        orderId,
+      });
+      return { ok: true, orderId, created: false, alreadyPaid: true };
+    }
 
     if (created) {
       try {

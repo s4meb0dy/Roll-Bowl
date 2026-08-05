@@ -124,7 +124,20 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { created, version } = await storeNewOrder(checked.order);
+    const { created, version, blocked } = await storeNewOrder(checked.order);
+    if (blocked) {
+      // The kitchen removed this order. Answer 200 so the customer's page
+      // stops retrying, but never put it back on the board.
+      console.warn("[orders/inbox] refused to revive removed order", {
+        orderId: checked.order.id,
+      });
+      return NextResponse.json({
+        ok: true,
+        stored: false,
+        reason: "order_removed",
+        version,
+      });
+    }
     return NextResponse.json({
       ok: true,
       stored: true,
