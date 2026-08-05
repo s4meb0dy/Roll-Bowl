@@ -17,6 +17,7 @@ import type { Locale } from "@/lib/i18n/index";
 import { isNewCustomerByPhone } from "@/lib/customerIdentity";
 import { patchOrderRemote } from "@/lib/orders/client";
 import { generateOrderId } from "@/lib/orderId";
+import { isRenderableOrder } from "@/lib/orders/orderGuards";
 
 function tsOf(o: Order | undefined | null): number {
   if (!o) return 0;
@@ -388,14 +389,15 @@ export const useStore = create<AppState>()(
 
       applyOrdersSnapshot: (incoming, opts) =>
         set((state) => {
+          const safeIncoming = incoming.filter(isRenderableOrder);
           const prune = opts?.prune ?? false;
           const complete = opts?.complete ?? false;
           let changed = false;
           const byId = new Map<string, Order>();
           for (const o of state.orders) byId.set(o.id, o);
 
-          const incomingIds = new Set(incoming.map((o) => o.id));
-          for (const remote of incoming) {
+          const incomingIds = new Set(safeIncoming.map((o) => o.id));
+          for (const remote of safeIncoming) {
             const local = byId.get(remote.id);
             if (!local) {
               byId.set(remote.id, remote);
@@ -423,7 +425,7 @@ export const useStore = create<AppState>()(
             // board never propagated to the other devices, because it sits just
             // below the oldest id the snapshot still contains.
             let oldestIncomingMs = Infinity;
-            for (const o of incoming) {
+            for (const o of safeIncoming) {
               const t = new Date(o.createdAt).getTime();
               if (Number.isFinite(t) && t < oldestIncomingMs) oldestIncomingMs = t;
             }
@@ -432,7 +434,7 @@ export const useStore = create<AppState>()(
               if (o.version === undefined) continue;
               const t = new Date(o.createdAt).getTime();
               const withinWindow =
-                complete || incoming.length === 0 || !Number.isFinite(oldestIncomingMs)
+                complete || safeIncoming.length === 0 || !Number.isFinite(oldestIncomingMs)
                   ? true
                   : t >= oldestIncomingMs;
               if (withinWindow) {
@@ -524,7 +526,9 @@ export const useStore = create<AppState>()(
         const cOrders = currentState.orders;
         // Union by id; current wins (avoids a stale rehydrate wiping a just-placed order).
         const byId = new Map<string, Order>();
-        for (const o of pOrders) byId.set(o.id, o);
+        for (const o of pOrders) {
+          if (isRenderableOrder(o)) byId.set(o.id, o);
+        }
         for (const o of cOrders) byId.set(o.id, o);
         const orders = [...byId.values()].sort(
           (a, b) =>

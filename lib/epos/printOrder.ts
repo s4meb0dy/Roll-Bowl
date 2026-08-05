@@ -72,18 +72,72 @@ export function loadEposSdk(): Promise<boolean> {
   if (sdkLoadPromise) return sdkLoadPromise;
 
   sdkLoadPromise = new Promise((resolve) => {
-    const existing = document.querySelector('script[data-epos-sdk="1"]');
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+
+    const existing = document.querySelector(
+      'script[data-epos-sdk="1"]'
+    ) as HTMLScriptElement | null;
+
     if (existing) {
-      existing.addEventListener("load", () => resolve(!!window.epson?.ePOSPrint));
-      existing.addEventListener("error", () => resolve(false));
+      if (window.epson?.ePOSPrint) {
+        done(true);
+        return;
+      }
+      const loadState = existing.dataset.eposLoadState;
+      if (loadState === "ok") {
+        done(!!window.epson?.ePOSPrint);
+        return;
+      }
+      if (loadState === "error") {
+        done(false);
+        return;
+      }
+      const onLoad = () => {
+        existing.dataset.eposLoadState = window.epson?.ePOSPrint ? "ok" : "error";
+        done(!!window.epson?.ePOSPrint);
+      };
+      existing.addEventListener("load", onLoad, { once: true });
+      existing.addEventListener(
+        "error",
+        () => {
+          existing.dataset.eposLoadState = "error";
+          done(false);
+        },
+        { once: true }
+      );
+      // Script may have finished loading before listeners were attached.
+      queueMicrotask(() => {
+        if (window.epson?.ePOSPrint) {
+          existing.dataset.eposLoadState = "ok";
+          done(true);
+        }
+      });
+      window.setTimeout(() => {
+        if (!settled) {
+          existing.dataset.eposLoadState = window.epson?.ePOSPrint ? "ok" : "error";
+          done(!!window.epson?.ePOSPrint);
+        }
+      }, 3000);
       return;
     }
+
     const script = document.createElement("script");
     script.src = "/epos/epos-2.27.0.js";
     script.async = true;
     script.dataset.eposSdk = "1";
-    script.onload = () => resolve(!!window.epson?.ePOSPrint);
-    script.onerror = () => resolve(false);
+    script.onload = () => {
+      script.dataset.eposLoadState = window.epson?.ePOSPrint ? "ok" : "error";
+      done(!!window.epson?.ePOSPrint);
+    };
+    script.onerror = () => {
+      script.dataset.eposLoadState = "error";
+      done(false);
+    };
     document.head.appendChild(script);
   });
 

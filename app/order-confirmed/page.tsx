@@ -17,6 +17,10 @@ import {
 } from "@/lib/stripe/pendingOrder";
 import { postOrderToInbox } from "@/lib/orders/postInboxClient";
 import { pushOrderToPos, shouldRetryPosPush } from "@/lib/orders/pushPosClient";
+import {
+  isRenderableOrder,
+  normalizeOrderForDisplay,
+} from "@/lib/orders/orderGuards";
 
 const DELIVERY_PROGRESS_STEPS = [
   { icon: "📝", labelKey: "order.confirmed.status.confirmed" },
@@ -42,6 +46,7 @@ const TAKEAWAY_PROGRESS_STEPS = [
 const RESEND_WINDOW_MS = 30 * 60_000;
 
 function isFreshOrder(order: Order): boolean {
+  if (!isRenderableOrder(order)) return false;
   const createdAt = Date.parse(order.createdAt);
   if (!Number.isFinite(createdAt)) return false;
   return Date.now() - createdAt < RESEND_WINDOW_MS;
@@ -124,9 +129,13 @@ function ConfirmedContent() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  const order =
-    mounted && storeHydrated
+  const rawOrder =
+    mounted && storeHydrated && orderId
       ? orders.find((o) => o.id === orderId)
+      : undefined;
+  const order =
+    rawOrder && isRenderableOrder(rawOrder)
+      ? normalizeOrderForDisplay(rawOrder)
       : undefined;
   const isTakeaway =
     order?.orderType === "takeaway" ||

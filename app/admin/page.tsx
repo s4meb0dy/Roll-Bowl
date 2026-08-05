@@ -40,6 +40,10 @@ import {
 } from "@/lib/epos/config";
 import { printKitchenOrderEpos } from "@/lib/epos/printOrder";
 import { useStore } from "@/lib/store/useStore";
+import {
+  coerceOrderStatus,
+  sanitizeOrdersForDisplay,
+} from "@/lib/orders/orderGuards";
 import { rehydrateStore, useStoreHydrated } from "@/lib/store/hydration";
 import {
   isKitchenAlarmMuted,
@@ -102,8 +106,9 @@ function getStatusDisplay(order: Order): {
   color: string;
   next: OrderStatus | null;
 } {
-  const base = STATUS_CONFIG[order.status];
-  if (order.orderType === "takeaway" && order.status === "delivered") {
+  const status = coerceOrderStatus(order.status);
+  const base = STATUS_CONFIG[status];
+  if (order.orderType === "takeaway" && status === "delivered") {
     return { ...base, label: "🎉 Opgehaald" };
   }
   return base;
@@ -1186,13 +1191,18 @@ export default function AdminPage() {
   // End-of-day till reconciliation: sum today's confirmed sales (Europe/Brussels)
   // split by payment method. Pending (unpaid / not-yet-accepted) orders are
   // excluded so abandoned online checkouts don't inflate the card total.
+  const displayOrders = useMemo(
+    () => sanitizeOrdersForDisplay(orders),
+    [orders]
+  );
+
   const dayTotals = useMemo(() => {
     const todayKey = dateKeyInTimeZone(new Date());
     let card = 0;
     let cash = 0;
     let cardCount = 0;
     let cashCount = 0;
-    for (const o of orders) {
+    for (const o of displayOrders) {
       if (o.status === "pending") continue;
       if (dateKeyInTimeZone(new Date(o.createdAt)) !== todayKey) continue;
       if (o.paymentMethod === "cash") {
@@ -1211,7 +1221,7 @@ export default function AdminPage() {
       cashCount,
       count: cardCount + cashCount,
     };
-  }, [orders]);
+  }, [displayOrders]);
 
   if (!mounted || !unlocked) {
     return (
@@ -1236,21 +1246,23 @@ export default function AdminPage() {
   }
 
   const filtered = kitchenMode
-    ? orders.filter((o) => o.status !== "delivered")
+    ? displayOrders.filter((o) => o.status !== "delivered")
     : filter === "all"
-      ? orders
-      : orders.filter((o) => o.status === filter);
+      ? displayOrders
+      : displayOrders.filter((o) => o.status === filter);
 
   const counts = {
-    all: orders.length,
-    pending: orders.filter((o) => o.status === "pending").length,
-    paid: orders.filter((o) => o.status === "paid").length,
-    preparing: orders.filter((o) => o.status === "preparing").length,
-    ready: orders.filter((o) => o.status === "ready").length,
-    delivered: orders.filter((o) => o.status === "delivered").length,
+    all: displayOrders.length,
+    pending: displayOrders.filter((o) => o.status === "pending").length,
+    paid: displayOrders.filter((o) => o.status === "paid").length,
+    preparing: displayOrders.filter((o) => o.status === "preparing").length,
+    ready: displayOrders.filter((o) => o.status === "ready").length,
+    delivered: displayOrders.filter((o) => o.status === "delivered").length,
   };
 
-  const printOrder = printTargetId ? orders.find((o) => o.id === printTargetId) : undefined;
+  const printOrder = printTargetId
+    ? displayOrders.find((o) => o.id === printTargetId)
+    : undefined;
 
   return (
     <div className={`min-h-screen bg-cream pb-24 ${kitchenMode ? "admin-kitchen-mode-page" : ""}`}>
