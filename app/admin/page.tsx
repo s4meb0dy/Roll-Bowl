@@ -1023,13 +1023,19 @@ export default function AdminPage() {
     const unsubscribe = subscribeToOrderStream({
       onSnapshot: (snap) => {
         setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders, { prune: snap.inboxEnabled });
+        applyOrdersSnapshot(snap.orders, {
+          prune: snap.inboxEnabled,
+          complete: snap.complete,
+        });
         setStreamConnected(true);
         setLastChecked(new Date());
       },
       onUpdate: (snap) => {
         setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders, { prune: snap.inboxEnabled });
+        applyOrdersSnapshot(snap.orders, {
+          prune: snap.inboxEnabled,
+          complete: snap.complete,
+        });
         setStreamConnected(true);
         setLastChecked(new Date());
       },

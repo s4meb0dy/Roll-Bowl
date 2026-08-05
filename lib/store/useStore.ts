@@ -142,7 +142,10 @@ interface AppState {
    * across devices — while never dropping orders not yet acknowledged by the
    * server or older than the snapshot window.
    */
-  applyOrdersSnapshot: (orders: Order[], opts?: { prune?: boolean }) => void;
+  applyOrdersSnapshot: (
+    orders: Order[],
+    opts?: { prune?: boolean; complete?: boolean }
+  ) => void;
 
   /** Wipe the local order board (e.g. after server-side clear). */
   clearOrders: () => void;
@@ -386,6 +389,7 @@ export const useStore = create<AppState>()(
       applyOrdersSnapshot: (incoming, opts) =>
         set((state) => {
           const prune = opts?.prune ?? false;
+          const complete = opts?.complete ?? false;
           let changed = false;
           const byId = new Map<string, Order>();
           for (const o of state.orders) byId.set(o.id, o);
@@ -408,11 +412,16 @@ export const useStore = create<AppState>()(
           if (prune) {
             // The snapshot is the authoritative set of the server's most-recent
             // orders. Drop locally-held orders the server no longer has (deleted
-            // or cleared on another device), but keep:
-            //   • orders not yet acknowledged by the server (no `version`), so a
-            //     just-placed order is never wiped before it syncs, and
-            //   • orders older than the snapshot window (beyond the read cap) —
-            //     those are simply out of range, not deleted.
+            // or cleared on another device), but keep orders not yet
+            // acknowledged by the server (no `version`) so a just-placed order
+            // is never wiped before it syncs.
+            //
+            // When the server truncated the snapshot at its read cap we can only
+            // judge ids inside the returned time range; anything older is out of
+            // range rather than deleted. A complete snapshot has no such blind
+            // spot — without that distinction, deleting the oldest order on the
+            // board never propagated to the other devices, because it sits just
+            // below the oldest id the snapshot still contains.
             let oldestIncomingMs = Infinity;
             for (const o of incoming) {
               const t = new Date(o.createdAt).getTime();
@@ -423,7 +432,7 @@ export const useStore = create<AppState>()(
               if (o.version === undefined) continue;
               const t = new Date(o.createdAt).getTime();
               const withinWindow =
-                incoming.length === 0 || !Number.isFinite(oldestIncomingMs)
+                complete || incoming.length === 0 || !Number.isFinite(oldestIncomingMs)
                   ? true
                   : t >= oldestIncomingMs;
               if (withinWindow) {

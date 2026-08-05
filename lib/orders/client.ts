@@ -14,6 +14,8 @@ export interface OrderInboxSnapshot {
   orders: Order[];
   version: number;
   inboxEnabled: boolean;
+  /** The snapshot holds every order the server has (it was not truncated). */
+  complete?: boolean;
 }
 
 export interface OrderPatchBody {

@@ -58,7 +58,14 @@ export async function GET(req: Request) {
       getRecentOrders(READ_LIMIT),
       getVersion(),
     ]);
-    return NextResponse.json({ orders, version, inboxEnabled: true });
+    // `complete` tells the kitchen board it is looking at every order the
+    // server has, so it can safely drop anything missing from the snapshot.
+    return NextResponse.json({
+      orders,
+      version,
+      inboxEnabled: true,
+      complete: orders.length < READ_LIMIT,
+    });
   } catch (e) {
     if (isInboxUnreachableError(e)) {
       // Local dev / transient outage — quietly degrade so the kitchen UI
