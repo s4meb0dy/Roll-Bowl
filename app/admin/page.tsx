@@ -1024,34 +1024,47 @@ export default function AdminPage() {
   }, []);
 
   /**
-   * Kitchen inbox sync via short polling (every ~4 s). Runs even before the PIN
-   * gate is unlocked so orders are already loaded when the PIN is entered.
+   * Kitchen inbox sync via polling (~11 s idle, ~5 s while orders wait).
+   * Stops when the PIN gate is locked or the tab/screen is hidden.
    */
   useEffect(() => {
-    if (!storeHydrated) return;
-    const unsubscribe = subscribeToOrderStream({
-      onSnapshot: (snap) => {
-        setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders, {
-          prune: snap.inboxEnabled,
-          complete: snap.complete,
-        });
-        setStreamConnected(true);
-        setLastChecked(new Date());
+    if (!storeHydrated || !unlocked) {
+      setStreamConnected(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToOrderStream(
+      {
+        onSnapshot: (snap) => {
+          setOrderInboxEnabled(snap.inboxEnabled);
+          applyOrdersSnapshot(snap.orders, {
+            prune: snap.inboxEnabled,
+            complete: snap.complete,
+          });
+          setStreamConnected(true);
+          setLastChecked(new Date());
+        },
+        onUpdate: (snap) => {
+          setOrderInboxEnabled(snap.inboxEnabled);
+          applyOrdersSnapshot(snap.orders, {
+            prune: snap.inboxEnabled,
+            complete: snap.complete,
+          });
+          setStreamConnected(true);
+          setLastChecked(new Date());
+        },
+        onDisconnect: () => {
+          setStreamConnected(false);
+        },
       },
-      onUpdate: (snap) => {
-        setOrderInboxEnabled(snap.inboxEnabled);
-        applyOrdersSnapshot(snap.orders, {
-          prune: snap.inboxEnabled,
-          complete: snap.complete,
-        });
-        setStreamConnected(true);
-        setLastChecked(new Date());
-      },
-      onDisconnect: () => {
-        setStreamConnected(false);
-      },
-    });
+      {
+        enabled: unlocked,
+        hasActiveWaiting: () =>
+          useStore
+            .getState()
+            .orders.some((o) => isNewOrderAlertStatus(o.status)),
+      }
+    );
     return () => {
       unsubscribe();
     };
@@ -1546,7 +1559,7 @@ export default function AdminPage() {
               }`}
               title={
                 streamConnected
-                  ? "Keuken-inbox actief — vernieuwt om de 4s"
+                  ? "Keuken-inbox actief — vernieuwt om de ~11s (sneller bij wachtende orders)"
                   : "Verbinding wordt opgezet…"
               }
             >

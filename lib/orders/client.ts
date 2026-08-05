@@ -78,21 +78,36 @@ export interface OrderStreamHandlers {
   onFallbackToPolling?: () => void;
 }
 
+export interface OrderStreamOptions {
+  /** When false, no inbox requests are made (e.g. admin PIN gate). */
+  enabled?: boolean;
+  /** Faster interval while pending/paid orders are on the board. */
+  hasActiveWaiting?: () => boolean;
+}
+
 /** Refresh the admin session cookie at most this often during polling. */
 const SESSION_REFRESH_INTERVAL_MS = 30 * 60_000;
 /** Re-issue the cookie when the tab becomes visible after this idle gap. */
 const SESSION_REFRESH_ON_VISIBLE_MS = 10 * 60_000;
-/** Visible tab: poll every 4 s. Background tab: every 15 s to cut serverless load. */
-const POLL_INTERVAL_VISIBLE_MS = 4_000;
-const POLL_INTERVAL_HIDDEN_MS = 15_000;
+/** Idle board — no pending/paid orders awaiting kitchen action. */
+const POLL_INTERVAL_IDLE_MS = 11_000;
+/** Active waiting — new orders may arrive any second. */
+const POLL_INTERVAL_ACTIVE_MS = 5_000;
 /** Mark disconnected if no successful poll within this window. */
-const DISCONNECT_AFTER_MS = 15_000;
+const DISCONNECT_AFTER_MS = 35_000;
 
-function pollIntervalMs(): number {
-  if (typeof document === "undefined") return POLL_INTERVAL_VISIBLE_MS;
-  return document.visibilityState === "hidden"
-    ? POLL_INTERVAL_HIDDEN_MS
-    : POLL_INTERVAL_VISIBLE_MS;
+function isPollingAllowed(options?: OrderStreamOptions): boolean {
+  if (options?.enabled === false) return false;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    return false;
+  }
+  return true;
+}
+
+function pollIntervalMs(options?: OrderStreamOptions): number | null {
+  if (!isPollingAllowed(options)) return null;
+  const waiting = options?.hasActiveWaiting?.() ?? false;
+  return waiting ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS;
 }
 
 /**
@@ -104,7 +119,8 @@ function pollIntervalMs(): number {
  * deliver the same UX with ~95 % less function memory-time.
  */
 export function subscribeToOrderStream(
-  handlers: OrderStreamHandlers
+  handlers: OrderStreamHandlers,
+  options?: OrderStreamOptions
 ): () => void {
   if (typeof window === "undefined") return () => {};
 
@@ -115,6 +131,13 @@ export function subscribeToOrderStream(
   let lastSuccessAt = 0;
   let consecutiveErrors = 0;
   let lastSessionRefreshAt = 0;
+
+  const clearScheduledPoll = () => {
+    if (pollTimer !== null) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  };
 
   const maybeRefreshSession = async (force = false) => {
     const now = Date.now();
@@ -130,18 +153,19 @@ export function subscribeToOrderStream(
   };
 
   const scheduleNext = () => {
-    if (cancelled || pollTimer !== null) return;
+    if (cancelled) return;
+    clearScheduledPoll();
+    const ms = pollIntervalMs(options);
+    if (ms === null) return;
     pollTimer = window.setTimeout(() => {
       pollTimer = null;
       void tick().finally(scheduleNext);
-    }, pollIntervalMs());
+    }, ms);
   };
 
   const tick = async () => {
-    if (cancelled) return;
+    if (cancelled || !isPollingAllowed(options)) return;
     try {
-      if (cancelled) return;
-
       let res = await fetch(`${window.location.origin}/api/orders/inbox`, {
         cache: "no-store",
         credentials: "same-origin",
@@ -150,7 +174,7 @@ export function subscribeToOrderStream(
 
       if (res.status === 401) {
         await maybeRefreshSession(true);
-        if (cancelled) return;
+        if (cancelled || !isPollingAllowed(options)) return;
         res = await fetch(`${window.location.origin}/api/orders/inbox`, {
           cache: "no-store",
           credentials: "same-origin",
@@ -206,33 +230,33 @@ export function subscribeToOrderStream(
 
   const onVisibility = () => {
     if (cancelled) return;
-    if (document.visibilityState === "visible") {
-      const idleMs = Date.now() - lastSuccessAt;
-      if (
-        lastSuccessAt > 0 &&
-        idleMs >= SESSION_REFRESH_ON_VISIBLE_MS
-      ) {
-        void maybeRefreshSession(true);
-      }
-      if (pollTimer !== null) {
-        window.clearTimeout(pollTimer);
-        pollTimer = null;
-      }
-      void tick().finally(scheduleNext);
+    if (document.visibilityState === "hidden") {
+      clearScheduledPoll();
+      return;
     }
+    if (!isPollingAllowed(options)) return;
+    const idleMs = Date.now() - lastSuccessAt;
+    if (lastSuccessAt > 0 && idleMs >= SESSION_REFRESH_ON_VISIBLE_MS) {
+      void maybeRefreshSession(true);
+    }
+    void tick().finally(scheduleNext);
   };
 
-  void maybeRefreshSession(true).finally(() => {
-    if (!cancelled) void tick().finally(scheduleNext);
-  });
+  const start = () => {
+    if (!isPollingAllowed(options)) return;
+    void maybeRefreshSession(true).finally(() => {
+      if (!cancelled && isPollingAllowed(options)) {
+        void tick().finally(scheduleNext);
+      }
+    });
+  };
+
+  start();
   document.addEventListener("visibilitychange", onVisibility);
 
   return () => {
     cancelled = true;
     document.removeEventListener("visibilitychange", onVisibility);
-    if (pollTimer !== null) {
-      window.clearTimeout(pollTimer);
-      pollTimer = null;
-    }
+    clearScheduledPoll();
   };
 }
