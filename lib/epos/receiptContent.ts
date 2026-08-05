@@ -1,4 +1,5 @@
 import { BUSINESS } from "@/lib/business";
+import { STORE_TIMEZONE } from "@/lib/deliveryConfig";
 import {
   describeCartItemForKitchen,
   type KitchenLine,
@@ -8,6 +9,9 @@ import type { CartItem, Order } from "@/lib/types";
 
 /** Printable width in monospace chars (80 mm, Font A). */
 export const RECEIPT_COLS = 42;
+
+/** Always format receipt clocks in store local time — SDP builds XML on UTC servers. */
+const RECEIPT_TZ = STORE_TIMEZONE;
 
 /** Full-width divider rule for the receipt. */
 const DIVIDER = "-".repeat(RECEIPT_COLS);
@@ -45,6 +49,7 @@ export function orderTypeBannerLabel(order: Order): string {
 
 export function formatReceiptDateShort(iso: string): string {
   return new Date(iso).toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -55,14 +60,42 @@ export function formatReceiptDateShort(iso: string): string {
 export function formatReceiptPlacedAt(iso: string): string {
   const d = new Date(iso);
   const date = d.toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
     day: "2-digit",
     month: "short",
   });
   const time = d.toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
     hour: "2-digit",
     minute: "2-digit",
   });
   return `${time} ${date}`;
+}
+
+function formatReceiptDateTime(d: Date): string {
+  return d.toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatReceiptDateOnly(d: Date): string {
+  return d.toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatReceiptTimeOnly(d: Date): string {
+  return d.toLocaleString("nl-BE", {
+    timeZone: RECEIPT_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function padLine(left: string, right: string, cols = RECEIPT_COLS): string {
@@ -124,26 +157,10 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
       : null;
 
   const expectedLabel = expectedReady
-    ? `Verwacht: ${expectedReady.toLocaleString("nl-BE", {
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
+    ? `Verwacht: ${formatReceiptDateTime(expectedReady)}`
     : scheduled
-      ? `Verwacht: ${scheduled.toLocaleString("nl-BE", {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}`
-      : `Verwacht: ${new Date(order.createdAt).toLocaleString("nl-BE", {
-          day: "2-digit",
-          month: "short",
-        })}, ZSM (${new Date(order.createdAt).toLocaleString("nl-BE", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })})`;
+      ? `Verwacht: ${formatReceiptDateTime(scheduled)}`
+      : `Verwacht: ${formatReceiptDateOnly(new Date(order.createdAt))}, ZSM (${formatReceiptTimeOnly(new Date(order.createdAt))})`;
 
   const lines: ReceiptTextLine[] = [];
 
