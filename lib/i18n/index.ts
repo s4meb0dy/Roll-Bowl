@@ -236,9 +236,9 @@ const nl: Dict = {
     "Geen tijdslots beschikbaar. De keuken sluit om {closeTime}.",
   "time.tomorrow": "Morgen",
   "time.closed_after_hours":
-    "We zijn gesloten (keuken tot {closeTime}). Kies ‘Plan voor later’ als er vandaag nog slots zijn, of kom later terug.",
+    "We zijn gesloten (keuken tot {closeTime}). Kies ‘Plan voor later’ voor morgen als er slots zijn, of kom later terug.",
   "time.closed_asap_pick_later":
-    "We zijn nu gesloten. Kies ‘Plan voor later’ en een tijdslot voor vandaag, of kom later terug.",
+    "We zijn nu gesloten. Kies ‘Plan voor later’ en een tijdslot (vandaag of morgen).",
   "time.closed_banner":
     "We zijn nu even gesloten. Je kunt wél al bestellen en in je winkelmand een tijd kiezen voor afhalen of levering wanneer we open zijn.",
   "time.closed_pick_scheduled":
@@ -596,9 +596,9 @@ const en: Dict = {
     "No time slots available. The kitchen closes at {closeTime}.",
   "time.tomorrow": "Tomorrow",
   "time.closed_after_hours":
-    "We're closed (kitchen until {closeTime}). Choose “Schedule for later” if slots are still available today, or come back later.",
+    "We're closed (kitchen until {closeTime}). Choose “Schedule for later” for tomorrow if slots are available, or come back later.",
   "time.closed_asap_pick_later":
-    "We're closed right now. Choose “Schedule for later” and pick a time slot for today, or come back later.",
+    "We're closed right now. Choose “Schedule for later” and pick a time slot (today or tomorrow).",
   "time.closed_banner":
     "We're closed right now. You can still add items to your cart and pick a pickup or delivery time for when we're open — at checkout, choose “Schedule for later”.",
   "time.closed_pick_scheduled":
@@ -946,9 +946,9 @@ const fr: Dict = {
     "Aucun créneau disponible. La cuisine ferme à {closeTime}.",
   "time.tomorrow": "Demain",
   "time.closed_after_hours":
-    "Nous sommes fermés (cuisine jusqu’à {closeTime}). Choisissez « Planifier plus tard » s’il reste des créneaux aujourd’hui, ou revenez plus tard.",
+    "Nous sommes fermés (cuisine jusqu’à {closeTime}). Choisissez « Planifier plus tard » pour demain s’il y a des créneaux, ou revenez plus tard.",
   "time.closed_asap_pick_later":
-    "Nous sommes fermés pour le moment. Choisissez « Planifier plus tard » et un créneau pour aujourd’hui, ou revenez plus tard.",
+    "Nous sommes fermés pour le moment. Choisissez « Planifier plus tard » et un créneau (aujourd’hui ou demain).",
   "time.closed_banner":
     "Nous sommes fermés pour l’instant. Vous pouvez quand même commander et choisir un créneau d’enlèvement ou de livraison quand nous sommes ouverts — au panier, choisissez « Planifier plus tard ».",
   "time.closed_pick_scheduled":

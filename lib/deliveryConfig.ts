@@ -58,7 +58,7 @@ export const STORE_TIMEZONE = "Europe/Brussels";
  * How many calendar days ahead (after today) customers may schedule.
  * 0 = today only; 1 = today + tomorrow.
  */
-export const MAX_SCHEDULE_DAYS = 0;
+export const MAX_SCHEDULE_DAYS = 1;
 
 export interface TimeSlot {
   /** ISO datetime of the slot. */
