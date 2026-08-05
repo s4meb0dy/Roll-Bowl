@@ -1,5 +1,6 @@
 import { getStripe } from "@/lib/stripe/server";
 import { isStripeConfigured } from "@/lib/stripe/config";
+import { retrieveSettledPaymentIntent } from "@/lib/stripe/paymentStatus";
 import { validateScheduledFulfillment } from "@/lib/deliveryConfig";
 import { validateOrderPricing } from "@/lib/orders/priceValidation";
 import type { Order } from "@/lib/types";
@@ -67,8 +68,11 @@ export async function validateOrderSubmission(
     }
 
     const stripe = getStripe();
-    const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
-    if (pi.status !== "succeeded") {
+    const { paymentIntent: pi, state } = await retrieveSettledPaymentIntent(
+      stripe,
+      order.stripePaymentIntentId
+    );
+    if (state === "failed") {
       return { ok: false, reason: "payment_not_succeeded" };
     }
     if (pi.metadata?.orderId !== order.id) {

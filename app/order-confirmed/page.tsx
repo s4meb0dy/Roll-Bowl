@@ -274,34 +274,8 @@ function ConfirmedContent() {
     const post = async (o: Order) => {
       if (!isFreshOrder(o)) return;
       if (inboxPostOk.current) return;
-      const url = `${window.location.origin}/api/orders/inbox`;
-      let body: string;
-      try {
-        body = JSON.stringify(JSON.parse(JSON.stringify({ order: o })) as { order: Order });
-      } catch {
-        body = JSON.stringify({ order: o });
-      }
-      try {
-        let r = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          keepalive: true,
-        });
-        if (r.ok) {
-          inboxPostOk.current = true;
-          return;
-        }
-        r = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          keepalive: true,
-        });
-        if (r.ok) inboxPostOk.current = true;
-      } catch {
-        /* retry via delayed ticks */
-      }
+      const stored = await postOrderToInbox(o);
+      if (stored) inboxPostOk.current = true;
     };
 
     const tryNow = () => {
