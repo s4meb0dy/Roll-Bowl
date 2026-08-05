@@ -54,6 +54,8 @@ import {
   unlockKitchenAudio,
   ensureKitchenAudioUnlock,
   isKitchenAudioReady,
+  isKitchenAudioBlocked,
+  subscribeKitchenAudioReadiness,
 } from "@/lib/kitchenSound";
 import type { Order, OrderStatus, OrderType } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
@@ -563,6 +565,8 @@ export default function AdminPage() {
   const [soundMuted, setSoundMuted] = useState(false);
   /** Once true this session, never show the yellow arm button again. */
   const [audioEverArmed, setAudioEverArmed] = useState(false);
+  /** Autoplay blocked — show header unlock banner. */
+  const [audioBlocked, setAudioBlocked] = useState(false);
   /** null = not yet fetched; server inbox (Redis) for phone → PC order sync */
   const [orderInboxEnabled, setOrderInboxEnabled] = useState<boolean | null>(null);
   /** Connection state for the SSE stream → drives the live status pill. */
@@ -927,24 +931,24 @@ export default function AdminPage() {
   }, [soundMuted]);
 
   /**
-   * Poll real audio readiness. Yellow prompt only until the first successful
-   * arm this session — after that any tap re-arms in the background.
+   * Reflect real audio readiness for the unlock banner and shift-start prompt.
    */
   useEffect(() => {
     if (!unlocked) return;
-    const check = () => {
-      if (isKitchenAudioReady()) setAudioEverArmed(true);
-    };
-    check();
-    const id = window.setInterval(check, 1500);
-    return () => window.clearInterval(id);
-  }, [unlocked]);
+    return subscribeKitchenAudioReadiness((ready) => {
+      setAudioEverArmed(ready);
+      setAudioBlocked(!ready && !isKitchenAlarmMuted());
+    });
+  }, [unlocked, soundMuted]);
 
   const armKitchenAudio = useCallback(() => {
     unlockKitchenAudio();
     void requestScreenWakeLock();
-    setAudioEverArmed(true);
     if (!isKitchenAlarmMuted()) playTestKitchenAlarm();
+    window.setTimeout(() => {
+      setAudioEverArmed(isKitchenAudioReady());
+      setAudioBlocked(isKitchenAudioBlocked());
+    }, 200);
   }, []);
 
   // Hold a screen wake lock while the board is open so a dedicated kitchen
@@ -1268,6 +1272,19 @@ export default function AdminPage() {
     <div className={`min-h-screen bg-cream pb-24 ${kitchenMode ? "admin-kitchen-mode-page" : ""}`}>
       {!kitchenMode && <Header />}
 
+      {!soundMuted && audioBlocked && (
+        <div className="no-print sticky top-0 z-[150] border-b border-amber-300 bg-amber-100/95 px-4 py-2.5 shadow-sm backdrop-blur-sm safe-top">
+          <button
+            type="button"
+            onClick={armKitchenAudio}
+            className="mx-auto flex w-full max-w-4xl items-center justify-center gap-2 text-sm font-bold text-amber-950 sm:text-base"
+          >
+            <span aria-hidden>🔇</span>
+            Tik om meldingsgeluid in te schakelen
+          </button>
+        </div>
+      )}
+
       {alarmOrderId && (
         <div
           className="no-print fixed bottom-0 left-0 right-0 z-[200] border-t border-amber-300 bg-amber-100/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm safe-bottom md:pr-0"
@@ -1296,7 +1313,7 @@ export default function AdminPage() {
       )}
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        {!soundMuted && !audioEverArmed && (
+        {!soundMuted && !audioEverArmed && !audioBlocked && (
           <button
             type="button"
             onClick={armKitchenAudio}
