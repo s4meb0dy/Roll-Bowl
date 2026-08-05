@@ -20,20 +20,19 @@ export async function pushOrderToPos(
       body: JSON.stringify({ order }),
       keepalive: true,
     });
-    const data = (await res.json().catch(() => ({}))) as Partial<OrderLightspeedMeta> & {
-      error?: string;
-    };
+    const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const pushState =
+      typeof raw.state === "string" ? raw.state : undefined;
 
-    // Transient race, not a POS failure: for cash orders the server only pushes
-    // to the POS once the order exists in the Redis inbox. When the POS push
-    // arrives before the inbox write has committed, the API replies 404
-    // `order_not_in_inbox`. Leave the lightspeed state unset so the caller keeps
-    // retrying (shouldRetryPosPush stays true) and the customer never sees a
-    // false "couldn't confirm with the cash register" warning — the order is
-    // already on its way to the kitchen inbox.
-    if (res.status === 404 && data.error === "order_not_in_inbox") {
+    if (res.status === 404 && raw.error === "order_not_in_inbox") {
       return;
     }
+
+    if (pushState === "in_flight") {
+      return;
+    }
+
+    const data = raw as Partial<OrderLightspeedMeta> & { error?: string };
 
     if (data.state) {
       setOrderLightspeed(id, {

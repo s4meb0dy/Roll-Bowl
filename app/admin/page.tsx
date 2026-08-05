@@ -993,16 +993,6 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (!mounted || !storeHydrated) return;
-    const tick = () => {
-      setLastChecked(new Date());
-      rehydrateStore();
-    };
-    const id = window.setInterval(tick, 2_000);
-    return () => window.clearInterval(id);
-  }, [mounted, storeHydrated]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
@@ -1010,8 +1000,18 @@ export default function AdminPage() {
         setLastChecked(new Date());
       }
     };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        rehydrateStore();
+        setLastChecked(new Date());
+      }
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   /**

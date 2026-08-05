@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { pushOrderToLightspeed } from "@/lib/lightspeed/pushOrder";
 import type { Order } from "@/lib/types";
 import { isOrderInboxConfigured } from "@/lib/orders/inboxConfig";
 import {
   getOrderById,
   isOrderRemoved,
-  patchOrderFields,
 } from "@/lib/orders/inboxStore";
+import { pushOrderToPosOnce } from "@/lib/orders/pushOrderOnce";
 import { validateOrderSubmission } from "@/lib/orders/validateOrderSubmission";
 
 /**
@@ -46,34 +45,10 @@ export async function POST(req: Request) {
     if (!existing && order.paymentMethod === "cash") {
       return NextResponse.json({ error: "order_not_in_inbox" }, { status: 404 });
     }
-    // Already accepted by POS — do not push a second sale (webhook + client race).
-    const ls = existing?.lightspeed;
-    if (ls && (ls.state === "success" || ls.state === "skipped")) {
-      return NextResponse.json(ls);
-    }
   }
 
   try {
-    const result = await pushOrderToLightspeed(order);
-
-    if (isOrderInboxConfigured() && result.state !== "skipped") {
-      try {
-        await patchOrderFields(order.id, {
-          lightspeed: {
-            state: result.state,
-            pushedAt: result.pushedAt,
-            saleId: result.saleId,
-            accountIdentifier: result.accountIdentifier,
-            errorMessage: result.errorMessage,
-            httpStatus: result.httpStatus,
-            dryRun: result.dryRun,
-          },
-        });
-      } catch (e) {
-        console.error("[orders/push] inbox patch failed", order.id, e);
-      }
-    }
-
+    const result = await pushOrderToPosOnce(order);
     return NextResponse.json(result);
   } catch (e) {
     console.error("[Lightspeed] pushOrder exception", e);

@@ -78,6 +78,10 @@ export interface OrderStreamHandlers {
   onFallbackToPolling?: () => void;
 }
 
+/** Refresh the admin session cookie at most this often during polling. */
+const SESSION_REFRESH_INTERVAL_MS = 30 * 60_000;
+/** Re-issue the cookie when the tab becomes visible after this idle gap. */
+const SESSION_REFRESH_ON_VISIBLE_MS = 10 * 60_000;
 /** Visible tab: poll every 4 s. Background tab: every 15 s to cut serverless load. */
 const POLL_INTERVAL_VISIBLE_MS = 4_000;
 const POLL_INTERVAL_HIDDEN_MS = 15_000;
@@ -110,6 +114,20 @@ export function subscribeToOrderStream(
   let gotSnapshot = false;
   let lastSuccessAt = 0;
   let consecutiveErrors = 0;
+  let lastSessionRefreshAt = 0;
+
+  const maybeRefreshSession = async (force = false) => {
+    const now = Date.now();
+    if (
+      !force &&
+      lastSessionRefreshAt > 0 &&
+      now - lastSessionRefreshAt < SESSION_REFRESH_INTERVAL_MS
+    ) {
+      return;
+    }
+    const ok = await refreshAdminSessionCookie().catch(() => false);
+    if (ok) lastSessionRefreshAt = now;
+  };
 
   const scheduleNext = () => {
     if (cancelled || pollTimer !== null) return;
@@ -122,14 +140,32 @@ export function subscribeToOrderStream(
   const tick = async () => {
     if (cancelled) return;
     try {
-      await refreshAdminSessionCookie().catch(() => false);
       if (cancelled) return;
 
-      const res = await fetch(`${window.location.origin}/api/orders/inbox`, {
+      let res = await fetch(`${window.location.origin}/api/orders/inbox`, {
         cache: "no-store",
         credentials: "same-origin",
         headers: adminOrderHeaders(),
       });
+
+      if (res.status === 401) {
+        await maybeRefreshSession(true);
+        if (cancelled) return;
+        res = await fetch(`${window.location.origin}/api/orders/inbox`, {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: adminOrderHeaders(),
+        });
+      } else {
+        const now = Date.now();
+        if (
+          lastSessionRefreshAt === 0 ||
+          now - lastSessionRefreshAt >= SESSION_REFRESH_INTERVAL_MS
+        ) {
+          void maybeRefreshSession();
+        }
+      }
+
       if (!res.ok) {
         consecutiveErrors += 1;
         if (
@@ -170,8 +206,14 @@ export function subscribeToOrderStream(
 
   const onVisibility = () => {
     if (cancelled) return;
-    // Re-poll immediately when the tab becomes visible again.
     if (document.visibilityState === "visible") {
+      const idleMs = Date.now() - lastSuccessAt;
+      if (
+        lastSuccessAt > 0 &&
+        idleMs >= SESSION_REFRESH_ON_VISIBLE_MS
+      ) {
+        void maybeRefreshSession(true);
+      }
       if (pollTimer !== null) {
         window.clearTimeout(pollTimer);
         pollTimer = null;
@@ -180,7 +222,9 @@ export function subscribeToOrderStream(
     }
   };
 
-  void tick().finally(scheduleNext);
+  void maybeRefreshSession(true).finally(() => {
+    if (!cancelled) void tick().finally(scheduleNext);
+  });
   document.addEventListener("visibilitychange", onVisibility);
 
   return () => {

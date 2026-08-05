@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
-import { patchOrderFields, storeNewOrder } from "@/lib/orders/inboxStore";
+import { storeNewOrder } from "@/lib/orders/inboxStore";
 import { isInboxUnreachableError } from "@/lib/orders/inboxRedis";
-import { pushOrderToLightspeed } from "@/lib/lightspeed/pushOrder";
+import { pushOrderToPosOnce } from "@/lib/orders/pushOrderOnce";
 import type { Order } from "@/lib/types";
 import {
   deletePendingStripeOrder,
@@ -104,20 +104,7 @@ export async function fulfillPaidStripeOrder(
 
     if (created) {
       try {
-        const posResult = await pushOrderToLightspeed(order);
-        if (posResult.state !== "skipped") {
-          await patchOrderFields(order.id, {
-            lightspeed: {
-              state: posResult.state,
-              pushedAt: posResult.pushedAt,
-              saleId: posResult.saleId,
-              accountIdentifier: posResult.accountIdentifier,
-              errorMessage: posResult.errorMessage,
-              httpStatus: posResult.httpStatus,
-              dryRun: posResult.dryRun,
-            },
-          });
-        }
+        await pushOrderToPosOnce(order);
       } catch (e) {
         console.error("[stripe/fulfill] POS push failed", order.id, e);
       }
