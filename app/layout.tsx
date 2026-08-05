@@ -6,6 +6,7 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import SiteFooter from "@/components/SiteFooter";
 import { getSiteUrl } from "@/lib/siteUrl";
 import { buildRestaurantJsonLd } from "@/lib/structuredData";
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -103,6 +104,7 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <MobileBottomNav />
+        <Analytics />
       </body>
     </html>
   );
