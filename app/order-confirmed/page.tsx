@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CheckCircle2, Clock, ArrowLeft, CreditCard, Banknote, Truck, Store, CalendarClock, AlertTriangle } from "lucide-react";
 import { Suspense } from "react";
 import { useStore } from "@/lib/store/useStore";
+import { useStoreHydrated } from "@/lib/store/hydration";
 import { useT } from "@/lib/i18n";
 import { shortOrderCode } from "@/lib/orderId";
 import type { Order } from "@/lib/types";
@@ -31,6 +32,56 @@ const TAKEAWAY_PROGRESS_STEPS = [
   { icon: "🏪", labelKey: "order.confirmed.status.picked_up" },
 ] as const;
 
+interface RecoverResponse {
+  ok?: boolean;
+  pending?: PendingStripeCheckout;
+  order?: Order;
+  minimal?: boolean;
+  paid?: boolean;
+  settling?: boolean;
+}
+
+/**
+ * The bank can send the customer back before Stripe has moved the payment out
+ * of `processing`. The endpoint already waits a couple of seconds; these
+ * retries cover the slower tail so a paid customer is never shown an error.
+ */
+const RECOVER_ATTEMPTS = 3;
+const RECOVER_RETRY_MS = 1_500;
+
+async function recoverCheckout(
+  orderId: string,
+  paymentIntentId: string
+): Promise<
+  | { ok: true; data: RecoverResponse }
+  | { ok: false; paymentFailed: boolean }
+> {
+  let paymentFailed = false;
+
+  for (let attempt = 0; attempt < RECOVER_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, RECOVER_RETRY_MS));
+    }
+    try {
+      const res = await fetch("/api/stripe/recover-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, paymentIntentId }),
+      });
+      if (res.ok) {
+        return { ok: true, data: (await res.json()) as RecoverResponse };
+      }
+      paymentFailed = res.status === 402;
+      // 4xx other than "not paid (yet)" will not change on a retry.
+      if (res.status >= 400 && res.status < 500 && res.status !== 402) break;
+    } catch {
+      paymentFailed = false;
+    }
+  }
+
+  return { ok: false, paymentFailed };
+}
+
 function ConfirmedContent() {
   const params = useSearchParams();
   const orderId = params.get("id");
@@ -44,25 +95,19 @@ function ConfirmedContent() {
   const placeOrder = useStore((s) => s.placeOrder);
   const mergeOrderFromInbox = useStore((s) => s.mergeOrderFromInbox);
   const setOrderLightspeed = useStore((s) => s.setOrderLightspeed);
+  const clearCart = useStore((s) => s.clearCart);
   const [mounted, setMounted] = useState(false);
-  const [storeHydrated, setStoreHydrated] = useState(false);
+  const storeHydrated = useStoreHydrated();
   const [stripeCompleting, setStripeCompleting] = useState(false);
   const [stripeError, setStripeError] = useState(false);
   const [paymentFailed, setPaymentFailed] = useState(false);
-  const [stripePaidButFailed, setStripePaidButFailed] = useState(false);
+  const [paymentSettling, setPaymentSettling] = useState(false);
   const stripeReturnHandled = useRef(false);
   const inboxPostOk = useRef(false);
   const posPushDone = useRef(false);
   const posPushInFlight = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    void useStore.persist.rehydrate();
-    const unsub = useStore.persist.onFinishHydration(() => setStoreHydrated(true));
-    if (useStore.persist.hasHydrated()) setStoreHydrated(true);
-    return unsub;
-  }, []);
 
   const order =
     mounted && storeHydrated
@@ -109,84 +154,61 @@ function ConfirmedContent() {
     void (async () => {
       let paymentVerified = false;
       try {
-        let pending = loadPendingStripeCheckout(orderId);
+        // Always ask the server: it knows whether the payment settled and can
+        // hand back the order even when this browser lost its checkout copy
+        // (the bank app often returns the customer in a different tab).
+        const recovered = await recoverCheckout(orderId, paymentIntentId);
 
-        if (!pending) {
-          const recoverRes = await fetch("/api/stripe/recover-checkout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId, paymentIntentId }),
-          });
-          const recoverData = (await recoverRes.json()) as {
-            ok?: boolean;
-            pending?: PendingStripeCheckout;
-            order?: Order;
-            minimal?: boolean;
-            paid?: boolean;
-          };
-
-          if (!recoverRes.ok) {
-            setPaymentFailed(recoverRes.status === 402);
-            setStripeError(true);
-            return;
-          }
-
-          paymentVerified = true;
-
-          if (recoverData.order) {
-            mergeOrderFromInbox(recoverData.order);
-            clearPendingStripeCheckout(orderId);
-            await postOrderToInbox(recoverData.order);
-            void pushOrderToPos(recoverData.order, setOrderLightspeed);
-            return;
-          }
-
-          if (recoverData.pending) {
-            pending = recoverData.pending;
-          } else if (recoverData.minimal || recoverData.paid) {
-            clearPendingStripeCheckout(orderId);
-            return;
-          }
-        }
-
-        if (!pending) {
-          setStripePaidButFailed(paymentVerified);
+        if (!recovered.ok) {
+          setPaymentFailed(recovered.paymentFailed);
           setStripeError(true);
           return;
         }
 
-        await fetch("/api/stripe/save-pending-order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId,
-            items: pending.items,
-            customerInfo: pending.customerInfo,
-            generalNote: pending.generalNote,
-            orderType: pending.orderType,
-            fulfillmentTime: pending.fulfillmentTime,
-            zipCode:
-              pending.orderType === "takeaway"
-                ? ""
-                : pending.customerInfo.zipCode,
-          }),
-        });
+        const recoverData = recovered.data;
+        paymentVerified = true;
+        setPaymentSettling(Boolean(recoverData.settling));
 
-        if (!paymentVerified) {
-          const verifyRes = await fetch("/api/stripe/verify-payment", {
+        if (recoverData.order) {
+          mergeOrderFromInbox(recoverData.order);
+          clearPendingStripeCheckout(orderId);
+          clearCart();
+          void pushOrderToPos(recoverData.order, setOrderLightspeed);
+          return;
+        }
+
+        const localPending = recoverData.pending
+          ? null
+          : loadPendingStripeCheckout(orderId);
+        const pending = recoverData.pending ?? localPending;
+
+        if (!pending) {
+          // Paid, but nothing left to rebuild the line items from. The kitchen
+          // copy is the webhook's job; the customer still gets confirmed.
+          clearPendingStripeCheckout(orderId);
+          clearCart();
+          return;
+        }
+
+        if (localPending) {
+          // Server lost the snapshot but this device still had it — hand it
+          // back so webhook retries have something to fulfill from.
+          await fetch("/api/stripe/save-pending-order", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              paymentIntentId,
               orderId,
-              amountCents: pending.amountCents,
+              items: localPending.items,
+              customerInfo: localPending.customerInfo,
+              generalNote: localPending.generalNote,
+              orderType: localPending.orderType,
+              fulfillmentTime: localPending.fulfillmentTime,
+              zipCode:
+                localPending.orderType === "takeaway"
+                  ? ""
+                  : localPending.customerInfo.zipCode,
             }),
           });
-          if (!verifyRes.ok) {
-            setStripeError(true);
-            return;
-          }
-          paymentVerified = true;
         }
 
         const placed = placeOrder({
@@ -204,8 +226,12 @@ function ConfirmedContent() {
         await postOrderToInbox(placed);
         void pushOrderToPos(placed, setOrderLightspeed);
       } catch {
-        setStripePaidButFailed(paymentVerified);
-        setStripeError(true);
+        // The payment is confirmed server-side and the webhook owns the kitchen
+        // copy, so a local hiccup after that point is not the customer's
+        // problem — only warn while the payment itself is still unconfirmed.
+        if (!paymentVerified) {
+          setStripeError(true);
+        }
       } finally {
         setStripeCompleting(false);
       }
@@ -220,6 +246,7 @@ function ConfirmedContent() {
     placeOrder,
     mergeOrderFromInbox,
     setOrderLightspeed,
+    clearCart,
   ]);
 
   /**
@@ -351,9 +378,7 @@ function ConfirmedContent() {
           <p className="mb-6 max-w-sm text-[15px] leading-relaxed text-neutral-600 sm:text-base">
             {paymentFailed
               ? t("order.confirmed.error_body")
-              : stripePaidButFailed
-                ? t("order.confirmed.error_paid_body")
-                : t("order.confirmed.error_body")}
+              : t("order.confirmed.error_unknown_body")}
           </p>
           <Link
             href="/cart"
@@ -488,6 +513,13 @@ function ConfirmedContent() {
         <div className="mb-4 flex w-full items-center gap-2 rounded-xl bg-sage-50 px-4 py-3 text-left text-sm text-sage-800">
           <Clock size={15} className="shrink-0 animate-pulse" />
           <span>{t("order.confirmed.stripe_completing")}</span>
+        </div>
+      )}
+
+      {!stripeCompleting && paymentSettling && (
+        <div className="mb-4 flex w-full items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-left text-sm text-amber-800">
+          <Clock size={15} className="mt-0.5 shrink-0" />
+          <span>{t("order.confirmed.payment_processing")}</span>
         </div>
       )}
 

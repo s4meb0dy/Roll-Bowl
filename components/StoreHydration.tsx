@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { useStore } from "@/lib/store/useStore";
+import { rehydrateStore } from "@/lib/store/hydration";
 
 export default function StoreHydration() {
   useEffect(() => {
-    useStore.persist.rehydrate();
+    rehydrateStore();
   }, []);
   return null;
 }

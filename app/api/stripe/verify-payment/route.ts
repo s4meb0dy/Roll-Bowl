@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe/server";
 import { isStripeConfigured } from "@/lib/stripe/config";
+import { retrieveSettledPaymentIntent } from "@/lib/stripe/paymentStatus";
 
 interface VerifyBody {
   paymentIntentId?: string;
@@ -34,9 +35,12 @@ export async function POST(req: Request) {
   }
 
   const stripe = getStripe();
-  const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+  const { paymentIntent: pi, state } = await retrieveSettledPaymentIntent(
+    stripe,
+    paymentIntentId
+  );
 
-  if (pi.status !== "succeeded") {
+  if (state === "failed") {
     return NextResponse.json(
       { error: "payment_not_completed", status: pi.status },
       { status: 402 }
@@ -51,7 +55,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "amount_mismatch" }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, paymentIntentId: pi.id });
+  return NextResponse.json({
+    ok: true,
+    paymentIntentId: pi.id,
+    status: pi.status,
+    settling: state === "settling",
+  });
 }
 
 export const runtime = "nodejs";
