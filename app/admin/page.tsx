@@ -22,8 +22,6 @@ import {
   ListChecks,
   X,
   Download,
-  Minus,
-  Plus,
   Trash2,
   CreditCard,
   Banknote,
@@ -57,7 +55,7 @@ import {
   isKitchenAudioBlocked,
   subscribeKitchenAudioReadiness,
 } from "@/lib/kitchenSound";
-import type { Order, OrderStatus, OrderType } from "@/lib/types";
+import type { Order, OrderStatus } from "@/lib/types";
 import { subscribeToOrderStream } from "@/lib/orders/client";
 import { dateKeyInTimeZone } from "@/lib/deliveryConfig";
 import { describeCartItemForKitchen } from "@/lib/orders/itemDescriptors";
@@ -87,27 +85,16 @@ function isNewOrderAlertStatus(status: OrderStatus): boolean {
 
 const STATUS_CONFIG: Record<
   OrderStatus,
-  { label: string; color: string; next: OrderStatus | null }
+  { label: string; color: string }
 > = {
-  pending: { label: "⏳ Wachtend", color: "bg-amber-50 text-amber-900 border-amber-200", next: null },
-  paid: { label: "💶 Betaald", color: "bg-emerald-50 text-emerald-800 border-emerald-200", next: "preparing" },
-  preparing: { label: "👨‍🍳 In bereiding", color: "bg-blue-50 text-blue-700 border-blue-200", next: "ready" },
-  ready: { label: "✅ Klaar", color: "bg-sage-50 text-sage-700 border-sage-200", next: "delivered" },
-  delivered: { label: "🎉 Bezorgd", color: "bg-neutral-50 text-neutral-500 border-neutral-200", next: null },
+  pending: { label: "⏳ Wachtend", color: "bg-amber-50 text-amber-900 border-amber-200" },
+  paid: { label: "💶 Betaald", color: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+  preparing: { label: "👨‍🍳 In bereiding", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  ready: { label: "✅ Klaar", color: "bg-sage-50 text-sage-700 border-sage-200" },
+  delivered: { label: "🎉 Bezorgd", color: "bg-neutral-50 text-neutral-500 border-neutral-200" },
 };
 
-function getStatusLabel(status: OrderStatus, orderType: OrderType): string {
-  if (orderType === "takeaway" && status === "delivered") {
-    return "🎉 Opgehaald";
-  }
-  return STATUS_CONFIG[status].label;
-}
-
-function getStatusDisplay(order: Order): {
-  label: string;
-  color: string;
-  next: OrderStatus | null;
-} {
+function getStatusDisplay(order: Order): { label: string; color: string } {
   const status = coerceOrderStatus(order.status);
   const base = STATUS_CONFIG[status];
   if (order.orderType === "takeaway" && status === "delivered") {
@@ -120,40 +107,28 @@ function formatCheckedTime(d: Date) {
   return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Prep-time stepper bounds (minutes) shown when accepting an order. */
-const PREP_MIN = 5;
-const PREP_MAX = 60;
-const PREP_STEP = 5;
-const PREP_DEFAULT = 15;
 /** How many times an ePOS print auto-retries before we flag it for the operator. */
 const MAX_PRINT_ATTEMPTS = 4;
 
+type AdminOrderFilter = "active" | "archive";
+
 function OrderCard({
   order,
-  onAcceptAndPrint,
-  onAcceptScheduledAndPrint,
+  onComplete,
   onPrintReceipt,
   onDelete,
   isAlarmTarget,
 }: {
   order: Order;
-  onAcceptAndPrint: (id: string, prepMinutes: number) => void;
-  onAcceptScheduledAndPrint: (id: string) => void;
+  onComplete: (id: string) => void;
   onPrintReceipt: (id: string) => void;
   onDelete: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
-  const updateOrderStatus = useStore((s) => s.updateOrderStatus);
-  const [prepMinutes, setPrepMinutes] = useState(PREP_DEFAULT);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const adjustPrep = (delta: number) =>
-    setPrepMinutes((m) => Math.min(PREP_MAX, Math.max(PREP_MIN, m + delta)));
   const cfg = getStatusDisplay(order);
-  const isScheduled = order.fulfillmentTime?.mode === "scheduled";
-  const scheduledAt =
-    isScheduled && order.fulfillmentTime.mode === "scheduled"
-      ? new Date(order.fulfillmentTime.scheduledFor)
-      : null;
+  const isActive = order.status !== "delivered";
+  const isNew = isNewOrderAlertStatus(order.status);
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -448,95 +423,24 @@ function OrderCard({
         </div>
       </div>
 
-      {isNewOrderAlertStatus(order.status) && (
-        <div className="no-print border-t border-neutral-100 bg-amber-50/50 px-5 py-4">
-          {isScheduled && scheduledAt ? (
-            <>
-              <div className="mb-3 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
-                <CalendarClock size={16} className="shrink-0" />
-                <span>
-                  Klant koos{" "}
-                  <strong>
-                    {scheduledAt.toLocaleString("nl-BE", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onAcceptScheduledAndPrint(order.id)}
-                className="btn-primary flex w-full items-center justify-center gap-2 text-sm"
-              >
-                <Printer size={16} />
-                Accepteren &amp; afdrukken
-              </button>
-              <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-                Gepland order — geen bereidingstijd nodig, de klanttijd staat op de bon.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
-                <Clock size={14} className="text-neutral-500" />
-                Bereidingstijd
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-sage-200 bg-white p-2 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => adjustPrep(-PREP_STEP)}
-                  disabled={prepMinutes <= PREP_MIN}
-                  aria-label="Minder tijd"
-                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
-                >
-                  <Minus size={20} />
-                </button>
-                <div className="flex flex-1 items-baseline justify-center gap-1">
-                  <span className="text-3xl font-extrabold tabular-nums text-neutral-800">
-                    {prepMinutes}
-                  </span>
-                  <span className="text-sm font-semibold text-neutral-500">min</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => adjustPrep(PREP_STEP)}
-                  disabled={prepMinutes >= PREP_MAX}
-                  aria-label="Meer tijd"
-                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
-                >
-                  <Plus size={20} />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onAcceptAndPrint(order.id, prepMinutes)}
-                className="btn-primary mt-3 flex w-full items-center justify-center gap-2 text-sm"
-              >
-                <Printer size={16} />
-                Accepteren &amp; afdrukken
-              </button>
-
-              <p className="mt-2 text-[11px] leading-snug text-neutral-500">
-                De klant ziet meteen de verwachte {order.orderType === "takeaway" ? "afhaal" : "lever"}tijd.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-
-      {!isNewOrderAlertStatus(order.status) && cfg.next && (
-        <div className="no-print border-t border-neutral-100 px-5 py-3">
+      {isActive && (
+        <div className="no-print border-t border-neutral-100 bg-white px-5 py-4">
           <button
             type="button"
-            onClick={() => updateOrderStatus(order.id, cfg.next!)}
-            className="btn-primary text-sm"
+            onClick={() => onComplete(order.id)}
+            className="btn-primary flex w-full items-center justify-center gap-2 text-base"
           >
-            Markeer als {getStatusLabel(cfg.next, order.orderType)}
+            {isNew ? (
+              <>
+                <CheckCircle2 size={18} />
+                Accepteren
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={18} />
+                Sluiten
+              </>
+            )}
           </button>
         </div>
       )}
@@ -547,15 +451,14 @@ function OrderCard({
 export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
-  const acceptOrderWithPrep = useStore((s) => s.acceptOrderWithPrep);
-  const acceptScheduledOrder = useStore((s) => s.acceptScheduledOrder);
+  const updateOrderStatus = useStore((s) => s.updateOrderStatus);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
   const clearOrders = useStore((s) => s.clearOrders);
   const removeOrder = useStore((s) => s.removeOrder);
 
   const [mounted, setMounted] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
-  const [filter, setFilter] = useState<OrderStatus | "all">("all");
+  const [filter, setFilter] = useState<AdminOrderFilter>("active");
   const [kitchenMode, setKitchenMode] = useState(false);
   const [setupVisible, setSetupVisible] = useState(true);
   const storeHydrated = useStoreHydrated();
@@ -768,26 +671,19 @@ export default function AdminPage() {
     [markKitchenPrinted, queuePrint, serverPrintEnabled, serverPrintHealthy]
   );
 
-  const handleAcceptAndPrint = useCallback(
-    (orderId: string, prepMinutes: number) => {
-      acceptOrderWithPrep(orderId, prepMinutes);
-      stopKitchenAlarmLoop();
-      setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      // Always trigger client print path: SDP-healthy → enqueue only;
-      // SDP-unhealthy / local → ePOS. Server PATCH also enqueues when SDP on.
-      triggerKitchenPrint(orderId);
-    },
-    [acceptOrderWithPrep, triggerKitchenPrint]
-  );
-
-  const handleAcceptScheduledAndPrint = useCallback(
+  const handleCompleteOrder = useCallback(
     (orderId: string) => {
-      acceptScheduledOrder(orderId);
+      const order = useStore.getState().orders.find((o) => o.id === orderId);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
-      triggerKitchenPrint(orderId);
+
+      if (order && isNewOrderAlertStatus(order.status)) {
+        triggerKitchenPrint(orderId);
+      }
+
+      updateOrderStatus(orderId, "delivered");
     },
-    [acceptScheduledOrder, triggerKitchenPrint]
+    [triggerKitchenPrint, updateOrderStatus]
   );
 
   // Discover SDP status; refresh so we notice when the printer starts/stops polling.
@@ -1269,17 +1165,13 @@ export default function AdminPage() {
 
   const filtered = kitchenMode
     ? displayOrders.filter((o) => o.status !== "delivered")
-    : filter === "all"
-      ? displayOrders
-      : displayOrders.filter((o) => o.status === filter);
+    : filter === "archive"
+      ? displayOrders.filter((o) => o.status === "delivered")
+      : displayOrders.filter((o) => o.status !== "delivered");
 
   const counts = {
-    all: displayOrders.length,
-    pending: displayOrders.filter((o) => o.status === "pending").length,
-    paid: displayOrders.filter((o) => o.status === "paid").length,
-    preparing: displayOrders.filter((o) => o.status === "preparing").length,
-    ready: displayOrders.filter((o) => o.status === "ready").length,
-    delivered: displayOrders.filter((o) => o.status === "delivered").length,
+    active: displayOrders.filter((o) => o.status !== "delivered").length,
+    archive: displayOrders.filter((o) => o.status === "delivered").length,
   };
 
   const printOrder = printTargetId
@@ -1889,9 +1781,8 @@ export default function AdminPage() {
                 ) : (
                   <>
                     <strong>Meldingsgeluid</strong> (luid 3× piep, herhaalt elke 2,5 s).{" "}
-                    <strong>Bevestig gehoord</strong>, <strong>Geluid uit</strong>, of{" "}
-                    <strong>Accepteren &amp; afdrukken</strong> stopt het alarm.
-                    ePOS 80&nbsp;mm bon (Wi‑Fi printer, geen Safari-dialoog).
+                    <strong>Accepteren</strong> of <strong>Sluiten</strong> stopt het alarm en
+                    verplaatst het order naar het archief.
                   </>
                 )}
               </p>
@@ -1968,21 +1859,24 @@ export default function AdminPage() {
         </div>
 
         <div className="no-print mb-6 flex flex-wrap gap-2">
-          {(["all", "pending", "paid", "preparing", "ready", "delivered"] as const).map(
-            (s) => (
-              <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-semibold capitalize transition ${
-                  filter === s
-                    ? "bg-sage-500 text-white"
-                    : "bg-white text-neutral-500 shadow-sm hover:bg-neutral-50"
-                }`}
-              >
-                {s} ({counts[s]})
-              </button>
-            )
-          )}
+          {(
+            [
+              { id: "active" as const, label: "Actief" },
+              { id: "archive" as const, label: "Archief" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilter(tab.id)}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                filter === tab.id
+                  ? "bg-sage-500 text-white"
+                  : "bg-white text-neutral-500 shadow-sm hover:bg-neutral-50"
+              }`}
+            >
+              {tab.label} ({counts[tab.id]})
+            </button>
+          ))}
         </div>
 
         <div className="no-print mb-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -2043,14 +1937,18 @@ export default function AdminPage() {
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="mb-3 text-5xl">📋</div>
             <h3 className="font-semibold text-neutral-700">
-              {kitchenMode ? "Geen actieve orders" : "No orders yet"}
+              {kitchenMode
+                ? "Geen actieve orders"
+                : filter === "archive"
+                  ? "Geen orders in het archief"
+                  : "Geen actieve orders"}
             </h3>
             <p className="mt-1 text-sm text-neutral-400">
               {kitchenMode
-                ? "Afgeleverde en opgehaalde orders zijn verborgen in kitchen mode."
-                : filter !== "all"
-                  ? `No ${filter} orders at the moment.`
-                  : "Orders will appear here once customers place them."}
+                ? "Afgeronde orders staan in het archief (kitchen mode uit)."
+                : filter === "archive"
+                  ? "Afgeronde orders verschijnen hier na Accepteren of Sluiten."
+                  : "Nieuwe bestellingen verschijnen hier automatisch."}
             </p>
           </div>
         ) : (
@@ -2060,8 +1958,7 @@ export default function AdminPage() {
                 key={order.id}
                 order={order}
                 isAlarmTarget={order.id === alarmOrderId}
-                onAcceptAndPrint={handleAcceptAndPrint}
-                onAcceptScheduledAndPrint={handleAcceptScheduledAndPrint}
+                onComplete={handleCompleteOrder}
                 onPrintReceipt={triggerKitchenPrint}
                 onDelete={handleDeleteOrder}
               />
