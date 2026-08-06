@@ -1,38 +1,35 @@
 /**
- * @file Kitchen new-order notification — unified Web Audio service.
+ * @file Kitchen new-order notification — loud POS-style alarm for noisy kitchens.
  *
- * Two fully silent keep-warm strategies (no audible hum for staff):
- * 1. AudioContext: `resume()` before every alarm + recreate stuck elements.
- * 2. Silent wake-up on `visibilitychange` / `focus` (0-gain buffer pulse).
- *
- * Alarm playback: HTMLAudioElement (marimba wav) with Web Audio synth fallback.
- * First unlock still needs one user gesture; a header banner nudges when blocked.
+ * Playback: Web Audio triple-beep bursts (primary) with HTMLAudioElement fallback.
+ * Repeats every ~2.5 s until the operator acknowledges or mutes.
+ * First unlock still needs one user gesture; the admin banner nudges when blocked.
  */
 
 const MUTE_KEY = "roll-bowl-kitchen-mute";
 
-const ALARM_WALL_MS = 14_000;
+/** Repeat a loud triple-beep burst every 2.5 s until acknowledged. */
+const ALARM_REPEAT_MS = 2_500;
+
 const HEARTBEAT_MS = 2_000;
 const SILENT_WAKE_INTERVAL_MS = 30_000;
 
 const ALARM_SRC = "/kitchen-alarm.wav";
 
-const CHIME_CYCLE_S = 1.0;
-const CHIME_CYCLE_GAP_S = 1.1;
-const CHIME_CYCLES = 7;
-const NOTE_PEAK = 0.85;
-
-const CHIME_NOTES: ReadonlyArray<readonly [freq: number, offsetS: number, durS: number]> = [
-  [523.25, 0, 0.42],
-  [659.25, 0.18, 0.42],
-  [783.99, 0.36, 0.46],
-  [1046.5, 0.54, 0.5],
-];
+/** High-pitched POS / kitchen-timer beeps (Hz). */
+const POS_BEEP_FREQ = 1_720;
+const POS_BEEP_DUR_S = 0.16;
+const POS_BEEP_GAP_S = 0.13;
+const POS_BEEPS_PER_BURST = 3;
+const POS_BURST_PEAK = 0.98;
 
 type Session = { stop: () => void };
 type ReadinessListener = (ready: boolean) => void;
 
 let activeSession: Session | null = null;
+let activeBurst: { stop: () => void } | null = null;
+let alarmRepeatTimer: number | null = null;
+
 let audioCtx: AudioContext | null = null;
 let ctxKeepAliveOsc: OscillatorNode | null = null;
 let sessionArmed = false;
@@ -42,7 +39,6 @@ let silentWakeTimer: number | null = null;
 let lastSilentWakeAt = 0;
 
 let alarmEl: HTMLAudioElement | null = null;
-let alarmStopTimer: number | null = null;
 
 const readinessListeners = new Set<ReadinessListener>();
 
@@ -71,6 +67,11 @@ export function isKitchenAudioBlocked(): boolean {
   if (typeof window === "undefined") return false;
   if (isKitchenAlarmMuted()) return false;
   return !isKitchenAudioReady();
+}
+
+/** True while the repeating alarm loop is active. */
+export function isKitchenAlarmActive(): boolean {
+  return alarmRepeatTimer !== null || activeBurst !== null;
 }
 
 export function isKitchenAlarmMuted(): boolean {
@@ -246,7 +247,7 @@ async function prepareAudioSession(): Promise<boolean> {
 }
 
 /* ------------------------------------------------------------------ *
- * Silent wake-up (method 2) — zero audible output
+ * Silent wake-up — zero audible output
  * ------------------------------------------------------------------ */
 
 async function silentWakeUp(): Promise<void> {
@@ -417,35 +418,29 @@ function tryVibrate(pattern: number[]): void {
 }
 
 /* ------------------------------------------------------------------ *
- * Web Audio chime synthesis (fallback + test)
+ * Loud POS-style triple-beep synthesis
  * ------------------------------------------------------------------ */
 
-function buildSoftOutputGraph(ctx: AudioContext): {
+function buildLoudOutputGraph(ctx: AudioContext): {
   input: AudioNode;
   master: GainNode;
   cleanup: () => void;
 } {
   const master = ctx.createGain();
-  master.gain.value = 0.95;
+  master.gain.value = 1;
 
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -20;
-  comp.knee.value = 28;
-  comp.ratio.value = 8;
-  comp.attack.value = 0.006;
-  comp.release.value = 0.3;
+  comp.threshold.value = -6;
+  comp.knee.value = 2;
+  comp.ratio.value = 16;
+  comp.attack.value = 0.001;
+  comp.release.value = 0.12;
 
-  const lowpass = ctx.createBiquadFilter();
-  lowpass.type = "lowpass";
-  lowpass.frequency.value = 5200;
-  lowpass.Q.value = 0.7;
-
-  lowpass.connect(comp);
   comp.connect(master);
   master.connect(ctx.destination);
 
   const cleanup = () => {
-    for (const node of [lowpass, comp, master]) {
+    for (const node of [comp, master]) {
       try {
         node.disconnect();
       } catch {
@@ -454,10 +449,10 @@ function buildSoftOutputGraph(ctx: AudioContext): {
     }
   };
 
-  return { input: lowpass, master, cleanup };
+  return { input: comp, master, cleanup };
 }
 
-function scheduleNote(
+function scheduleBeep(
   ctx: AudioContext,
   input: AudioNode,
   t0: number,
@@ -466,55 +461,53 @@ function scheduleNote(
   peakGain: number
 ): OscillatorNode[] {
   const fundamental = ctx.createOscillator();
-  fundamental.type = "sine";
+  fundamental.type = "square";
   fundamental.frequency.value = freq;
 
-  const overtone = ctx.createOscillator();
-  overtone.type = "sine";
-  overtone.frequency.value = freq * 4;
+  const harmonic = ctx.createOscillator();
+  harmonic.type = "square";
+  harmonic.frequency.value = freq * 2;
 
-  const overtoneGain = ctx.createGain();
-  overtoneGain.gain.value = 0.18;
+  const harmonicGain = ctx.createGain();
+  harmonicGain.gain.value = 0.35;
 
   const mix = ctx.createGain();
-  mix.gain.value = 0.85;
+  mix.gain.value = 0.9;
 
   const env = ctx.createGain();
   env.gain.setValueAtTime(0.0001, t0);
-  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.008);
+  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.002);
+  env.gain.setValueAtTime(peakGain * 0.9, t0 + durS * 0.65);
   env.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
 
   fundamental.connect(mix);
-  overtone.connect(overtoneGain);
-  overtoneGain.connect(mix);
+  harmonic.connect(harmonicGain);
+  harmonicGain.connect(mix);
   mix.connect(env);
   env.connect(input);
 
   fundamental.start(t0);
-  fundamental.stop(t0 + durS + 0.05);
-  overtone.start(t0);
-  overtone.stop(t0 + durS + 0.05);
+  fundamental.stop(t0 + durS + 0.03);
+  harmonic.start(t0);
+  harmonic.stop(t0 + durS + 0.03);
 
-  return [fundamental, overtone];
+  return [fundamental, harmonic];
 }
 
-function scheduleDeliveryChime(
+function schedulePosTripleBeep(
   ctx: AudioContext,
-  options: { cycles?: number; cycleGapS?: number } = {}
+  options: { beeps?: number } = {}
 ): { stop: () => void } {
-  const cycles = options.cycles ?? CHIME_CYCLES;
-  const cycleGapS = options.cycleGapS ?? CHIME_CYCLE_GAP_S;
+  const beeps = options.beeps ?? POS_BEEPS_PER_BURST;
   const t0 = ctx.currentTime;
-  const { input, master, cleanup } = buildSoftOutputGraph(ctx);
+  const { input, master, cleanup } = buildLoudOutputGraph(ctx);
   const oscs: OscillatorNode[] = [];
 
-  for (let c = 0; c < cycles; c++) {
-    const cycleStart = t0 + c * (CHIME_CYCLE_S + cycleGapS);
-    for (const [freq, offsetS, durS] of CHIME_NOTES) {
-      oscs.push(
-        ...scheduleNote(ctx, input, cycleStart + offsetS, freq, durS, NOTE_PEAK)
-      );
-    }
+  for (let i = 0; i < beeps; i++) {
+    const start = t0 + i * (POS_BEEP_DUR_S + POS_BEEP_GAP_S);
+    oscs.push(
+      ...scheduleBeep(ctx, input, start, POS_BEEP_FREQ, POS_BEEP_DUR_S, POS_BURST_PEAK)
+    );
   }
 
   return {
@@ -522,18 +515,18 @@ function scheduleDeliveryChime(
       const now = ctx.currentTime;
       try {
         master.gain.cancelScheduledValues(now);
-        master.gain.setTargetAtTime(0, now, 0.02);
+        master.gain.setTargetAtTime(0, now, 0.01);
       } catch {
         /* ignore */
       }
       oscs.forEach((o) => {
         try {
-          o.stop(now + 0.05);
+          o.stop(now + 0.02);
         } catch {
           /* ignore */
         }
       });
-      window.setTimeout(cleanup, 200);
+      window.setTimeout(cleanup, 150);
     },
   };
 }
@@ -542,8 +535,72 @@ function scheduleDeliveryChime(
  * Alarm playback
  * ------------------------------------------------------------------ */
 
+function stopCurrentBurst(): void {
+  if (!activeBurst) return;
+  try {
+    activeBurst.stop();
+  } catch {
+    /* ignore */
+  }
+  activeBurst = null;
+}
+
+async function playHtmlAlarmBurst(): Promise<boolean> {
+  const tryPlay = async (el: HTMLAudioElement): Promise<boolean> => {
+    el.loop = false;
+    el.muted = false;
+    el.volume = 1;
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    try {
+      await el.play();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  let el = getAlarmElement();
+  if (await tryPlay(el)) return true;
+  el = recreateAlarmElement();
+  return tryPlay(el);
+}
+
+/** Play one loud triple-beep burst (Web Audio preferred). */
+function playAlarmBurst(): void {
+  if (typeof window === "undefined" || isKitchenAlarmMuted()) return;
+
+  void (async () => {
+    const ready = await prepareAudioSession();
+    if (!ready) {
+      notifyReadiness();
+      return;
+    }
+
+    stopCurrentBurst();
+
+    const ctx = await ensureAudioContext();
+    if (ctx?.state === "running") {
+      activeBurst = schedulePosTripleBeep(ctx);
+      return;
+    }
+
+    if (await playHtmlAlarmBurst()) return;
+    notifyReadiness();
+  })();
+}
+
 export function stopKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
+
+  if (alarmRepeatTimer !== null) {
+    clearInterval(alarmRepeatTimer);
+    alarmRepeatTimer = null;
+  }
+
   const s = activeSession;
   activeSession = null;
   if (s) {
@@ -553,10 +610,9 @@ export function stopKitchenAlarmLoop(): void {
       /* ignore */
     }
   }
-  if (alarmStopTimer !== null) {
-    clearTimeout(alarmStopTimer);
-    alarmStopTimer = null;
-  }
+
+  stopCurrentBurst();
+
   if (alarmEl) {
     try {
       alarmEl.pause();
@@ -570,87 +626,29 @@ export function stopKitchenAlarmLoop(): void {
   void silentWakeUp();
 }
 
-function startWebAudioAlarm(ctx: AudioContext): void {
-  let endTimer: number | null = null;
-  let scheduled: { stop: () => void } | null = null;
-
-  scheduled = scheduleDeliveryChime(ctx);
-  endTimer = window.setTimeout(() => {
-    endTimer = null;
-    activeSession = null;
-  }, ALARM_WALL_MS);
-
-  activeSession = {
-    stop: () => {
-      if (endTimer !== null) {
-        clearTimeout(endTimer);
-        endTimer = null;
-      }
-      if (scheduled) {
-        try {
-          scheduled.stop();
-        } catch {
-          /* ignore */
-        }
-        scheduled = null;
-      }
-      activeSession = null;
-    },
-  };
-}
-
-/** New order: loop chime + vibrate. Always resumes AudioContext first. */
+/** New order: repeat loud triple-beep every 2.5 s until acknowledged or muted. */
 export function startKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   stopKitchenAlarmLoop();
 
   tryVibrate([
-    350, 180, 350, 180, 350, 700,
-    350, 180, 350, 180, 350, 700,
-    350, 180, 350, 180, 350,
+    400, 120, 400, 120, 400, 500,
+    400, 120, 400, 120, 400, 500,
+    400, 120, 400, 120, 400,
   ]);
 
-  void (async () => {
-    const ready = await prepareAudioSession();
-    if (!ready) {
-      notifyReadiness();
+  playAlarmBurst();
+  alarmRepeatTimer = window.setInterval(() => {
+    if (isKitchenAlarmMuted()) {
+      stopKitchenAlarmLoop();
       return;
     }
+    playAlarmBurst();
+  }, ALARM_REPEAT_MS);
 
-    const tryPlay = async (el: HTMLAudioElement): Promise<boolean> => {
-      el.loop = true;
-      el.muted = false;
-      el.volume = 1;
-      try {
-        el.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
-      try {
-        await el.play();
-        if (alarmStopTimer !== null) clearTimeout(alarmStopTimer);
-        alarmStopTimer = window.setTimeout(stopKitchenAlarmLoop, ALARM_WALL_MS);
-        activeSession = { stop: stopKitchenAlarmLoop };
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    let el = getAlarmElement();
-    if (!(await tryPlay(el))) {
-      el = recreateAlarmElement();
-      if (!(await tryPlay(el))) {
-        const ctx = await ensureAudioContext();
-        if (ctx?.state === "running") startWebAudioAlarm(ctx);
-        else notifyReadiness();
-        return;
-      }
-    }
-
-    notifyReadiness();
-  })();
+  activeSession = { stop: stopKitchenAlarmLoop };
+  notifyReadiness();
 }
 
 export function playNewOrderChime(): void {
@@ -658,37 +656,15 @@ export function playNewOrderChime(): void {
   void (async () => {
     const ctx = await ensureAudioContext();
     if (!ctx || ctx.state !== "running") return;
-    scheduleDeliveryChime(ctx, { cycles: 1, cycleGapS: 0 });
+    schedulePosTripleBeep(ctx, { beeps: 3 });
   })();
 }
 
-/** "Test geluid" — one chime; the click also unlocks mobile audio. */
+/** "Test geluid" — one triple-beep; the click also unlocks mobile audio. */
 export function playTestKitchenAlarm(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   unlockKitchenAudio();
-  tryVibrate([100]);
-
-  void (async () => {
-    await prepareAudioSession();
-    const el = getAlarmElement();
-    el.loop = false;
-    el.muted = false;
-    el.volume = 1;
-    try {
-      el.currentTime = 0;
-      await el.play();
-    } catch {
-      const retry = recreateAlarmElement();
-      retry.loop = false;
-      try {
-        await retry.play();
-      } catch {
-        const ctx = await ensureAudioContext();
-        if (ctx?.state === "running") {
-          scheduleDeliveryChime(ctx, { cycles: 1, cycleGapS: 0 });
-        }
-      }
-    }
-  })();
+  tryVibrate([200, 80, 200, 80, 200]);
+  playAlarmBurst();
 }

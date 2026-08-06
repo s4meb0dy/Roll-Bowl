@@ -2,9 +2,9 @@
  * Synthesizes the kitchen alarm + a quiet keep-alive as mono WAV files.
  * Run: `node scripts/generate-kitchen-audio.mjs`
  *
+ * Alarm: loud high-pitched triple-beep (POS / kitchen-timer style).
  * Keep-alive must NOT be near-digital-silence: Android Chrome detects
- * "silent media" and pauses the element after a while, which is what made
- * the yellow "enable sound" button reappear mid-shift.
+ * "silent media" and pauses the element after a while.
  */
 import fs from "fs";
 
@@ -33,37 +33,39 @@ function writeWav(path, samples) {
   fs.writeFileSync(path, buf);
 }
 
-// --- Alarm: warm marimba motif (C5 E5 G5 C6), one loopable cycle + gap ---
-const notes = [
-  [523.25, 0.0, 0.42],
-  [659.25, 0.18, 0.42],
-  [783.99, 0.36, 0.46],
-  [1046.5, 0.54, 0.55],
-];
-const cycleLen = 1.7;
+function squareWave(freq, t) {
+  return Math.sign(Math.sin(2 * Math.PI * freq * t)) || 1;
+}
+
+// --- Alarm: loud triple-beep at ~1720 Hz (POS / kitchen timer) ---
+const BEEP_FREQ = 1720;
+const BEEP_DUR = 0.16;
+const BEEP_GAP = 0.13;
+const BEEPS = 3;
+const cycleLen = BEEPS * BEEP_DUR + (BEEPS - 1) * BEEP_GAP + 0.15;
 const N = Math.floor(SR * cycleLen);
 const alarm = new Float32Array(N);
-for (const [freq, off, dur] of notes) {
-  const start = Math.floor(off * SR);
-  const len = Math.floor(dur * SR);
+
+for (let b = 0; b < BEEPS; b++) {
+  const startS = b * (BEEP_DUR + BEEP_GAP);
+  const start = Math.floor(startS * SR);
+  const len = Math.floor(BEEP_DUR * SR);
   for (let i = 0; i < len; i++) {
     const t = i / SR;
-    const env = Math.exp(-t * 4.5);
-    const fund = Math.sin(2 * Math.PI * freq * t);
-    const over = 0.18 * Math.sin(2 * Math.PI * freq * 4 * t);
+    const env = t < 0.004 ? t / 0.004 : t > BEEP_DUR - 0.02 ? (BEEP_DUR - t) / 0.02 : 1;
+    const fund = squareWave(BEEP_FREQ, t);
+    const harm = 0.35 * squareWave(BEEP_FREQ * 2, t);
     const idx = start + i;
-    if (idx < N) alarm[idx] += 0.5 * env * (fund + over);
+    if (idx < N) alarm[idx] += 0.55 * env * (fund + harm);
   }
 }
+
 let peak = 0;
 for (const v of alarm) peak = Math.max(peak, Math.abs(v));
-if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.9;
+if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.95;
 writeWav("public/kitchen-alarm.wav", alarm);
 
-// --- Keep-alive: inaudible on typical tablet speakers.
-// Pure sub-bass (~28 Hz) at very low level — no noise/hiss (that was audible).
-// Still non-zero PCM so Chrome is less likely to treat it as digital silence;
-// heartbeat + any kitchen tap re-arms if the browser pauses it anyway.
+// --- Keep-alive: inaudible on typical tablet speakers ---
 const KEEP_S = Math.floor(SR * 2);
 const keep = new Float32Array(KEEP_S);
 for (let i = 0; i < KEEP_S; i++) {

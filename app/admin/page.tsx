@@ -169,7 +169,7 @@ function OrderCard({
     <div
       className={`card overflow-hidden border print-break ${
         order.status === "delivered" ? "opacity-60" : ""
-      } ${isAlarmTarget ? "ring-2 ring-gold-400 ring-offset-2" : ""}`}
+      } ${isAlarmTarget ? "kitchen-alarm-card ring-4 ring-orange-500 ring-offset-2" : ""}`}
     >
       <div className="flex items-start justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
         <div>
@@ -928,6 +928,11 @@ export default function AdminPage() {
     const next = !soundMuted;
     setSoundMuted(next);
     setKitchenAlarmMuted(next);
+    if (!next) {
+      unlockKitchenAudio();
+      void requestScreenWakeLock();
+      setAudioEverArmed(true);
+    }
   }, [soundMuted]);
 
   /**
@@ -1282,8 +1287,19 @@ export default function AdminPage() {
     : undefined;
 
   return (
-    <div className={`min-h-screen bg-cream pb-24 ${kitchenMode ? "admin-kitchen-mode-page" : ""}`}>
+    <div
+      className={`min-h-screen bg-cream pb-24 ${kitchenMode ? "admin-kitchen-mode-page" : ""} ${
+        alarmOrderId ? "kitchen-alarm-active" : ""
+      }`}
+    >
       {!kitchenMode && <Header />}
+
+      {alarmOrderId && (
+        <div
+          className="kitchen-alarm-flash no-print fixed inset-0 z-[175]"
+          aria-hidden
+        />
+      )}
 
       {!soundMuted && audioBlocked && (
         <div className="no-print sticky top-0 z-[150] border-b border-amber-300 bg-amber-100/95 px-4 py-2.5 shadow-sm backdrop-blur-sm safe-top">
@@ -1300,23 +1316,34 @@ export default function AdminPage() {
 
       {alarmOrderId && (
         <div
-          className="no-print fixed bottom-0 left-0 right-0 z-[200] border-t border-amber-300 bg-amber-100/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm safe-bottom md:pr-0"
+          className="kitchen-alarm-banner no-print fixed left-0 right-0 top-0 z-[190] border-b-4 border-orange-500 px-4 py-3 shadow-lg safe-top"
           role="alert"
         >
-          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <div className="flex min-w-0 items-center gap-2 text-sm font-bold text-amber-950">
-              <span className="relative flex h-3 w-3 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-60" />
-                <span className="relative h-3 w-3 rounded-full bg-amber-500" />
+          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3 text-base font-extrabold text-orange-950 sm:text-lg">
+              <span className="relative flex h-4 w-4 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-600 opacity-75" />
+                <span className="relative h-4 w-4 rounded-full bg-orange-600" />
               </span>
-              <Bell className="shrink-0 text-amber-800" size={20} />
-              <span className="truncate">Nieuw order — #{shortOrderCode(alarmOrderId)}</span>
+              <span aria-hidden className="text-2xl">
+                🔔
+              </span>
+              <span className="truncate uppercase tracking-wide">
+                Nieuw order — #{shortOrderCode(alarmOrderId)}
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                onClick={toggleMute}
+                className="rounded-xl border-2 border-orange-700 bg-white px-4 py-2 text-sm font-bold text-orange-900 shadow-sm"
+              >
+                🔇 Geluid uit
+              </button>
+              <button
+                type="button"
                 onClick={acknowledgeAlarm}
-                className="btn-primary rounded-xl px-4 py-2 text-sm"
+                className="rounded-xl bg-orange-600 px-5 py-2 text-sm font-bold text-white shadow-md hover:bg-orange-700"
               >
                 Bevestig gehoord
               </button>
@@ -1325,16 +1352,51 @@ export default function AdminPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      {alarmOrderId && (
+        <div
+          className="no-print fixed bottom-0 left-0 right-0 z-[200] border-t-4 border-orange-500 bg-orange-100/95 shadow-[0_-4px_24px_rgba(0,0,0,0.15)] backdrop-blur-sm safe-bottom md:pr-0"
+          role="alert"
+        >
+          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-bold text-orange-950">
+              <Bell className="shrink-0 text-orange-700" size={20} />
+              <span className="truncate">
+                Wacht op bevestiging — #{shortOrderCode(alarmOrderId)}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={acknowledgeAlarm}
+                className="btn-primary rounded-xl bg-orange-600 px-4 py-2 text-sm hover:bg-orange-700"
+              >
+                Bevestig gehoord
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className={`mx-auto max-w-4xl px-4 py-8 sm:px-6 ${alarmOrderId ? "pt-24" : ""}`}>
         {!soundMuted && !audioEverArmed && !audioBlocked && (
           <button
             type="button"
             onClick={armKitchenAudio}
-            className="no-print mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.99]"
+            className="no-print mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.99]"
           >
+            <span aria-hidden className="text-lg">
+              🔔
+            </span>
             <Bell size={18} className="animate-pulse text-amber-600" />
-            Tik één keer om meldingsgeluid te activeren (blijft aan)
+            Geluid aan — tik één keer om meldingen te activeren
           </button>
+        )}
+
+        {!soundMuted && audioEverArmed && !audioBlocked && (
+          <div className="no-print mb-4 flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900">
+            <span aria-hidden>🔔</span>
+            Geluid aan — meldingen actief
+          </div>
         )}
         {serverPrintEnabled && (
           <div
@@ -1826,8 +1888,9 @@ export default function AdminPage() {
                   </>
                 ) : (
                   <>
-                    <strong>Meldingsgeluid</strong> (3× chime, ca. 7s). Dempen,{" "}
-                    <strong>Bevestig gehoord</strong>, of <strong>Accepteren &amp; afdrukken</strong>.
+                    <strong>Meldingsgeluid</strong> (luid 3× piep, herhaalt elke 2,5 s).{" "}
+                    <strong>Bevestig gehoord</strong>, <strong>Geluid uit</strong>, of{" "}
+                    <strong>Accepteren &amp; afdrukken</strong> stopt het alarm.
                     ePOS 80&nbsp;mm bon (Wi‑Fi printer, geen Safari-dialoog).
                   </>
                 )}
@@ -1842,11 +1905,11 @@ export default function AdminPage() {
                 className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm ${
                   soundMuted
                     ? "border-neutral-200 bg-neutral-100 text-neutral-600"
-                    : "border-amber-200 bg-amber-50 text-amber-900"
+                    : "border-emerald-300 bg-emerald-50 text-emerald-900"
                 }`}
               >
                 {soundMuted ? <BellOff size={15} /> : <Bell size={15} />}
-                {soundMuted ? "Geluid aan" : "Dempen"}
+                {soundMuted ? "🔇 Geluid aan" : "🔔 Geluid uit"}
               </button>
               <button
                 type="button"
