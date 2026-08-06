@@ -39,32 +39,42 @@ export interface PendingStripeOrderInput {
   paymentIntentId?: string;
 }
 
+/** Coerce optional client fields (null / undefined / non-string) to a trimmed string. */
+function coerceOptionalString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function parseFulfillmentTime(raw: unknown): FulfillmentTime | null {
   if (!raw || typeof raw !== "object") return null;
   const x = raw as Record<string, unknown>;
   if (x.mode === "asap") return { mode: "asap" };
-  if (
-    x.mode === "scheduled" &&
-    typeof x.scheduledFor === "string" &&
-    x.scheduledFor.trim()
-  ) {
-    return { mode: "scheduled", scheduledFor: x.scheduledFor.trim() };
+  if (x.mode === "scheduled") {
+    const scheduledFor = coerceOptionalString(x.scheduledFor);
+    if (scheduledFor) {
+      return { mode: "scheduled", scheduledFor };
+    }
   }
   return null;
 }
 
 function parseCustomerInfo(
   raw: unknown,
-  orderType: OrderType
+  orderType: OrderType,
+  options?: { requireComplete?: boolean }
 ): CustomerInfo | null {
-  if (!raw || typeof raw !== "object") return null;
+  const requireComplete = options?.requireComplete ?? false;
+  if (!raw || typeof raw !== "object") {
+    return requireComplete ? null : { name: "", phone: "", address: "", zipCode: "" };
+  }
   const x = raw as Record<string, unknown>;
-  const name = typeof x.name === "string" ? x.name.trim() : "";
-  const phone = typeof x.phone === "string" ? x.phone.trim() : "";
-  const address = typeof x.address === "string" ? x.address.trim() : "";
-  const zip = typeof x.zipCode === "string" ? x.zipCode.trim() : "";
-  if (!name || !phone) return null;
-  if (orderType === "delivery" && !address) return null;
+  const name = coerceOptionalString(x.name);
+  const phone = coerceOptionalString(x.phone);
+  const address = coerceOptionalString(x.address);
+  const zip = coerceOptionalString(x.zipCode);
+  if (requireComplete) {
+    if (!name || !phone) return null;
+    if (orderType === "delivery" && !address) return null;
+  }
   return { name, phone, address, zipCode: zip };
 }
 
@@ -105,26 +115,10 @@ export function parsePendingStripeOrderInput(
   const items = parseCartItems(x.items);
   if (!items) return { ok: false, reason: "items" };
 
-  let customerInfo: CustomerInfo | null;
-  if (strict) {
-    customerInfo = parseCustomerInfo(x.customerInfo, orderType);
-    if (!customerInfo) return { ok: false, reason: "customer_info" };
-  } else {
-    customerInfo = parseCustomerInfo(x.customerInfo, orderType);
-    if (!customerInfo) {
-      const raw = x.customerInfo;
-      const partial =
-        raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-      customerInfo = {
-        name: typeof partial.name === "string" ? partial.name.trim() : "",
-        phone: typeof partial.phone === "string" ? partial.phone.trim() : "",
-        address:
-          typeof partial.address === "string" ? partial.address.trim() : "",
-        zipCode:
-          typeof partial.zipCode === "string" ? partial.zipCode.trim() : "",
-      };
-    }
-  }
+  const customerInfo = parseCustomerInfo(x.customerInfo, orderType, {
+    requireComplete: strict,
+  });
+  if (!customerInfo) return { ok: false, reason: "customer_info" };
 
   let fulfillmentTime = parseFulfillmentTime(x.fulfillmentTime);
   if (!fulfillmentTime) {
@@ -133,12 +127,11 @@ export function parsePendingStripeOrderInput(
   }
 
   const zipCode =
-    typeof x.zipCode === "string"
-      ? x.zipCode.trim()
-      : customerInfo.zipCode || null;
+    x.zipCode == null
+      ? customerInfo.zipCode || null
+      : coerceOptionalString(x.zipCode) || null;
 
-  const generalNote =
-    typeof x.generalNote === "string" ? x.generalNote.trim() : "";
+  const generalNote = coerceOptionalString(x.generalNote);
 
   const paymentIntentId =
     typeof x.paymentIntentId === "string" ? x.paymentIntentId.trim() : undefined;
