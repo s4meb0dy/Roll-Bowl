@@ -16,6 +16,8 @@ const RECEIPT_TZ = STORE_TIMEZONE;
 /** Full-width divider rule for the receipt. */
 const DIVIDER = "-".repeat(RECEIPT_COLS);
 
+const DEFAULT_ZSM_PREP_MINUTES = 30;
+
 export interface ReceiptTextLine {
   text: string;
   align?: "left" | "center" | "right";
@@ -72,30 +74,52 @@ export function formatReceiptPlacedAt(iso: string): string {
   return `${time} ${date}`;
 }
 
-function formatReceiptDateTime(d: Date): string {
-  return d.toLocaleString("nl-BE", {
-    timeZone: RECEIPT_TZ,
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatReceiptDateOnly(d: Date): string {
-  return d.toLocaleString("nl-BE", {
-    timeZone: RECEIPT_TZ,
-    day: "2-digit",
-    month: "short",
-  });
-}
-
 function formatReceiptTimeOnly(d: Date): string {
   return d.toLocaleString("nl-BE", {
     timeZone: RECEIPT_TZ,
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function resolveZsmEta(order: Order): Date {
+  if (order.expectedReadyAt && !Number.isNaN(Date.parse(order.expectedReadyAt))) {
+    return new Date(order.expectedReadyAt);
+  }
+  const createdMs = Date.parse(order.createdAt);
+  const baseMs = Number.isNaN(createdMs) ? Date.now() : createdMs;
+  const prep =
+    typeof order.prepMinutes === "number" && order.prepMinutes > 0
+      ? order.prepMinutes
+      : DEFAULT_ZSM_PREP_MINUTES;
+  return new Date(baseMs + prep * 60_000);
+}
+
+/** Header + footer timing lines for kitchen receipts. */
+export function getReceiptTimingLines(order: Order): {
+  headerLine: string;
+  footerLine: string;
+} {
+  const isTakeaway = order.orderType === "takeaway";
+  const isScheduled = order.fulfillmentTime?.mode === "scheduled";
+
+  if (isScheduled && order.fulfillmentTime.mode === "scheduled") {
+    const slot = new Date(order.fulfillmentTime.scheduledFor);
+    const time = formatReceiptTimeOnly(slot);
+    return {
+      headerLine: isTakeaway
+        ? `Geplande afhaling: ${time}`
+        : `Geplande levering: ${time}`,
+      footerLine: `Gepland: ${time}`,
+    };
+  }
+
+  const eta = resolveZsmEta(order);
+  const time = formatReceiptTimeOnly(eta);
+  return {
+    headerLine: `Verwacht: ZSM (~${time})`,
+    footerLine: `Verwacht: ZSM (~${time})`,
+  };
 }
 
 function padLine(left: string, right: string, cols = RECEIPT_COLS): string {
@@ -146,21 +170,7 @@ function expandKitchenLines(lines: KitchenLine[], skipName?: string): string[] {
 
 export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   const isTakeaway = order.orderType === "takeaway";
-  const scheduled =
-    order.fulfillmentTime?.mode === "scheduled"
-      ? new Date(order.fulfillmentTime.scheduledFor)
-      : null;
-
-  const expectedReady =
-    order.expectedReadyAt && !Number.isNaN(Date.parse(order.expectedReadyAt))
-      ? new Date(order.expectedReadyAt)
-      : null;
-
-  const expectedLabel = expectedReady
-    ? `Verwacht: ${formatReceiptDateTime(expectedReady)}`
-    : scheduled
-      ? `Verwacht: ${formatReceiptDateTime(scheduled)}`
-      : `Verwacht: ${formatReceiptDateOnly(new Date(order.createdAt))}, ZSM (${formatReceiptTimeOnly(new Date(order.createdAt))})`;
+  const { headerLine, footerLine } = getReceiptTimingLines(order);
 
   const lines: ReceiptTextLine[] = [];
 
@@ -177,7 +187,7 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
     height: 2,
     bold: true,
   });
-  lines.push({ text: expectedLabel, align: "center", bold: true });
+  lines.push({ text: headerLine, align: "center", bold: true });
   lines.push({ text: " " });
   lines.push({
     text: formatReceiptOrderId(order.id),
@@ -309,9 +319,7 @@ export function buildKitchenReceiptLines(order: Order): ReceiptTextLine[] {
   // ── Footer ──
   lines.push({ text: DIVIDER });
   lines.push({ text: `Besteld:  ${formatReceiptPlacedAt(order.createdAt)}` });
-  if (expectedReady) {
-    lines.push({ text: expectedLabel, bold: true });
-  }
+  lines.push({ text: footerLine, bold: true });
   lines.push({ text: " " });
   lines.push({ text: "Smakelijk!", align: "center", bold: true });
   lines.push({ text: " " });

@@ -288,9 +288,13 @@ export const useStore = create<AppState>()(
       },
 
       acceptOrderWithPrep: (orderId, prepMinutes) => {
+        const order = get().orders.find((o) => o.id === orderId);
         const minutes = Math.max(0, Math.min(180, Math.round(prepMinutes)));
+        const baseMs = order?.createdAt
+          ? Date.parse(order.createdAt)
+          : Date.now();
         const expectedReadyAt = new Date(
-          Date.now() + minutes * 60_000
+          baseMs + minutes * 60_000
         ).toISOString();
         set((state) => ({
           orders: state.orders.map((o) =>

@@ -22,6 +22,8 @@ import {
   ListChecks,
   X,
   Download,
+  Minus,
+  Plus,
   Trash2,
   CreditCard,
   Banknote,
@@ -112,6 +114,12 @@ const MAX_PRINT_ATTEMPTS = 4;
 
 type AdminOrderFilter = "active" | "archive";
 
+/** Prep-time stepper for ZSM orders on the kitchen board. */
+const PREP_MIN = 15;
+const PREP_MAX = 60;
+const PREP_STEP = 5;
+const PREP_DEFAULT = 30;
+
 function OrderCard({
   order,
   onComplete,
@@ -120,15 +128,24 @@ function OrderCard({
   isAlarmTarget,
 }: {
   order: Order;
-  onComplete: (id: string) => void;
+  onComplete: (id: string, prepMinutes?: number) => void;
   onPrintReceipt: (id: string) => void;
   onDelete: (id: string) => void;
   isAlarmTarget?: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [prepMinutes, setPrepMinutes] = useState(PREP_DEFAULT);
   const cfg = getStatusDisplay(order);
   const isActive = order.status !== "delivered";
   const isNew = isNewOrderAlertStatus(order.status);
+  const isScheduled = order.fulfillmentTime?.mode === "scheduled";
+  const isZsm = !isScheduled;
+  const scheduledAt =
+    isScheduled && order.fulfillmentTime.mode === "scheduled"
+      ? new Date(order.fulfillmentTime.scheduledFor)
+      : null;
+  const adjustPrep = (delta: number) =>
+    setPrepMinutes((m) => Math.min(PREP_MAX, Math.max(PREP_MIN, m + delta)));
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -425,9 +442,63 @@ function OrderCard({
 
       {isActive && (
         <div className="no-print border-t border-neutral-100 bg-white px-5 py-4">
+          {isNew && isZsm && (
+            <>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-600">
+                <Clock size={14} className="text-neutral-500" />
+                Bereidingstijd (ZSM)
+              </div>
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-sage-200 bg-white p-2 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => adjustPrep(-PREP_STEP)}
+                  disabled={prepMinutes <= PREP_MIN}
+                  aria-label="Minder tijd"
+                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+                >
+                  <Minus size={20} />
+                </button>
+                <div className="flex flex-1 items-baseline justify-center gap-1">
+                  <span className="text-3xl font-extrabold tabular-nums text-neutral-800">
+                    {prepMinutes}
+                  </span>
+                  <span className="text-sm font-semibold text-neutral-500">min</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => adjustPrep(PREP_STEP)}
+                  disabled={prepMinutes >= PREP_MAX}
+                  aria-label="Meer tijd"
+                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-sage-200 bg-sage-50 text-sage-800 transition hover:bg-sage-100 active:scale-95 disabled:opacity-40"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+            </>
+          )}
+
+          {isNew && isScheduled && scheduledAt && (
+            <div className="mb-3 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
+              <CalendarClock size={16} className="shrink-0" />
+              <span>
+                Gepland om{" "}
+                <strong>
+                  {scheduledAt.toLocaleString("nl-BE", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </strong>
+              </span>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => onComplete(order.id)}
+            onClick={() =>
+              onComplete(order.id, isNew && isZsm ? prepMinutes : undefined)
+            }
             className="btn-primary flex w-full items-center justify-center gap-2 text-base"
           >
             {isNew ? (
@@ -452,6 +523,8 @@ export default function AdminPage() {
   const orders = useStore((s) => s.orders);
   const markKitchenPrinted = useStore((s) => s.markKitchenPrinted);
   const updateOrderStatus = useStore((s) => s.updateOrderStatus);
+  const acceptOrderWithPrep = useStore((s) => s.acceptOrderWithPrep);
+  const acceptScheduledOrder = useStore((s) => s.acceptScheduledOrder);
   const applyOrdersSnapshot = useStore((s) => s.applyOrdersSnapshot);
   const clearOrders = useStore((s) => s.clearOrders);
   const removeOrder = useStore((s) => s.removeOrder);
@@ -672,18 +745,32 @@ export default function AdminPage() {
   );
 
   const handleCompleteOrder = useCallback(
-    (orderId: string) => {
+    (orderId: string, prepMinutes?: number) => {
       const order = useStore.getState().orders.find((o) => o.id === orderId);
       stopKitchenAlarmLoop();
       setAlarmOrderId((cur) => (cur === orderId ? null : cur));
 
       if (order && isNewOrderAlertStatus(order.status)) {
+        if (order.fulfillmentTime?.mode === "scheduled") {
+          acceptScheduledOrder(orderId);
+        } else {
+          const minutes = Math.min(
+            PREP_MAX,
+            Math.max(PREP_MIN, Math.round(prepMinutes ?? PREP_DEFAULT))
+          );
+          acceptOrderWithPrep(orderId, minutes);
+        }
         triggerKitchenPrint(orderId);
       }
 
       updateOrderStatus(orderId, "delivered");
     },
-    [triggerKitchenPrint, updateOrderStatus]
+    [
+      acceptOrderWithPrep,
+      acceptScheduledOrder,
+      triggerKitchenPrint,
+      updateOrderStatus,
+    ]
   );
 
   // Discover SDP status; refresh so we notice when the printer starts/stops polling.
