@@ -2,7 +2,7 @@
  * Synthesizes the kitchen alarm + a quiet keep-alive as mono WAV files.
  * Run: `node scripts/generate-kitchen-audio.mjs`
  *
- * Alarm: loud high-pitched triple-beep (POS / kitchen-timer style).
+ * Alarm: piercing two-tone siren (2500 Hz + 3100 Hz, six rapid beeps).
  * Keep-alive must NOT be near-digital-silence: Android Chrome detects
  * "silent media" and pauses the element after a while.
  */
@@ -33,36 +33,53 @@ function writeWav(path, samples) {
   fs.writeFileSync(path, buf);
 }
 
+function sawWave(freq, t) {
+  const phase = (freq * t) % 1;
+  return 2 * phase - 1;
+}
+
 function squareWave(freq, t) {
   return Math.sign(Math.sin(2 * Math.PI * freq * t)) || 1;
 }
 
-// --- Alarm: loud triple-beep at ~1720 Hz (POS / kitchen timer) ---
-const BEEP_FREQ = 1720;
-const BEEP_DUR = 0.16;
-const BEEP_GAP = 0.13;
-const BEEPS = 3;
-const cycleLen = BEEPS * BEEP_DUR + (BEEPS - 1) * BEEP_GAP + 0.15;
-const N = Math.floor(SR * cycleLen);
-const alarm = new Float32Array(N);
-
-for (let b = 0; b < BEEPS; b++) {
-  const startS = b * (BEEP_DUR + BEEP_GAP);
+function addBeep(buf, startS, durS, freq) {
   const start = Math.floor(startS * SR);
-  const len = Math.floor(BEEP_DUR * SR);
+  const len = Math.floor(durS * SR);
   for (let i = 0; i < len; i++) {
     const t = i / SR;
-    const env = t < 0.004 ? t / 0.004 : t > BEEP_DUR - 0.02 ? (BEEP_DUR - t) / 0.02 : 1;
-    const fund = squareWave(BEEP_FREQ, t);
-    const harm = 0.35 * squareWave(BEEP_FREQ * 2, t);
+    const env =
+      t < 0.002
+        ? t / 0.002
+        : t > durS - 0.015
+          ? (durS - t) / 0.015
+          : 1;
+    const fund = sawWave(freq, t);
+    const harm = 0.55 * squareWave(freq * 2, t);
+    const det = 0.35 * squareWave(freq * 1.015, t);
     const idx = start + i;
-    if (idx < N) alarm[idx] += 0.55 * env * (fund + harm);
+    if (idx < buf.length) buf[idx] += 0.62 * env * (fund + harm + det);
   }
 }
 
+// --- Alarm: two-tone siren matching kitchenSound.ts SIREN_PATTERN ---
+const BEEP_DUR = 0.22;
+const BEEP_GAP = 0.08;
+const LOW = 2500;
+const HIGH = 3100;
+const cycleLen = 1.85;
+const N = Math.floor(SR * cycleLen);
+const alarm = new Float32Array(N);
+
+addBeep(alarm, 0.0, BEEP_DUR, LOW);
+addBeep(alarm, BEEP_DUR + BEEP_GAP, BEEP_DUR, LOW);
+addBeep(alarm, 2 * (BEEP_DUR + BEEP_GAP), BEEP_DUR, LOW);
+addBeep(alarm, 0.92, BEEP_DUR, HIGH);
+addBeep(alarm, 0.92 + BEEP_DUR + BEEP_GAP, BEEP_DUR, HIGH);
+addBeep(alarm, 0.92 + 2 * (BEEP_DUR + BEEP_GAP), BEEP_DUR, HIGH);
+
 let peak = 0;
 for (const v of alarm) peak = Math.max(peak, Math.abs(v));
-if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.95;
+if (peak > 0) for (let i = 0; i < N; i++) alarm[i] = (alarm[i] / peak) * 0.98;
 writeWav("public/kitchen-alarm.wav", alarm);
 
 // --- Keep-alive: inaudible on typical tablet speakers ---

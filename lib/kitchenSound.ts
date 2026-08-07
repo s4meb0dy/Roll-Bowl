@@ -1,27 +1,47 @@
 /**
- * @file Kitchen new-order notification — loud POS-style alarm for noisy kitchens.
+ * @file Kitchen new-order notification — maximum-attention siren for noisy kitchens.
  *
- * Playback: Web Audio triple-beep bursts (primary) with HTMLAudioElement fallback.
- * Repeats every ~2.5 s until the operator acknowledges or mutes.
+ * Two-tone high-frequency siren (Web Audio primary + WAV layered fallback).
+ * Repeats every 2 s until acknowledged or muted.
  * First unlock still needs one user gesture; the admin banner nudges when blocked.
  */
 
 const MUTE_KEY = "roll-bowl-kitchen-mute";
 
-/** Repeat a loud triple-beep burst every 2.5 s until acknowledged. */
-const ALARM_REPEAT_MS = 2_500;
+/** Repeat a loud siren burst every 2 s until acknowledged. */
+const ALARM_REPEAT_MS = 2_000;
 
 const HEARTBEAT_MS = 2_000;
 const SILENT_WAKE_INTERVAL_MS = 30_000;
 
 const ALARM_SRC = "/kitchen-alarm.wav";
 
-/** High-pitched POS / kitchen-timer beeps (Hz). */
-const POS_BEEP_FREQ = 1_720;
-const POS_BEEP_DUR_S = 0.16;
-const POS_BEEP_GAP_S = 0.13;
-const POS_BEEPS_PER_BURST = 3;
-const POS_BURST_PEAK = 0.98;
+/** Piercing kitchen-siren tones (Hz) — tuned for tablet speakers + street noise. */
+const SIREN_LOW_HZ = 2_500;
+const SIREN_HIGH_HZ = 3_100;
+const SIREN_BEEP_DUR_S = 0.22;
+const SIREN_BEEP_GAP_S = 0.08;
+const SIREN_BURST_PEAK = 1;
+
+/** Six rapid beeps: low-low-low then high-high-high. */
+const SIREN_PATTERN: ReadonlyArray<
+  readonly [freq: number, offsetS: number, durS: number]
+> = [
+  [SIREN_LOW_HZ, 0.0, SIREN_BEEP_DUR_S],
+  [SIREN_LOW_HZ, SIREN_BEEP_DUR_S + SIREN_BEEP_GAP_S, SIREN_BEEP_DUR_S],
+  [
+    SIREN_LOW_HZ,
+    2 * (SIREN_BEEP_DUR_S + SIREN_BEEP_GAP_S),
+    SIREN_BEEP_DUR_S,
+  ],
+  [SIREN_HIGH_HZ, 0.92, SIREN_BEEP_DUR_S],
+  [SIREN_HIGH_HZ, 0.92 + SIREN_BEEP_DUR_S + SIREN_BEEP_GAP_S, SIREN_BEEP_DUR_S],
+  [
+    SIREN_HIGH_HZ,
+    0.92 + 2 * (SIREN_BEEP_DUR_S + SIREN_BEEP_GAP_S),
+    SIREN_BEEP_DUR_S,
+  ],
+];
 
 type Session = { stop: () => void };
 type ReadinessListener = (ready: boolean) => void;
@@ -418,7 +438,7 @@ function tryVibrate(pattern: number[]): void {
 }
 
 /* ------------------------------------------------------------------ *
- * Loud POS-style triple-beep synthesis
+ * Maximum-attention kitchen siren synthesis
  * ------------------------------------------------------------------ */
 
 function buildLoudOutputGraph(ctx: AudioContext): {
@@ -429,18 +449,24 @@ function buildLoudOutputGraph(ctx: AudioContext): {
   const master = ctx.createGain();
   master.gain.value = 1;
 
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -6;
-  comp.knee.value = 2;
-  comp.ratio.value = 16;
-  comp.attack.value = 0.001;
-  comp.release.value = 0.12;
+  const bandpass = ctx.createBiquadFilter();
+  bandpass.type = "bandpass";
+  bandpass.frequency.value = 2_800;
+  bandpass.Q.value = 0.85;
 
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -2;
+  comp.knee.value = 0;
+  comp.ratio.value = 20;
+  comp.attack.value = 0.0005;
+  comp.release.value = 0.08;
+
+  bandpass.connect(comp);
   comp.connect(master);
   master.connect(ctx.destination);
 
   const cleanup = () => {
-    for (const node of [comp, master]) {
+    for (const node of [bandpass, comp, master]) {
       try {
         node.disconnect();
       } catch {
@@ -449,10 +475,10 @@ function buildLoudOutputGraph(ctx: AudioContext): {
     }
   };
 
-  return { input: comp, master, cleanup };
+  return { input: bandpass, master, cleanup };
 }
 
-function scheduleBeep(
+function scheduleSirenBeep(
   ctx: AudioContext,
   input: AudioNode,
   t0: number,
@@ -461,52 +487,57 @@ function scheduleBeep(
   peakGain: number
 ): OscillatorNode[] {
   const fundamental = ctx.createOscillator();
-  fundamental.type = "square";
+  fundamental.type = "sawtooth";
   fundamental.frequency.value = freq;
 
-  const harmonic = ctx.createOscillator();
-  harmonic.type = "square";
-  harmonic.frequency.value = freq * 2;
+  const overtone = ctx.createOscillator();
+  overtone.type = "square";
+  overtone.frequency.value = freq * 2;
 
-  const harmonicGain = ctx.createGain();
-  harmonicGain.gain.value = 0.35;
+  const detune = ctx.createOscillator();
+  detune.type = "square";
+  detune.frequency.value = freq * 1.015;
+
+  const overtoneGain = ctx.createGain();
+  overtoneGain.gain.value = 0.55;
+
+  const detuneGain = ctx.createGain();
+  detuneGain.gain.value = 0.35;
 
   const mix = ctx.createGain();
-  mix.gain.value = 0.9;
+  mix.gain.value = 0.95;
 
   const env = ctx.createGain();
   env.gain.setValueAtTime(0.0001, t0);
-  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.002);
-  env.gain.setValueAtTime(peakGain * 0.9, t0 + durS * 0.65);
+  env.gain.exponentialRampToValueAtTime(peakGain, t0 + 0.0015);
+  env.gain.setValueAtTime(peakGain, t0 + durS * 0.72);
   env.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
 
   fundamental.connect(mix);
-  harmonic.connect(harmonicGain);
-  harmonicGain.connect(mix);
+  overtone.connect(overtoneGain);
+  overtoneGain.connect(mix);
+  detune.connect(detuneGain);
+  detuneGain.connect(mix);
   mix.connect(env);
   env.connect(input);
 
-  fundamental.start(t0);
-  fundamental.stop(t0 + durS + 0.03);
-  harmonic.start(t0);
-  harmonic.stop(t0 + durS + 0.03);
+  const oscs = [fundamental, overtone, detune];
+  for (const o of oscs) {
+    o.start(t0);
+    o.stop(t0 + durS + 0.04);
+  }
 
-  return [fundamental, harmonic];
+  return oscs;
 }
 
-function schedulePosTripleBeep(
-  ctx: AudioContext,
-  options: { beeps?: number } = {}
-): { stop: () => void } {
-  const beeps = options.beeps ?? POS_BEEPS_PER_BURST;
+function scheduleKitchenSirenBurst(ctx: AudioContext): { stop: () => void } {
   const t0 = ctx.currentTime;
   const { input, master, cleanup } = buildLoudOutputGraph(ctx);
   const oscs: OscillatorNode[] = [];
 
-  for (let i = 0; i < beeps; i++) {
-    const start = t0 + i * (POS_BEEP_DUR_S + POS_BEEP_GAP_S);
+  for (const [freq, offsetS, durS] of SIREN_PATTERN) {
     oscs.push(
-      ...scheduleBeep(ctx, input, start, POS_BEEP_FREQ, POS_BEEP_DUR_S, POS_BURST_PEAK)
+      ...scheduleSirenBeep(ctx, input, t0 + offsetS, freq, durS, SIREN_BURST_PEAK)
     );
   }
 
@@ -515,7 +546,7 @@ function schedulePosTripleBeep(
       const now = ctx.currentTime;
       try {
         master.gain.cancelScheduledValues(now);
-        master.gain.setTargetAtTime(0, now, 0.01);
+        master.gain.setTargetAtTime(0, now, 0.008);
       } catch {
         /* ignore */
       }
@@ -526,7 +557,7 @@ function schedulePosTripleBeep(
           /* ignore */
         }
       });
-      window.setTimeout(cleanup, 150);
+      window.setTimeout(cleanup, 180);
     },
   };
 }
@@ -569,7 +600,7 @@ async function playHtmlAlarmBurst(): Promise<boolean> {
   return tryPlay(el);
 }
 
-/** Play one loud triple-beep burst (Web Audio preferred). */
+/** Play one loud siren burst — Web Audio + WAV layered for max volume. */
 function playAlarmBurst(): void {
   if (typeof window === "undefined" || isKitchenAlarmMuted()) return;
 
@@ -584,7 +615,8 @@ function playAlarmBurst(): void {
 
     const ctx = await ensureAudioContext();
     if (ctx?.state === "running") {
-      activeBurst = schedulePosTripleBeep(ctx);
+      activeBurst = scheduleKitchenSirenBurst(ctx);
+      void playHtmlAlarmBurst();
       return;
     }
 
@@ -626,16 +658,16 @@ export function stopKitchenAlarmLoop(): void {
   void silentWakeUp();
 }
 
-/** New order: repeat loud triple-beep every 2.5 s until acknowledged or muted. */
+/** New order: repeat loud siren every 2 s until acknowledged or muted. */
 export function startKitchenAlarmLoop(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   stopKitchenAlarmLoop();
 
   tryVibrate([
-    400, 120, 400, 120, 400, 500,
-    400, 120, 400, 120, 400, 500,
-    400, 120, 400, 120, 400,
+    500, 100, 500, 100, 500, 100, 500, 400,
+    500, 100, 500, 100, 500, 100, 500, 400,
+    500, 100, 500, 100, 500,
   ]);
 
   playAlarmBurst();
@@ -656,15 +688,15 @@ export function playNewOrderChime(): void {
   void (async () => {
     const ctx = await ensureAudioContext();
     if (!ctx || ctx.state !== "running") return;
-    schedulePosTripleBeep(ctx, { beeps: 3 });
+    scheduleKitchenSirenBurst(ctx);
   })();
 }
 
-/** "Test geluid" — one triple-beep; the click also unlocks mobile audio. */
+/** "Test geluid" — one siren burst; the click also unlocks mobile audio. */
 export function playTestKitchenAlarm(): void {
   if (typeof window === "undefined") return;
   if (isKitchenAlarmMuted()) return;
   unlockKitchenAudio();
-  tryVibrate([200, 80, 200, 80, 200]);
+  tryVibrate([250, 80, 250, 80, 250, 80, 250]);
   playAlarmBurst();
 }
