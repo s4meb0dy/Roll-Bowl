@@ -117,8 +117,8 @@ export function getReceiptTimingLines(order: Order): {
   const eta = resolveZsmEta(order);
   const time = formatReceiptTimeOnly(eta);
   return {
-    headerLine: `Verwacht: ZSM (~${time})`,
-    footerLine: `Verwacht: ZSM (~${time})`,
+    headerLine: `Verwacht: ZSM ${time}`,
+    footerLine: `Verwacht: ZSM ${time}`,
   };
 }
 
